@@ -19,5 +19,4 @@ COPY server.py /app/server.py
 ENV NVIDIA_VISIBLE_DEVICES=all
 EXPOSE 5000
 
-
 CMD ["python3", "server.py"]
