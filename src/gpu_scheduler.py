@@ -11,8 +11,8 @@ from datetime import datetime
 import argparse
 
 # Configurable parameters
-IMAGE = os.environ.get("IMAGE", "llm-distilgpt2:cuda115")
-CONTAINER_PREFIX = "llm_tenant"
+IMAGE = os.environ.get("IMAGE", "gpu-llm:cu118")
+CONTAINER_PREFIX = os.environ.get("CONTAINER_PREFIX", "llm_tenant")
 INFER_PORT_START = int(os.environ.get("START_PORT", 6000))
 VRAM_SLICE_MB = int(os.environ.get("VRAM_SLICE_MB", 1500))
 CHECK_INTERVAL = 5

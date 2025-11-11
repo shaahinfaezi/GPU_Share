@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Config (override via env)
-IMAGE="${IMAGE:-llm-distilgpt2:cuda115}"
+IMAGE="${IMAGE:-gpu-llm:cu118}"
 NUM_CONTAINERS="${NUM_CONTAINERS:-4}"
 START_PORT="${START_PORT:-6000}"
 VRAM_SLICE_MB="${VRAM_SLICE_MB:-1500}"

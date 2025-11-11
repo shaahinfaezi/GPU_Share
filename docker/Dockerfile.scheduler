@@ -1,19 +1,18 @@
-FROM nvidia/cuda:11.5-base
+FROM pytorch/pytorch:2.3.1-cuda11.8-cudnn8-runtime
 
-# Set the working directory
+ENV PYTHONUNBUFFERED=1 \
+	PIP_NO_CACHE_DIR=1 \
+	HF_HUB_DISABLE_TELEMETRY=1
+
 WORKDIR /app
 
-# Copy the requirements file and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install runtime dependencies for the server
+RUN pip install --no-cache-dir flask transformers==4.36.2 pynvml
 
-# Copy the source code
-COPY src/ ./src/
-COPY configs/ ./configs/
+# Copy server
+COPY src/server/server.py /app/server.py
 
-# Copy the entrypoint script
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+EXPOSE 5000
+ENV NVIDIA_VISIBLE_DEVICES=all
 
-# Set the entrypoint
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["python", "/app/server.py"]
