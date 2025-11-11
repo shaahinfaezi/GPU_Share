@@ -21,7 +21,7 @@ command -v docker >/dev/null || { echo "docker not found"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
 
 # Start MPS if available
-if systemctl list-unit-files | grep -q nvidia-mps; then
+if sudo systemctl list-unit-files | grep -q nvidia-mps; then
   echo "Starting NVIDIA MPS..."
   sudo systemctl start nvidia-mps || true
 fi
@@ -43,7 +43,7 @@ fi
 # --- Docker build with logging ---
 echo "Building image '$IMAGE' from $DOCKERFILE... Logs are in $BUILD_LOG"
 # The script will wait here until the build is done.
-if docker build -f "$DOCKERFILE" -t "$IMAGE" . > "$BUILD_LOG" 2>&1; then
+if sudo docker build -f "$DOCKERFILE" -t "$IMAGE" . > "$BUILD_LOG" 2>&1; then
   echo "Docker build completed successfully."
 else
   echo "Docker build failed. Check '$BUILD_LOG' for details." >&2
@@ -78,7 +78,7 @@ for ((i=0;i<NUM_CONTAINERS;i++)); do
 done
 echo
 echo "Active containers:"
-docker ps --filter "name=${CONTAINER_PREFIX}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+sudo docker ps --filter "name=${CONTAINER_PREFIX}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 echo
 echo "Follow scheduler logs: tail -f $SCHEDULER_LOG"
 echo "Stop containers: docker stop \$(docker ps -q --filter name=${CONTAINER_PREFIX}) || true"
