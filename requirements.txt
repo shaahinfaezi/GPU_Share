@@ -1,0 +1,8 @@
+numpy
+docker
+pynvml
+requests
+argparse
+jsonschema
+pyyaml
+threading

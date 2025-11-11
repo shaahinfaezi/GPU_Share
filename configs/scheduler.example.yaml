@@ -1,0 +1,16 @@
+gpu_allocation:
+  vram_slice_mb: 1500
+  num_containers: 4
+  start_port: 6000
+
+logging:
+  level: INFO
+  file: "scheduler.log"
+
+docker:
+  image: "llm-distilgpt2:cuda115"
+  runtime: "nvidia"
+
+mps:
+  enabled: true
+  service_name: "nvidia-mps"

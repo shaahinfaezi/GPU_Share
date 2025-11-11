@@ -1,0 +1,26 @@
+{
+  "tenants": [
+    {
+      "name": "tenant1",
+      "resource_limits": {
+        "gpu_memory_mb": 1500,
+        "max_containers": 2
+      },
+      "settings": {
+        "model_name": "distilgpt2",
+        "inference_timeout": 30
+      }
+    },
+    {
+      "name": "tenant2",
+      "resource_limits": {
+        "gpu_memory_mb": 1500,
+        "max_containers": 2
+      },
+      "settings": {
+        "model_name": "gpt2",
+        "inference_timeout": 30
+      }
+    }
+  ]
+}
