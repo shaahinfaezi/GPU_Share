@@ -8,6 +8,7 @@ import requests
 import random
 import os
 from datetime import datetime
+import argparse
 
 # Configurable parameters
 IMAGE = os.environ.get("IMAGE", "llm-distilgpt2:cuda115")
