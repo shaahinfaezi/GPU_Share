@@ -125,8 +125,23 @@ nohup python3 src/gpu_scheduler.py \
 echo $! > "$LOG_DIR/scheduler.pid"
 echo "Scheduler started with PID $(cat "$LOG_DIR/scheduler.pid")"
 
-echo "Waiting for containers to initialize..."
-sleep 90
+echo
+echo "Waiting for containers to become healthy (this can take a few minutes on first run)..."
+for ((i=0;i<NUM_CONTAINERS;i++)); do
+  PORT=$((START_PORT+i))
+  echo -n "Waiting for container on port $PORT..."
+  # Loop for up to 2 minutes (120 seconds) waiting for the health endpoint
+  for j in {1..60}; do
+    # Use curl's exit code to check for success (200 OK)
+    if curl -fsS --max-time 2 "http://localhost:${PORT}/health" > /dev/null; then
+      echo " OK!"
+      break
+    fi
+    echo -n "."
+    sleep 2
+  done
+done
+
 
 echo
 echo "Probing endpoints and listing active containers..."
