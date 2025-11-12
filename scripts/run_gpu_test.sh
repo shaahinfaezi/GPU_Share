@@ -80,6 +80,27 @@ mkdir -p "$LOG_DIR"
 BUILD_LOG="$LOG_DIR/build.log"
 SCHEDULER_LOG="$LOG_DIR/scheduler.log"
 
+# --- Force cleanup of previous runs ---
+echo "--- Cleaning up leftover processes and containers from previous runs ---"
+# Kill any lingering scheduler process using its last known PID
+if [ -f "$LOG_DIR/scheduler.pid" ]; then
+    echo "Stopping previous scheduler process..."
+    sudo pkill -F "$LOG_DIR/scheduler.pid" || true
+    rm -f "$LOG_DIR/scheduler.pid"
+fi
+# Find, stop, and remove any containers with the target prefix
+LEFTOVER_CONTAINERS=$(sudo docker ps -aq --filter "name=${CONTAINER_PREFIX}")
+if [ -n "$LEFTOVER_CONTAINERS" ]; then
+  echo "Stopping and removing leftover containers..."
+  sudo docker stop $LEFTOVER_CONTAINERS > /dev/null 2>&1 || true
+  sudo docker rm $LEFTOVER_CONTAINERS > /dev/null 2>&1 || true
+  echo "Cleanup complete."
+else
+  echo "No leftover containers found."
+fi
+echo "--------------------------------------------------------------------"
+
+
 # Preflight (after install)
 command -v docker >/dev/null || { echo "docker not found"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
