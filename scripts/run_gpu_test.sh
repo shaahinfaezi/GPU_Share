@@ -126,6 +126,31 @@ echo $! > "$LOG_DIR/scheduler.pid"
 echo "Scheduler started with PID $(cat "$LOG_DIR/scheduler.pid")"
 
 echo
+echo "Waiting for scheduler to launch all containers..."
+LAUNCH_TIMEOUT=60 # seconds
+SECONDS=0
+while true; do
+  # Count running containers with the correct prefix
+  RUNNING_COUNT=$(sudo docker ps --filter "name=${CONTAINER_PREFIX}" --format "{{.Names}}" | wc -l)
+
+  echo -ne "Launched ${RUNNING_COUNT}/${NUM_CONTAINERS} containers... \r"
+
+  if [ "$RUNNING_COUNT" -ge "$NUM_CONTAINERS" ]; then
+    echo -e "\nAll containers launched."
+    break
+  fi
+
+  if [ "$SECONDS" -ge "$LAUNCH_TIMEOUT" ]; then
+    echo -e "\nError: Timeout waiting for containers to be launched by the scheduler." >&2
+    exit 1
+  fi
+
+  sleep 2
+  SECONDS=$((SECONDS + 2))
+done
+
+
+echo
 echo "Waiting for containers to become healthy (this can take a few minutes on first run)..."
 for ((i=0;i<NUM_CONTAINERS;i++)); do
   PORT=$((START_PORT+i))
