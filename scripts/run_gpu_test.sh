@@ -56,12 +56,12 @@ install_prereqs() {
     echo "Warning: NVIDIA driver not detected (nvidia-smi missing). Containers will run on CPU."
   fi
 
-  # Python deps for scheduler (host)
-  if ! python3 -c "import docker, pynvml" >/dev/null 2>&1; then
-    python3 -m pip install --user --upgrade pip
-    python3 -m pip install --user docker pynvml
-    export PATH="$HOME/.local/bin:$PATH"
-  fi
+  # Python deps for scheduler (host) - Uninstall old pynvml, install modern nvidia-ml-py
+  echo "Checking/installing host Python dependencies (docker, nvidia-ml-py)..."
+  python3 -m pip uninstall -y pynvml > /dev/null 2>&1 || true
+  python3 -m pip install --user --upgrade pip
+  python3 -m pip install --user docker "nvidia-ml-py<12"
+  export PATH="$HOME/.local/bin:$PATH"
 }
 
 install_prereqs

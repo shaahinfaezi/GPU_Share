@@ -1,4 +1,7 @@
 import docker
+import warnings
+# Suppress the pynvml deprecation warning that nvidia-ml-py still shows
+warnings.filterwarnings("ignore", category=FutureWarning, module="pynvml")
 import pynvml
 import subprocess
 import time
