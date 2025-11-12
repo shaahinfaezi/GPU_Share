@@ -126,7 +126,7 @@ echo $! > "$LOG_DIR/scheduler.pid"
 echo "Scheduler started with PID $(cat "$LOG_DIR/scheduler.pid")"
 
 echo "Waiting for containers to initialize..."
-sleep 10
+sleep 90
 
 echo
 echo "Probing endpoints and listing active containers..."
