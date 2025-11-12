@@ -4,10 +4,20 @@ ENV PYTHONUNBUFFERED=1 \
 	PIP_NO_CACHE_DIR=1 \
 	HF_HUB_DISABLE_TELEMETRY=1
 
+# Add a build argument for the model name
+ARG MODEL_NAME=distilgpt2
+
 WORKDIR /app
 
 # Install runtime dependencies for the server
-RUN pip install --no-cache-dir flask transformers==4.36.2 pynvml
+RUN pip install --no-cache-dir flask transformers==4.36.2 "nvidia-ml-py<12"
+
+# --- Download the model into the image ---
+# This command runs during the 'docker build' step.
+# It downloads the model specified by the build-arg into the /app/model directory.
+RUN python -c "from transformers import AutoModelForCausalLM, AutoTokenizer; \
+               AutoTokenizer.from_pretrained('${MODEL_NAME}', trust_remote_code=True).save_pretrained('/app/model'); \
+               AutoModelForCausalLM.from_pretrained('${MODEL_NAME}', trust_remote_code=True).save_pretrained('/app/model')"
 
 # Copy server
 COPY src/server/server.py /app/server.py

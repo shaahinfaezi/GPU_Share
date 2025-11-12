@@ -12,13 +12,15 @@ except Exception as e:
 app = Flask(__name__)
 
 # Model config
-MODEL_NAME = os.environ.get("MODEL_NAME", "distilgpt2")
+# The server now loads the model from a local path inside the container.
+MODEL_PATH = "/app/model"
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "48"))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-print(f"[server] Loading model={MODEL_NAME} on device={DEVICE}")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
+print(f"[server] Loading model from path={MODEL_PATH} on device={DEVICE}")
+# Load the tokenizer and model from the local directory
+tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
+model = AutoModelForCausalLM.from_pretrained(MODEL_PATH)
 model.to(DEVICE)
 model.eval()
 
@@ -39,7 +41,7 @@ def infer():
     return jsonify({
         "text": text,
         "latency_ms": latency_ms,
-        "model": MODEL_NAME,
+        "model": MODEL_PATH, # Updated to show the path
         "device": str(DEVICE)
     })
 
@@ -50,7 +52,7 @@ def health():
         "status": "ok",
         "cuda": torch.cuda.is_available(),
         "device": str(DEVICE),
-        "model": MODEL_NAME,
+        "model": MODEL_PATH, # Updated to show the path
     })
 
 

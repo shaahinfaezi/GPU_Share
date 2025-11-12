@@ -70,7 +70,7 @@ install_prereqs() {
 IMAGE="${IMAGE:-gpu-llm:cu118}"
 NUM_CONTAINERS="${NUM_CONTAINERS:-4}"
 START_PORT="${START_PORT:-6000}"
-VRAM_SLICE_MB="${VRAM_SLICE_MB:-1500}"
+VRAM_SLICE_MB="${VRAM_SLICE_MB:-2500}"
 MODEL_NAME="${MODEL_NAME:-distilgpt2}"
 CONTAINER_PREFIX="${CONTAINER_PREFIX:-llm_tenant}"
 
@@ -126,7 +126,10 @@ fi
 
 # --- Docker build with logging ---
 echo "Building image '$IMAGE' from $DOCKERFILE... Logs are in $BUILD_LOG"
-if sudo docker build -f "$DOCKERFILE" -t "$IMAGE" . > "$BUILD_LOG" 2>&1; then
+# Pass MODEL_NAME as a build argument to the Dockerfile
+if sudo docker build \
+    --build-arg MODEL_NAME=$MODEL_NAME \
+    -f "$DOCKERFILE" -t "$IMAGE" . > "$BUILD_LOG" 2>&1; then
   echo "Docker build completed successfully."
 else
   echo "Docker build failed. Check '$BUILD_LOG' for details." >&2
@@ -173,20 +176,59 @@ done
 
 echo
 echo "Waiting for containers to become healthy (this can take a few minutes on first run)..."
+HEALTH_TIMEOUT=120 # seconds
+ALL_HEALTHY=true
+
 for ((i=0;i<NUM_CONTAINERS;i++)); do
   PORT=$((START_PORT+i))
-  echo -n "Waiting for container on port $PORT..."
-  # Loop for up to 2 minutes (120 seconds) waiting for the health endpoint
-  for j in {1..60}; do
-    # Use curl's exit code to check for success (200 OK)
+  CONTAINER_NAME="${CONTAINER_PREFIX}_*_$PORT" # Use glob to find name regardless of GPU ID
+  
+  echo "Checking container on port $PORT..."
+  
+  HEALTHY=false
+  for j in $(seq 1 $((HEALTH_TIMEOUT / 2))); do
+    # Check if container is still running
+    if ! sudo docker ps --filter "name=${CONTAINER_NAME}" --format "{{.Names}}" | grep -q .; then
+        echo -e "\nError: Container for port $PORT has stopped unexpectedly."
+        # Find the *stopped* container to get its logs
+        STOPPED_CONTAINER_ID=$(sudo docker ps -aq --filter "name=${CONTAINER_NAME}" --filter "status=exited" | head -n 1)
+        if [ -n "$STOPPED_CONTAINER_ID" ]; then
+            echo "--- Last 50 lines of logs from stopped container $STOPPED_CONTAINER_ID: ---"
+            sudo docker logs --tail 50 "$STOPPED_CONTAINER_ID"
+            echo "----------------------------------------------------------------"
+        fi
+        HEALTHY=false
+        break
+    fi
+
+    # Check health endpoint
     if curl -fsS --max-time 2 "http://localhost:${PORT}/health" > /dev/null; then
-      echo " OK!"
+      echo "Container on port $PORT is healthy."
+      HEALTHY=true
       break
     fi
     echo -n "."
     sleep 2
   done
+
+  if [ "$HEALTHY" = false ]; then
+    echo -e "\nError: Container on port $PORT failed to become healthy within $HEALTH_TIMEOUT seconds."
+    ALL_HEALTHY=false
+    # Get logs from the (presumably) still-running but unhealthy container
+    RUNNING_CONTAINER_ID=$(sudo docker ps -q --filter "name=${CONTAINER_NAME}")
+    if [ -n "$RUNNING_CONTAINER_ID" ]; then
+        echo "--- Last 50 lines of logs from unhealthy container $RUNNING_CONTAINER_ID: ---"
+        sudo docker logs --tail 50 "$RUNNING_CONTAINER_ID"
+        echo "--------------------------------------------------------------------"
+    fi
+  fi
 done
+
+if [ "$ALL_HEALTHY" = false ]; then
+    echo
+    echo "One or more containers failed to start. Please check the logs above." >&2
+    exit 1
+fi
 
 
 echo
