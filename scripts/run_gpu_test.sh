@@ -70,8 +70,8 @@ install_prereqs() {
 IMAGE="${IMAGE:-gpu-llm:cu118}"
 NUM_CONTAINERS="${NUM_CONTAINERS:-4}"
 START_PORT="${START_PORT:-6000}"
-VRAM_SLICE_MB="${VRAM_SLICE_MB:-2500}"
-MODEL_NAME="${MODEL_NAME:-distilgpt2}"
+VRAM_SLICE_MB="${VRAM_SLICE_MB:-3000}"
+MODEL_NAME="${MODEL_NAME:-gpt2}"
 CONTAINER_PREFIX="${CONTAINER_PREFIX:-llm_tenant}"
 
 # --- Log files (now saved to user's home directory) ---

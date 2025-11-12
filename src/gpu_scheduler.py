@@ -17,7 +17,7 @@ import argparse
 IMAGE = os.environ.get("IMAGE", "gpu-llm:cu118")
 CONTAINER_PREFIX = os.environ.get("CONTAINER_PREFIX", "llm_tenant")
 INFER_PORT_START = int(os.environ.get("START_PORT", 6000))
-VRAM_SLICE_MB = int(os.environ.get("VRAM_SLICE_MB", 1500))
+VRAM_SLICE_MB = int(os.environ.get("VRAM_SLICE_MB", 3000))
 CHECK_INTERVAL = 5
 GPU_REFRESH_INTERVAL = 2
 

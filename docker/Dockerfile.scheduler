@@ -2,7 +2,10 @@ FROM pytorch/pytorch:2.3.1-cuda11.8-cudnn8-runtime
 
 ENV PYTHONUNBUFFERED=1 \
 	PIP_NO_CACHE_DIR=1 \
-	HF_HUB_DISABLE_TELEMETRY=1
+	HF_HUB_DISABLE_TELEMETRY=1 \
+	# Set timeouts for Hugging Face model downloads
+	HF_HUB_DOWNLOAD_TIMEOUT=120 \
+	HF_HUB_DOWNLOAD_RETRIES=5
 
 # Add a build argument for the model name
 ARG MODEL_NAME=distilgpt2
