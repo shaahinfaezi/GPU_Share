@@ -50,6 +50,17 @@ def launch_container(image, gpu_id, port, vram_slice_mb):
         "MODEL_NAME": os.environ.get("MODEL_NAME", "distilgpt2")
     }
     name = f"{CONTAINER_PREFIX}_{gpu_id}_{port}"
+    
+    # Remove existing container with the same name to prevent conflict
+    try:
+        existing_container = client.containers.get(name)
+        print(f"[scheduler] Removing conflicting container: {name}")
+        existing_container.remove(force=True)
+    except docker.errors.NotFound:
+        pass # This is the expected case, no conflict
+    except Exception as e:
+        print(f"[scheduler] Error removing container {name}: {e}")
+
     c = client.containers.run(
         image,
         detach=True,

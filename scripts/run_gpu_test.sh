@@ -64,7 +64,7 @@ install_prereqs() {
   export PATH="$HOME/.local/bin:$PATH"
 }
 
-install_prereqs
+#install_prereqs
 
 # Config (override via env)
 IMAGE="${IMAGE:-gpu-llm:cu118}"
