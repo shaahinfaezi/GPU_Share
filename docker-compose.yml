@@ -3,8 +3,8 @@ version: '3.8'
 services:
   gpu-scheduler:
     build:
-      context: ./docker
-      dockerfile: Dockerfile.scheduler
+      context: .
+      dockerfile: docker/Dockerfile.scheduler
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - MODEL_NAME=distilgpt2

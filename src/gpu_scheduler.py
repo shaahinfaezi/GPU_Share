@@ -47,7 +47,8 @@ def select_gpu(required_mb):
 def launch_container(image, gpu_id, port, vram_slice_mb):
     env = {
         "NVIDIA_VISIBLE_DEVICES": str(gpu_id),
-        "MODEL_NAME": os.environ.get("MODEL_NAME", "distilgpt2")
+        "MODEL_NAME": os.environ.get("MODEL_NAME", "distilgpt2"),
+        "GPU_VRAM_LIMIT_MB": str(vram_slice_mb) # Pass the VRAM limit to the container
     }
     name = f"{CONTAINER_PREFIX}_{gpu_id}_{port}"
     

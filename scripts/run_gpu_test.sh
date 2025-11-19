@@ -70,7 +70,7 @@ install_prereqs() {
 IMAGE="${IMAGE:-gpu-llm:cu118}"
 NUM_CONTAINERS="${NUM_CONTAINERS:-4}"
 START_PORT="${START_PORT:-6000}"
-VRAM_SLICE_MB="${VRAM_SLICE_MB:-3000}"
+VRAM_LIMIT_MB="${VRAM_LIMIT_MB:-3000}" # Renamed for clarity with the shim
 MODEL_NAME="${MODEL_NAME:-gpt2}"
 CONTAINER_PREFIX="${CONTAINER_PREFIX:-llm_tenant}"
 
@@ -98,6 +98,101 @@ if [ -n "$LEFTOVER_CONTAINERS" ]; then
 else
   echo "No leftover containers found."
 fi
+
+# --- Build the Docker image ---
+echo "--- Building Docker image: $IMAGE (log: $BUILD_LOG) ---"
+# Pass MODEL_NAME as a build argument to Docker
+sudo docker build \
+  --build-arg "MODEL_NAME=${MODEL_NAME}" \
+  -t "$IMAGE" \
+  -f docker/Dockerfile.scheduler . > "$BUILD_LOG" 2>&1
+
+echo "Build complete. See $BUILD_LOG for details."
+
+# --- Start NVIDIA MPS if available ---
+echo "--- Attempting to start NVIDIA MPS for better concurrent performance ---"
+sudo nvidia-smi -i 0 -c EXCLUSIVE_PROCESS # Set GPU 0 to exclusive mode if possible
+sudo systemctl start nvidia-mps # This may fail if not configured, which is OK
+# The scheduler will also try to start it, this is just an early attempt.
+
+# --- Run the scheduler in the background ---
+echo "--- Starting GPU scheduler (log: $SCHEDULER_LOG) ---"
+# Export variables for the scheduler process
+export IMAGE
+export NUM_CONTAINERS
+export START_PORT
+export VRAM_SLICE_MB="$VRAM_LIMIT_MB" # Pass the limit to the scheduler
+export MODEL_NAME
+export CONTAINER_PREFIX
+
+# Run the scheduler as a background process and save its PID
+sudo -E python3 src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
+SCHEDULER_PID=$!
+echo $SCHEDULER_PID > "$LOG_DIR/scheduler.pid"
+echo "Scheduler running in background with PID $SCHEDULER_PID."
+
+# --- Wait for containers to launch and become healthy ---
+echo "--- Waiting for containers to be launched by the scheduler... ---"
+END_PORT=$((START_PORT + NUM_CONTAINERS - 1))
+HEALTH_CHECK_TIMEOUT=300 # 5 minutes total
+SLEEP_INTERVAL=10
+SECONDS_WAITED=0
+
+# Loop through the expected port range
+for PORT in $(seq $START_PORT $END_PORT); do
+  echo "Waiting for container on port $PORT to become healthy..."
+  while true; do
+    # Check if the scheduler process is still alive
+    if ! ps -p $SCHEDULER_PID > /dev/null; then
+      echo "Error: Scheduler process with PID $SCHEDULER_PID has died."
+      echo "--- Last 20 lines of scheduler log ($SCHEDULER_LOG): ---"
+      tail -n 20 "$SCHEDULER_LOG"
+      echo "--------------------------------------------------------"
+      exit 1
+    fi
+
+    # Check if the container for this port exists and is running
+    CONTAINER_ID=$(sudo docker ps -q --filter "publish=${PORT}" --filter "name=${CONTAINER_PREFIX}")
+    if [ -z "$CONTAINER_ID" ]; then
+        echo "Container for port $PORT not found yet. Waiting..."
+    else
+        # Container found, now check its health endpoint
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/health" || true)
+        if [ "$HTTP_STATUS" = "200" ]; then
+          echo "Container on port $PORT is healthy (HTTP 200)."
+          break # Exit the inner while loop, move to the next port
+        else
+          echo "Container on port $PORT found, but not healthy yet (HTTP status: $HTTP_STATUS). Retrying..."
+        fi
+    fi
+
+    # Timeout check
+    SECONDS_WAITED=$((SECONDS_WAITED + SLEEP_INTERVAL))
+    if [ $SECONDS_WAITED -ge $HEALTH_CHECK_TIMEOUT ]; then
+      echo "Error: Timeout reached waiting for containers to become healthy."
+      echo "--- Current Docker container status: ---"
+      sudo docker ps -a
+      echo "--- Last 20 lines of scheduler log ($SCHEDULER_LOG): ---"
+      tail -n 20 "$SCHEDULER_LOG"
+      echo "--------------------------------------------------------"
+      exit 1
+    fi
+    sleep $SLEEP_INTERVAL
+  done
+done
+
+echo "--- All containers are healthy. Running final probe. ---"
+# Final probe to check inference on the first container
+PROBE_PORT=$START_PORT
+echo "Probing inference endpoint on port $PROBE_PORT..."
+curl -X POST http://localhost:$PROBE_PORT/infer \
+   -H "Content-Type: application/json" \
+   -d '{"prompt": "Hello, world"}'
+
+echo -e "\n\n--- Test finished. Scheduler is still running. ---"
+echo "To stop the scheduler and clean up containers, run:"
+echo "sudo pkill -F $LOG_DIR/scheduler.pid"
+echo "Or use the teardown script: sudo bash ./scripts/teardown.sh"
 echo "--------------------------------------------------------------------"
 
 
