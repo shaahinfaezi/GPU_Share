@@ -116,6 +116,16 @@ else
   echo "No leftover containers found."
 fi
 
+# --- Fix hostname resolution warning ---
+fix_hostname() {
+  local current_hostname=$(hostname)
+  if ! grep -q "127.0.0.1.*$current_hostname" /etc/hosts; then
+    echo "Fixing hostname resolution for $current_hostname..."
+    echo "127.0.0.1 $current_hostname" | sudo tee -a /etc/hosts > /dev/null
+  fi
+}
+fix_hostname
+
 # --- Find a working Docker Mirror ---
 find_working_mirror() {
   local image_tag="pytorch/pytorch:2.3.1-cuda11.8-cudnn8-devel"
@@ -123,6 +133,7 @@ find_working_mirror() {
     "docker.ir"
     "docker.arvancloud.ir"
     "huecker.io"
+    "docker.cloudlayer.io"
     "docker.io" # Fallback to official
   )
 
@@ -136,18 +147,28 @@ find_working_mirror() {
     fi
     
     echo "Trying to pull from $mirror ($full_image)..."
-    if sudo docker pull "$full_image"; then
-      echo "Successfully pulled from $mirror."
-      # Tag it as the official name so local builds find it if they don't use ARG
-      if [ "$mirror" != "docker.io" ]; then
-        sudo docker tag "$full_image" "$image_tag"
+    
+    # Try up to 3 times per mirror
+    for attempt in {1..3}; do
+      if sudo docker pull "$full_image"; then
+        echo "Successfully pulled from $mirror."
+        # Tag it as the official name so local builds find it if they don't use ARG
+        if [ "$mirror" != "docker.io" ]; then
+          sudo docker tag "$full_image" "$image_tag"
+        fi
+        echo "$full_image"
+        return 0
+      else
+        echo "Pull failed (attempt $attempt/3). Retrying in 5 seconds..."
+        sleep 5
       fi
-      echo "$full_image"
-      return 0
-    else
-      echo "Failed to pull from $mirror."
-    fi
+    done
+    echo "Failed to pull from $mirror after 3 attempts."
   done
+  
+  echo "Error: Could not pull base image from any known mirror." >&2
+  return 1
+}
   
   echo "Error: Could not pull base image from any known mirror." >&2
   return 1
