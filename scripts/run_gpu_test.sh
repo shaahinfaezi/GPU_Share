@@ -116,24 +116,56 @@ else
   echo "No leftover containers found."
 fi
 
-# --- Pre-pull base image with retries ---
-BASE_IMAGE="pytorch/pytorch:2.3.1-cuda11.8-cudnn8-devel"
-echo "--- Pre-pulling base image $BASE_IMAGE to avoid timeouts ---"
-for i in {1..5}; do
-  if sudo docker pull "$BASE_IMAGE"; then
-    echo "Base image pulled successfully."
-    break
-  else
-    echo "Pull failed (attempt $i/5). Retrying in 10 seconds..."
-    sleep 10
-  fi
-done
+# --- Find a working Docker Mirror ---
+find_working_mirror() {
+  local image_tag="pytorch/pytorch:2.3.1-cuda11.8-cudnn8-devel"
+  local mirrors=(
+    "docker.ir"
+    "docker.arvancloud.ir"
+    "huecker.io"
+    "docker.io" # Fallback to official
+  )
+
+  echo "--- Searching for a working Docker mirror for $image_tag ---"
+  
+  for mirror in "${mirrors[@]}"; do
+    if [ "$mirror" == "docker.io" ]; then
+      full_image="$image_tag"
+    else
+      full_image="$mirror/$image_tag"
+    fi
+    
+    echo "Trying to pull from $mirror ($full_image)..."
+    if sudo docker pull "$full_image"; then
+      echo "Successfully pulled from $mirror."
+      # Tag it as the official name so local builds find it if they don't use ARG
+      if [ "$mirror" != "docker.io" ]; then
+        sudo docker tag "$full_image" "$image_tag"
+      fi
+      echo "$full_image"
+      return 0
+    else
+      echo "Failed to pull from $mirror."
+    fi
+  done
+  
+  echo "Error: Could not pull base image from any known mirror." >&2
+  return 1
+}
+
+# --- Pre-pull base image ---
+BASE_IMAGE_FULL=$(find_working_mirror)
+if [ $? -ne 0 ]; then
+  exit 1
+fi
+echo "Using base image: $BASE_IMAGE_FULL"
 
 # --- Build the Docker image ---
 echo "--- Building Docker image: $IMAGE (log: $BUILD_LOG) ---"
-# Pass MODEL_NAME as a build argument to Docker
+# Pass MODEL_NAME and BASE_IMAGE as build arguments
 sudo docker build \
   --build-arg "MODEL_NAME=${MODEL_NAME}" \
+  --build-arg "BASE_IMAGE=${BASE_IMAGE_FULL}" \
   -t "$IMAGE" \
   -f docker/Dockerfile.scheduler . > "$BUILD_LOG" 2>&1
 
