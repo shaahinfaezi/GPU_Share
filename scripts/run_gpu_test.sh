@@ -128,7 +128,8 @@ fix_hostname
 
 # --- Find a working Docker Mirror ---
 find_working_mirror() {
-  local image_tag="pytorch/pytorch:2.3.1-cuda11.8-cudnn8-devel"
+  # Switched to NVIDIA base image as requested
+  local image_tag="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
   local mirrors=(
     "docker.ir"
     "docker.arvancloud.ir"
