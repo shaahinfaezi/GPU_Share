@@ -99,6 +99,19 @@ else
   echo "No leftover containers found."
 fi
 
+# --- Pre-pull base image with retries ---
+BASE_IMAGE="pytorch/pytorch:2.3.1-cuda11.8-cudnn8-devel"
+echo "--- Pre-pulling base image $BASE_IMAGE to avoid timeouts ---"
+for i in {1..5}; do
+  if sudo docker pull "$BASE_IMAGE"; then
+    echo "Base image pulled successfully."
+    break
+  else
+    echo "Pull failed (attempt $i/5). Retrying in 10 seconds..."
+    sleep 10
+  fi
+done
+
 # --- Build the Docker image ---
 echo "--- Building Docker image: $IMAGE (log: $BUILD_LOG) ---"
 # Pass MODEL_NAME as a build argument to Docker
@@ -194,6 +207,7 @@ echo "To stop the scheduler and clean up containers, run:"
 echo "sudo pkill -F $LOG_DIR/scheduler.pid"
 echo "Or use the teardown script: sudo bash ./scripts/teardown.sh"
 echo "--------------------------------------------------------------------"
+exit 0
 
 
 # Preflight (after install)
