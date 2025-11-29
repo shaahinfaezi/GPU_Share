@@ -126,64 +126,50 @@ fix_hostname() {
 }
 fix_hostname
 
-# --- Find a working Docker Mirror ---
-find_working_mirror() {
-  # Use public ECR Ubuntu base - no Docker Hub auth needed
-  # CUDA/cuDNN will be installed via NVIDIA apt repos in the Dockerfile
-  local image_tag="ubuntu:22.04"
-  local mirrors=(
-    "public.ecr.aws/ubuntu"  # AWS public ECR - no auth needed
-    "docker.io/library"      # Docker Hub official (fallback)
-  )
+# --- Pull base image from NVIDIA NGC (nvcr.io) ---
+# NVIDIA NGC doesn't require Docker Hub auth and has CUDA+PyTorch pre-installed
+BASE_IMAGE="nvcr.io/nvidia/pytorch:23.10-py3"
 
-  echo "--- Searching for a working Docker mirror for $image_tag ---"
-  
-  for mirror in "${mirrors[@]}"; do
-    if [ "$mirror" == "docker.io" ]; then
-      full_image="$image_tag"
-    else
-      full_image="$mirror/$image_tag"
-    fi
-    
-    echo "Trying to pull from $mirror ($full_image)..."
-    
-    # Try up to 3 times per mirror
-    for attempt in {1..3}; do
-      if sudo docker pull "$full_image"; then
-        echo "Successfully pulled from $mirror."
-        # Tag it as the official name so local builds find it if they don't use ARG
-        if [ "$mirror" != "docker.io" ]; then
-          sudo docker tag "$full_image" "$image_tag"
-        fi
-        echo "$full_image"
-        return 0
-      else
-        echo "Pull failed (attempt $attempt/3). Retrying in 5 seconds..."
-        sleep 5
-      fi
-    done
-    echo "Failed to pull from $mirror after 3 attempts."
-  done
-  
-  echo "Error: Could not pull base image from any known mirror." >&2
-  return 1
-}
+echo "--- Pulling NVIDIA NGC PyTorch image (includes CUDA 12.1 + PyTorch) ---"
+echo "Image: $BASE_IMAGE"
+echo "This is a large image (~15GB) - first pull will take a while..."
 
-# --- Pre-pull base image ---
-BASE_IMAGE_FULL=$(find_working_mirror)
-if [ $? -ne 0 ]; then
+PULL_SUCCESS=false
+for attempt in {1..5}; do
+  echo "Pull attempt $attempt/5..."
+  if sudo docker pull "$BASE_IMAGE"; then
+    echo "Successfully pulled $BASE_IMAGE"
+    PULL_SUCCESS=true
+    break
+  else
+    wait_time=$((attempt * 30))
+    echo "Pull failed. Waiting ${wait_time}s before retry..."
+    sleep $wait_time
+  fi
+done
+
+if [ "$PULL_SUCCESS" = false ]; then
+  echo "Error: Could not pull base image after 5 attempts." >&2
   exit 1
 fi
-echo "Using base image: $BASE_IMAGE_FULL"
+
+echo "Using base image: $BASE_IMAGE"
 
 # --- Build the Docker image ---
 echo "--- Building Docker image: $IMAGE (log: $BUILD_LOG) ---"
 # Pass MODEL_NAME and BASE_IMAGE as build arguments
 sudo docker build \
   --build-arg "MODEL_NAME=${MODEL_NAME}" \
-  --build-arg "BASE_IMAGE=${BASE_IMAGE_FULL}" \
+  --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
   -t "$IMAGE" \
-  -f docker/Dockerfile.scheduler . > "$BUILD_LOG" 2>&1
+  -f docker/Dockerfile.scheduler . 2>&1 | tee "$BUILD_LOG"
+
+BUILD_EXIT_CODE=${PIPESTATUS[0]}
+if [ $BUILD_EXIT_CODE -ne 0 ]; then
+  echo "Error: Docker build failed with exit code $BUILD_EXIT_CODE" >&2
+  echo "Check $BUILD_LOG for details."
+  exit 1
+fi
 
 echo "Build complete. See $BUILD_LOG for details."
 
@@ -270,8 +256,6 @@ curl -X POST http://localhost:$PROBE_PORT/infer \
 echo -e "\n\n--- Test finished. Scheduler is still running. ---"
 echo "To stop the scheduler and clean up containers, run:"
 echo "sudo pkill -F $LOG_DIR/scheduler.pid"
-echo "Or use the teardown script: sudo bash ./scripts/teardown.sh"
-echo "--------------------------------------------------------------------"
 echo "Or use the teardown script: sudo bash ./scripts/teardown.sh"
 echo "--------------------------------------------------------------------"
 exit 0
