@@ -128,14 +128,12 @@ fix_hostname
 
 # --- Find a working Docker Mirror ---
 find_working_mirror() {
-  # Switched to NVIDIA base image as requested
-  local image_tag="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
+  # Use public ECR Ubuntu base - no Docker Hub auth needed
+  # CUDA/cuDNN will be installed via NVIDIA apt repos in the Dockerfile
+  local image_tag="ubuntu:22.04"
   local mirrors=(
-    "docker.ir"
-    "docker.arvancloud.ir"
-    "huecker.io"
-    "docker.cloudlayer.io"
-    "docker.io" # Fallback to official
+    "public.ecr.aws/ubuntu"  # AWS public ECR - no auth needed
+    "docker.io/library"      # Docker Hub official (fallback)
   )
 
   echo "--- Searching for a working Docker mirror for $image_tag ---"
@@ -166,10 +164,6 @@ find_working_mirror() {
     done
     echo "Failed to pull from $mirror after 3 attempts."
   done
-  
-  echo "Error: Could not pull base image from any known mirror." >&2
-  return 1
-}
   
   echo "Error: Could not pull base image from any known mirror." >&2
   return 1
@@ -278,155 +272,6 @@ echo "To stop the scheduler and clean up containers, run:"
 echo "sudo pkill -F $LOG_DIR/scheduler.pid"
 echo "Or use the teardown script: sudo bash ./scripts/teardown.sh"
 echo "--------------------------------------------------------------------"
+echo "Or use the teardown script: sudo bash ./scripts/teardown.sh"
+echo "--------------------------------------------------------------------"
 exit 0
-
-
-# Preflight (after install)
-command -v docker >/dev/null || { echo "docker not found"; exit 1; }
-command -v python3 >/dev/null || { echo "python3 not found"; exit 1; }
-
-# Start MPS if available
-if sudo systemctl list-unit-files | grep -q nvidia-mps; then
-  echo "Starting NVIDIA MPS..."
-  sudo systemctl start nvidia-mps || true
-fi
-
-# Pick Dockerfile
-DOCKERFILE=""
-if [ -f "docker/Dockerfile.scheduler" ]; then
-  DOCKERFILE="docker/Dockerfile.scheduler"
-elif [ -f "docker/Dockerfile" ]; then
-  DOCKERFILE="docker/Dockerfile"
-elif [ -f "Dockerfile" ]; then
-  DOCKERFILE="Dockerfile"
-else
-  echo "No Dockerfile found (checked docker/Dockerfile.scheduler, docker/Dockerfile, Dockerfile)." >&2
-  exit 1
-fi
-
-# --- Docker build with logging ---
-echo "Building image '$IMAGE' from $DOCKERFILE... Logs are in $BUILD_LOG"
-# Pass MODEL_NAME as a build argument to the Dockerfile
-if sudo docker build \
-    --build-arg MODEL_NAME=$MODEL_NAME \
-    -f "$DOCKERFILE" -t "$IMAGE" . > "$BUILD_LOG" 2>&1; then
-  echo "Docker build completed successfully."
-else
-  echo "Docker build failed. Check '$BUILD_LOG' for details." >&2
-  exit 1
-fi
-
-# Launch scheduler
-export IMAGE START_PORT NUM_CONTAINERS VRAM_SLICE_MB MODEL_NAME CONTAINER_PREFIX
-rm -f "$LOG_DIR/scheduler.pid"
-echo "Starting scheduler... Logs are in $SCHEDULER_LOG"
-nohup python3 src/gpu_scheduler.py \
-  --image "$IMAGE" \
-  --instances "$NUM_CONTAINERS" \
-  --vram_slice_mb "$VRAM_SLICE_MB" \
-  --start_port "$START_PORT" \
-  > "$SCHEDULER_LOG" 2>&1 &
-echo $! > "$LOG_DIR/scheduler.pid"
-echo "Scheduler started with PID $(cat "$LOG_DIR/scheduler.pid")"
-
-echo
-echo "Waiting for scheduler to launch all containers..."
-LAUNCH_TIMEOUT=60 # seconds
-SECONDS=0
-while true; do
-  # Count running containers with the correct prefix
-  RUNNING_COUNT=$(sudo docker ps --filter "name=${CONTAINER_PREFIX}" --format "{{.Names}}" | wc -l)
-
-  echo -ne "Launched ${RUNNING_COUNT}/${NUM_CONTAINERS} containers... \r"
-
-  if [ "$RUNNING_COUNT" -ge "$NUM_CONTAINERS" ]; then
-    echo -e "\nAll containers launched."
-    break
-  fi
-
-  if [ "$SECONDS" -ge "$LAUNCH_TIMEOUT" ]; then
-    echo -e "\nError: Timeout waiting for containers to be launched by the scheduler." >&2
-    exit 1
-  fi
-
-  sleep 2
-  SECONDS=$((SECONDS + 2))
-done
-
-
-echo
-echo "Waiting for containers to become healthy (this can take a few minutes on first run)..."
-HEALTH_TIMEOUT=120 # seconds
-ALL_HEALTHY=true
-
-for ((i=0;i<NUM_CONTAINERS;i++)); do
-  PORT=$((START_PORT+i))
-  CONTAINER_NAME="${CONTAINER_PREFIX}_*_$PORT" # Use glob to find name regardless of GPU ID
-  
-  echo "Checking container on port $PORT..."
-  
-  HEALTHY=false
-  for j in $(seq 1 $((HEALTH_TIMEOUT / 2))); do
-    # Check if container is still running
-    if ! sudo docker ps --filter "name=${CONTAINER_NAME}" --format "{{.Names}}" | grep -q .; then
-        echo -e "\nError: Container for port $PORT has stopped unexpectedly."
-        # Find the *stopped* container to get its logs
-        STOPPED_CONTAINER_ID=$(sudo docker ps -aq --filter "name=${CONTAINER_NAME}" --filter "status=exited" | head -n 1)
-        if [ -n "$STOPPED_CONTAINER_ID" ]; then
-            echo "--- Last 50 lines of logs from stopped container $STOPPED_CONTAINER_ID: ---"
-            sudo docker logs --tail 50 "$STOPPED_CONTAINER_ID"
-            echo "----------------------------------------------------------------"
-        fi
-        HEALTHY=false
-        break
-    fi
-
-    # Check health endpoint
-    if curl -fsS --max-time 2 "http://localhost:${PORT}/health" > /dev/null; then
-      echo "Container on port $PORT is healthy."
-      HEALTHY=true
-      break
-    fi
-    echo -n "."
-    sleep 2
-  done
-
-  if [ "$HEALTHY" = false ]; then
-    echo -e "\nError: Container on port $PORT failed to become healthy within $HEALTH_TIMEOUT seconds."
-    ALL_HEALTHY=false
-    # Get logs from the (presumably) still-running but unhealthy container
-    RUNNING_CONTAINER_ID=$(sudo docker ps -q --filter "name=${CONTAINER_NAME}")
-    if [ -n "$RUNNING_CONTAINER_ID" ]; then
-        echo "--- Last 50 lines of logs from unhealthy container $RUNNING_CONTAINER_ID: ---"
-        sudo docker logs --tail 50 "$RUNNING_CONTAINER_ID"
-        echo "--------------------------------------------------------------------"
-    fi
-  fi
-done
-
-if [ "$ALL_HEALTHY" = false ]; then
-    echo
-    echo "One or more containers failed to start. Please check the logs above." >&2
-    exit 1
-fi
-
-
-echo
-echo "Probing endpoints and listing active containers..."
-for ((i=0;i<NUM_CONTAINERS;i++)); do
-  PORT=$((START_PORT+i))
-  echo -n "POST /infer @ :$PORT -> "
-  curl --max-time 30 -s -X POST "http://localhost:${PORT}/infer" \
-    -H "Content-Type: application/json" \
-    -d "{\"prompt\":\"Hello from port ${PORT}\"}" | head -c 220 || echo "Request failed or timed out."
-  echo
-done
-
-echo
-echo "Active containers:"
-sudo docker ps --filter "name=${CONTAINER_PREFIX}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-echo
-echo "Follow scheduler logs: tail -f $SCHEDULER_LOG"
-echo "Stop containers: docker stop \$(docker ps -q --filter name=${CONTAINER_PREFIX}) || true"
-echo "Stop scheduler: pkill -F $LOG_DIR/scheduler.pid || true"
