@@ -1,13 +1,11 @@
-# Use NVIDIA NGC PyTorch image - pulled from nvcr.io (no Docker Hub auth)
-# This image has CUDA 12.1 + cuDNN + PyTorch pre-installed
-ARG BASE_IMAGE=nvcr.io/nvidia/pytorch:23.10-py3
+# Use NVIDIA CUDA base image with cuDNN - pulled via Docker mirror
+ARG BASE_IMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HUB_DISABLE_TELEMETRY=1 \
-    # Set timeouts for Hugging Face model downloads
     HF_HUB_DOWNLOAD_TIMEOUT=120 \
     HF_HUB_DOWNLOAD_RETRIES=5
 
@@ -17,11 +15,19 @@ ARG MODEL_NAME=distilgpt2
 WORKDIR /app
 
 # --- System Dependencies ---
-# Install build tools (Python and CUDA are already in the base image)
+# Install Python, pip, and build tools
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    python3 \
+    python3-pip \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
+
+# --- PyTorch Installation ---
+# Install PyTorch for CUDA 11.8 from the official PyTorch wheel index
+RUN pip install --timeout 300 --retries 10 --no-cache-dir \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # --- VRAM Limiter Shim Installation ---
 # Copy shim source, compile, and install it.
