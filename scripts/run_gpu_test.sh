@@ -126,45 +126,28 @@ fix_hostname() {
 }
 fix_hostname
 
-# --- Pull base image via Docker mirrors ---
-# Using nvidia/cuda devel image
+# --- Check if base image already exists locally ---
 IMAGE_NAME="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
-MIRRORS=(
-  "hub.hamdocker.ir"       # Hamdocker - Iranian mirror
-  "docker.iranserver.com"  # Iran Server mirror
-  "registry.parspack.com"  # Parspack mirror
-)
 
-echo "--- Pulling NVIDIA CUDA base image ---"
-echo "Target image: $IMAGE_NAME"
+echo "--- Checking for NVIDIA CUDA base image ---"
 
-PULL_SUCCESS=false
-BASE_IMAGE=""
-
-for mirror in "${MIRRORS[@]}"; do
-  full_image="$mirror/$IMAGE_NAME"
+if sudo docker image inspect "$IMAGE_NAME" > /dev/null 2>&1; then
+  echo "Base image already exists locally: $IMAGE_NAME"
+  BASE_IMAGE="$IMAGE_NAME"
+else
+  echo "Base image not found locally. You need to pull it manually."
   echo ""
-  echo "Trying mirror: $mirror"
-  echo "Full image path: $full_image"
-  
-  echo "  Pulling..."
-  if sudo docker pull "$full_image" 2>&1; then
-    echo "  Successfully pulled from $mirror!"
-    sudo docker tag "$full_image" "$IMAGE_NAME"
-    BASE_IMAGE="$IMAGE_NAME"
-    PULL_SUCCESS=true
-    break
-  else
-    echo "  Pull failed, trying next mirror..."
-  fi
-done
-
-if [ "$PULL_SUCCESS" = false ]; then
-  echo "Error: Could not pull base image from any mirror." >&2
+  echo "Try one of these commands (find a mirror that works for you):"
+  echo "  sudo docker pull hub.hamdocker.ir/$IMAGE_NAME && sudo docker tag hub.hamdocker.ir/$IMAGE_NAME $IMAGE_NAME"
+  echo "  sudo docker pull docker.iranserver.com/$IMAGE_NAME && sudo docker tag docker.iranserver.com/$IMAGE_NAME $IMAGE_NAME"
+  echo ""
+  echo "Or if you have the image cached elsewhere, load it with:"
+  echo "  sudo docker load < image.tar"
+  echo ""
+  echo "Once you have the image, re-run this script."
   exit 1
 fi
 
-echo ""
 echo "Using base image: $BASE_IMAGE"
 
 # --- Build the Docker image ---
