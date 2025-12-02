@@ -1,23 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- Configure DNS to bypass Docker Hub 403 Forbidden (Shecan) ---
-configure_dns() {
-  echo "--- Configuring DNS to bypass Docker Hub 403 Forbidden ---"
-  # Backup existing resolv.conf if not already backed up
-  if [ ! -f /etc/resolv.conf.bak ]; then
-    sudo cp /etc/resolv.conf /etc/resolv.conf.bak
-  fi
-  
-  # Set Shecan DNS servers (178.22.122.100, 185.51.200.2)
-  echo "nameserver 178.22.122.100" | sudo tee /etc/resolv.conf > /dev/null
-  echo "nameserver 185.51.200.2" | sudo tee -a /etc/resolv.conf > /dev/null
-  
-  echo "DNS updated. Restarting Docker daemon to pick up changes..."
-  sudo systemctl restart docker || true
-}
-configure_dns
-
 # --- Install prerequisites (Ubuntu/Debian) ---
 install_prereqs() {
   if [ -f /etc/os-release ]; then
