@@ -126,18 +126,17 @@ fix_hostname() {
 }
 fix_hostname
 
-# --- Pull base image via Iranian Docker mirrors ---
-# These mirrors proxy Docker Hub and bypass 403 restrictions
+# --- Pull base image via Docker mirrors ---
+# Using nvidia/cuda devel image
 IMAGE_NAME="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
 MIRRORS=(
-  "docker.arvancloud.ir"   # Arvan Cloud mirror
-  "docker.ir"              # docker.ir mirror  
-  "registry.docker.ir"     # Alternative
+  "hub.hamdocker.ir"       # Hamdocker - Iranian mirror
+  "docker.iranserver.com"  # Iran Server mirror
+  "registry.parspack.com"  # Parspack mirror
 )
 
-echo "--- Pulling NVIDIA CUDA base image via Iranian mirrors ---"
+echo "--- Pulling NVIDIA CUDA base image ---"
 echo "Target image: $IMAGE_NAME"
-echo "This is a large image (~8GB) - first pull will take a while..."
 
 PULL_SUCCESS=false
 BASE_IMAGE=""
@@ -148,26 +147,20 @@ for mirror in "${MIRRORS[@]}"; do
   echo "Trying mirror: $mirror"
   echo "Full image path: $full_image"
   
-  for attempt in {1..3}; do
-    echo "  Pull attempt $attempt/3..."
-    if sudo docker pull "$full_image" 2>&1; then
-      echo "  Successfully pulled from $mirror!"
-      # Tag it with the standard name so Dockerfile ARG default works
-      sudo docker tag "$full_image" "$IMAGE_NAME"
-      BASE_IMAGE="$IMAGE_NAME"
-      PULL_SUCCESS=true
-      break 2  # Break out of both loops
-    else
-      echo "  Pull failed. Retrying in 10 seconds..."
-      sleep 10
-    fi
-  done
-  echo "Failed to pull from $mirror after 3 attempts."
+  echo "  Pulling..."
+  if sudo docker pull "$full_image" 2>&1; then
+    echo "  Successfully pulled from $mirror!"
+    sudo docker tag "$full_image" "$IMAGE_NAME"
+    BASE_IMAGE="$IMAGE_NAME"
+    PULL_SUCCESS=true
+    break
+  else
+    echo "  Pull failed, trying next mirror..."
+  fi
 done
 
 if [ "$PULL_SUCCESS" = false ]; then
   echo "Error: Could not pull base image from any mirror." >&2
-  echo "Tried mirrors: ${MIRRORS[*]}"
   exit 1
 fi
 
