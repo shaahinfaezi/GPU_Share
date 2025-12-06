@@ -37,6 +37,22 @@ install_prereqs() {
   fi
 
   # NVIDIA Container Toolkit (for GPU passthrough into containers)
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    echo "NVIDIA driver (nvidia-smi) not found."
+    
+    # Check for WSL
+    if grep -q "Microsoft" /proc/version 2>/dev/null || grep -q "WSL" /proc/version 2>/dev/null; then
+      echo "Error: You are running on WSL (Windows Subsystem for Linux)."
+      echo "You cannot install NVIDIA drivers inside WSL. You must install them on Windows."
+      echo "Please install the latest NVIDIA drivers on your Windows host and restart WSL."
+      echo "Note: NVIDIA MPS (Multi-Process Service) is NOT supported on WSL."
+      exit 1
+    else
+      echo "Attempting to install NVIDIA drivers..."
+      sudo apt-get install -y nvidia-driver-535 nvidia-utils-535
+    fi
+  fi
+
   if command -v nvidia-smi >/dev/null 2>&1; then
     if ! dpkg -s nvidia-container-toolkit >/dev/null 2>&1; then
       distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
@@ -53,7 +69,8 @@ install_prereqs() {
       sudo systemctl restart docker || true
     fi
   else
-    echo "Warning: NVIDIA driver not detected (nvidia-smi missing). Containers will run on CPU."
+    echo "Error: Failed to install/detect NVIDIA driver. Cannot proceed with GPU test."
+    exit 1
   fi
 
   # Python deps for scheduler (host) - Uninstall old pynvml, install modern nvidia-ml-py
