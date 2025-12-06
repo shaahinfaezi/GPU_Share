@@ -2,8 +2,12 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <dlfcn.h>
 #include <cuda.h>
+// Undefine macros from cuda.h to avoid redefinition errors
+#undef cuMemAlloc
+#undef cuMemFree
 #include <pthread.h>
 #include <sys/types.h>
 #include <unistd.h>
