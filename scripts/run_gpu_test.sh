@@ -79,25 +79,19 @@ install_prereqs() {
     exit 1
   fi
 
-  # Python deps for scheduler (host) using dedicated venv to avoid path issues
+  # Python deps for scheduler using venv
   echo "Setting up Python virtual environment at $VENV_DIR ..."
-  # Remove old venv if it exists to ensure clean state
-  if [ -d "$VENV_DIR" ]; then
-    echo "Removing existing venv to recreate cleanly..."
-    sudo rm -rf "$VENV_DIR"
+  if [ ! -d "$VENV_DIR" ]; then
+    sudo python3 -m venv "$VENV_DIR"
   fi
-  
-  sudo python3 -m venv "$VENV_DIR"
-  sudo chown -R $USER:$USER "$VENV_DIR"
 
   echo "Installing scheduler Python dependencies in virtual environment..."
-  "$VENV_DIR/bin/pip" install --upgrade pip
-  # Install nvidia-ml-py v11 which still exposes pynvml module
-  "$VENV_DIR/bin/pip" install docker "nvidia-ml-py==11.525.150"
+  sudo "$VENV_DIR/bin/pip" install --upgrade pip
+  sudo "$VENV_DIR/bin/pip" install docker "nvidia-ml-py==11.525.150"
   
   # Verify installation
   echo "Verifying pynvml installation..."
-  "$VENV_DIR/bin/python" -c "import pynvml; print('✓ pynvml imported successfully')" || {
+  sudo "$VENV_DIR/bin/python" -c "import pynvml; print('✓ pynvml imported successfully')" || {
     echo "ERROR: pynvml import failed in venv"
     exit 1
   }
@@ -207,7 +201,7 @@ export MODEL_NAME
 export CONTAINER_PREFIX
 
 # Run the scheduler as a background process and save its PID
-"$VENV_DIR/bin/python" src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
+sudo -E "$VENV_DIR/bin/python" src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
 SCHEDULER_PID=$!
 echo $SCHEDULER_PID > "$LOG_DIR/scheduler.pid"
 echo "Scheduler running in background with PID $SCHEDULER_PID."
