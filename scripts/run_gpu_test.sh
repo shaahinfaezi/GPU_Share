@@ -1,46 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- DNS Check & Fix (Temporary) ---
-restore_dns() {
-    if [ -f /etc/resolv.conf.bak ]; then
-        echo "Restoring original DNS settings..."
-        sudo mv /etc/resolv.conf.bak /etc/resolv.conf
-    fi
-}
-
-ensure_dns() {
-    echo "Checking DNS resolution..."
-    if ! getent hosts google.com > /dev/null 2>&1; then
-        echo "DNS resolution failed. Temporarily switching to Google DNS..."
-        
-        # Backup existing resolv.conf
-        if [ ! -f /etc/resolv.conf.bak ]; then
-            sudo cp /etc/resolv.conf /etc/resolv.conf.bak
-        fi
-        
-        # Register cleanup trap to restore DNS on exit
-        trap restore_dns EXIT
-        
-        # Set Google DNS and Level3 DNS
-        echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
-        echo "nameserver 4.2.2.4" | sudo tee -a /etc/resolv.conf > /dev/null
-        
-        # Verify fix
-        if getent hosts google.com > /dev/null 2>&1; then
-            echo "DNS fixed successfully (temporary)."
-        else
-            echo "Warning: DNS still failing after fix. Internet connectivity might be down."
-        fi
-    else
-        echo "DNS is working."
-    fi
-}
-
 # --- Install prerequisites (Ubuntu/Debian) ---
 install_prereqs() {
-  ensure_dns
-
   if [ -f /etc/os-release ]; then
     . /etc/os-release
   else
