@@ -187,7 +187,8 @@ export MODEL_NAME
 export CONTAINER_PREFIX
 
 # Run the scheduler as a background process and save its PID
-sudo -E python3 src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
+# Explicitly use the python3 executable that has the packages installed
+sudo -E $(which python3) src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
 SCHEDULER_PID=$!
 echo $SCHEDULER_PID > "$LOG_DIR/scheduler.pid"
 echo "Scheduler running in background with PID $SCHEDULER_PID."

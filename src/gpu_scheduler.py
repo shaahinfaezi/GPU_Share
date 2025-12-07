@@ -2,7 +2,17 @@ import docker
 import warnings
 # Suppress the pynvml deprecation warning that nvidia-ml-py still shows
 warnings.filterwarnings("ignore", category=FutureWarning, module="pynvml")
-import pynvml
+try:
+    import pynvml
+except ImportError:
+    # Fallback for when pynvml is not found, try importing nvidia_ml_py directly if possible
+    # or just print a clearer error message
+    print("Error: 'pynvml' module not found. Please ensure 'nvidia-ml-py' is installed.")
+    print("If you installed 'nvidia-ml-py', try running: pip install pynvml")
+    # In newer versions of nvidia-ml-py, the module is still called pynvml, 
+    # but sometimes there are path issues.
+    raise
+
 import subprocess
 import time
 import json
