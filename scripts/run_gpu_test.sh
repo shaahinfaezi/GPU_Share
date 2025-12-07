@@ -97,7 +97,8 @@ install_prereqs() {
   }
 }
 
-install_prereqs
+# Comment out to skip reinstalling dependencies on every run
+#install_prereqs
 
 # Config (override via env)
 IMAGE="${IMAGE:-gpu-llm:cu118}"
@@ -207,6 +208,7 @@ sudo PYTHONPATH="$VENV_DIR/lib/python3.10/site-packages" \
 SCHEDULER_PID=$!
 echo $SCHEDULER_PID > "$LOG_DIR/scheduler.pid"
 echo "Scheduler running in background with PID $SCHEDULER_PID."
+echo "View logs with: sudo tail -f $SCHEDULER_LOG"
 
 # --- Wait for containers to launch and become healthy ---
 echo "--- Waiting for containers to be launched by the scheduler... ---"
@@ -222,8 +224,10 @@ for PORT in $(seq $START_PORT $END_PORT); do
     # Check if the scheduler process is still alive
     if ! ps -p $SCHEDULER_PID > /dev/null; then
       echo "Error: Scheduler process with PID $SCHEDULER_PID has died."
-      echo "--- Last 20 lines of scheduler log ($SCHEDULER_LOG): ---"
-      tail -n 20 "$SCHEDULER_LOG"
+      echo "--- Last 30 lines of scheduler log ($SCHEDULER_LOG): ---"
+      tail -n 30 "$SCHEDULER_LOG"
+      echo "--- Current docker containers: ---"
+      sudo docker ps -a --filter "name=${CONTAINER_PREFIX}"
       echo "--------------------------------------------------------"
       exit 1
     fi
@@ -231,7 +235,8 @@ for PORT in $(seq $START_PORT $END_PORT); do
     # Check if the container for this port exists and is running
     CONTAINER_ID=$(sudo docker ps -q --filter "publish=${PORT}" --filter "name=${CONTAINER_PREFIX}")
     if [ -z "$CONTAINER_ID" ]; then
-        echo "Container for port $PORT not found yet. Waiting..."
+        echo "Container for port $PORT not found yet. Waiting... (checking docker ps -a)"
+        sudo docker ps -a --filter "name=${CONTAINER_PREFIX}" | tail -5
     else
         # Container found, now check its health endpoint
         HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PORT}/health" || true)

@@ -5,22 +5,28 @@ CC = gcc
 CFLAGS = -I/usr/local/cuda/include -fPIC -shared -Wl,-soname,libvram-limiter.so
 LDFLAGS = -ldl -lpthread
 
-# Target library
-TARGET = vram_limiter.so
+# Target libraries
+TARGET_DRIVER = vram_limiter.so
+TARGET_RUNTIME = vram_limiter_runtime.so
 
-# Source file
-SRC = vram_limiter.c
+# Source files
+SRC_DRIVER = vram_limiter.c
+SRC_RUNTIME = vram_limiter_runtime.c
 
-# Default target
-all: $(TARGET)
+# Default target - build both
+all: $(TARGET_DRIVER) $(TARGET_RUNTIME)
 
-$(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
+$(TARGET_DRIVER): $(SRC_DRIVER)
+	$(CC) $(CFLAGS) -o $(TARGET_DRIVER) $(SRC_DRIVER) $(LDFLAGS)
+
+$(TARGET_RUNTIME): $(SRC_RUNTIME)
+	$(CC) $(CFLAGS) -o $(TARGET_RUNTIME) $(SRC_RUNTIME) $(LDFLAGS)
 
 # Installation
 install:
-	install -m 755 $(TARGET) /usr/local/lib/
+	install -m 755 $(TARGET_DRIVER) /usr/local/lib/
+	install -m 755 $(TARGET_RUNTIME) /usr/local/lib/
 
 # Clean up
 clean:
-	rm -f $(TARGET)
+	rm -f $(TARGET_DRIVER) $(TARGET_RUNTIME)

@@ -38,8 +38,8 @@ RUN pip install --timeout 600 --retries 3 --no-cache-dir \
 COPY src/shim /app/shim
 RUN cd /app/shim && make && make install
 
-# Activate the shim for all CUDA applications in this container
-ENV LD_PRELOAD=/usr/local/lib/vram_limiter.so
+# Activate the Runtime API shim for PyTorch (which uses cudaMalloc)
+ENV LD_PRELOAD=/usr/local/lib/vram_limiter_runtime.so
 
 # --- Python Dependencies ---
 # Install runtime dependencies for the server
