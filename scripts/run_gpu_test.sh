@@ -83,7 +83,7 @@ install_prereqs() {
   sudo python3 -m pip install --force-reinstall docker "nvidia-ml-py<12"
 }
 
-install_prereqs
+#install_prereqs
 
 # Config (override via env)
 IMAGE="${IMAGE:-gpu-llm:cu118}"
