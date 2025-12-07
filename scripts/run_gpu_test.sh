@@ -201,7 +201,9 @@ export MODEL_NAME
 export CONTAINER_PREFIX
 
 # Run the scheduler as a background process and save its PID
-sudo -E "$VENV_DIR/bin/python" src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
+# Use explicit PYTHONPATH to ensure venv packages are found under sudo
+sudo PYTHONPATH="$VENV_DIR/lib/python3.10/site-packages" \
+  "$VENV_DIR/bin/python" src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
 SCHEDULER_PID=$!
 echo $SCHEDULER_PID > "$LOG_DIR/scheduler.pid"
 echo "Scheduler running in background with PID $SCHEDULER_PID."
