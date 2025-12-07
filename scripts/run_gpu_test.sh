@@ -75,10 +75,12 @@ install_prereqs() {
 
   # Python deps for scheduler (host) - Uninstall old pynvml, install modern nvidia-ml-py
   echo "Checking/installing host Python dependencies (docker, nvidia-ml-py)..."
-  # Install globally so sudo python3 can find them
-  sudo python3 -m pip uninstall -y pynvml > /dev/null 2>&1 || true
+  # Uninstall potentially conflicting packages to ensure clean global install
+  sudo python3 -m pip uninstall -y pynvml nvidia-ml-py > /dev/null 2>&1 || true
+  
   sudo python3 -m pip install --upgrade pip
-  sudo python3 -m pip install docker "nvidia-ml-py<12"
+  # Force install to ensure it goes to global site-packages
+  sudo python3 -m pip install --force-reinstall docker "nvidia-ml-py<12"
 }
 
 install_prereqs
