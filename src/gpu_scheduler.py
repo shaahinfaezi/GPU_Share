@@ -107,16 +107,21 @@ def main():
 
     containers = []
     port = args.start_port
-    for _ in range(args.instances):
+    print(f"[scheduler] Starting to launch {args.instances} containers...")
+    for i in range(args.instances):
         gpu_id = select_gpu(args.vram_slice_mb)
         if gpu_id is None:
             print("[scheduler] insufficient free memory, stop launching.")
             break
+        print(f"[scheduler] Launching container {i+1}/{args.instances} on GPU {gpu_id}, port {port}")
         info = launch_container(args.image, gpu_id, port, args.vram_slice_mb)
         containers.append(info)
         port += 1
-        time.sleep(1)
+        print(f"[scheduler] Waiting 5 seconds before next launch...")
+        time.sleep(5)  # Increased from 1 to 5 seconds
 
+    print(f"[scheduler] Successfully launched {len(containers)} containers")
+    print("[scheduler] Entering monitoring loop...")
     while True:
         write_snapshot()
         time.sleep(CHECK_INTERVAL)
