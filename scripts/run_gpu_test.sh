@@ -80,10 +80,12 @@ install_prereqs() {
   
   sudo python3 -m pip install --upgrade pip
   # Force install to ensure it goes to global site-packages
-  sudo python3 -m pip install --force-reinstall docker "nvidia-ml-py<12"
+  # We install 'pynvml' explicitly because 'nvidia-ml-py' v12+ breaks backward compatibility
+  # and the scheduler code imports 'pynvml'.
+  sudo python3 -m pip install --force-reinstall docker pynvml
 }
 
-#install_prereqs
+install_prereqs
 
 # Config (override via env)
 IMAGE="${IMAGE:-gpu-llm:cu118}"
