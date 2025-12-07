@@ -81,14 +81,26 @@ install_prereqs() {
 
   # Python deps for scheduler (host) using dedicated venv to avoid path issues
   echo "Setting up Python virtual environment at $VENV_DIR ..."
-  if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
+  # Remove old venv if it exists to ensure clean state
+  if [ -d "$VENV_DIR" ]; then
+    echo "Removing existing venv to recreate cleanly..."
+    sudo rm -rf "$VENV_DIR"
   fi
+  
+  sudo python3 -m venv "$VENV_DIR"
+  sudo chown -R $USER:$USER "$VENV_DIR"
 
   echo "Installing scheduler Python dependencies in virtual environment..."
   "$VENV_DIR/bin/pip" install --upgrade pip
-  # Pin nvidia-ml-py to the last release that still exposes the pynvml module
-  "$VENV_DIR/bin/pip" install --upgrade docker "nvidia-ml-py==11.525.150"
+  # Install nvidia-ml-py v11 which still exposes pynvml module
+  "$VENV_DIR/bin/pip" install docker "nvidia-ml-py==11.525.150"
+  
+  # Verify installation
+  echo "Verifying pynvml installation..."
+  "$VENV_DIR/bin/python" -c "import pynvml; print('✓ pynvml imported successfully')" || {
+    echo "ERROR: pynvml import failed in venv"
+    exit 1
+  }
 }
 
 install_prereqs
