@@ -87,7 +87,8 @@ install_prereqs() {
 
   echo "Installing scheduler Python dependencies in virtual environment..."
   "$VENV_DIR/bin/pip" install --upgrade pip
-  "$VENV_DIR/bin/pip" install --upgrade docker pynvml
+  # Pin nvidia-ml-py to the last release that still exposes the pynvml module
+  "$VENV_DIR/bin/pip" install --upgrade docker "nvidia-ml-py==11.525.150"
 }
 
 install_prereqs
