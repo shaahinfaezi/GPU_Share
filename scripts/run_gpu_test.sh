@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# --- Scheduler virtual environment ---
+VENV_DIR="/opt/gpu_share_scheduler_venv"
+
 # --- Install prerequisites (Ubuntu/Debian) ---
 install_prereqs() {
   if [ -f /etc/os-release ]; then
@@ -28,6 +31,9 @@ install_prereqs() {
   fi
   if ! command -v pip3 >/dev/null 2>&1; then
     sudo apt-get install -y python3-pip
+  fi
+  if ! dpkg -s python3-venv >/dev/null 2>&1; then
+    sudo apt-get install -y python3-venv
   fi
 
   # Docker engine
@@ -73,16 +79,15 @@ install_prereqs() {
     exit 1
   fi
 
-  # Python deps for scheduler (host) - Uninstall old pynvml, install modern nvidia-ml-py
-  echo "Checking/installing host Python dependencies (docker, nvidia-ml-py)..."
-  # Uninstall potentially conflicting packages to ensure clean global install
-  sudo python3 -m pip uninstall -y pynvml nvidia-ml-py > /dev/null 2>&1 || true
-  
-  sudo python3 -m pip install --upgrade pip
-  # Force install to ensure it goes to global site-packages
-  # We install 'pynvml' explicitly because 'nvidia-ml-py' v12+ breaks backward compatibility
-  # and the scheduler code imports 'pynvml'.
-  sudo python3 -m pip install --force-reinstall docker pynvml
+  # Python deps for scheduler (host) using dedicated venv to avoid path issues
+  echo "Setting up Python virtual environment at $VENV_DIR ..."
+  if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR"
+  fi
+
+  echo "Installing scheduler Python dependencies in virtual environment..."
+  "$VENV_DIR/bin/pip" install --upgrade pip
+  "$VENV_DIR/bin/pip" install --upgrade docker pynvml
 }
 
 install_prereqs
@@ -189,8 +194,7 @@ export MODEL_NAME
 export CONTAINER_PREFIX
 
 # Run the scheduler as a background process and save its PID
-# Explicitly use the python3 executable that has the packages installed
-sudo -E $(which python3) src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
+"$VENV_DIR/bin/python" src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
 SCHEDULER_PID=$!
 echo $SCHEDULER_PID > "$LOG_DIR/scheduler.pid"
 echo "Scheduler running in background with PID $SCHEDULER_PID."
