@@ -185,11 +185,41 @@ fi
 
 echo "Build complete. See $BUILD_LOG for details."
 
-# --- Start NVIDIA MPS if available ---
-echo "--- Attempting to start NVIDIA MPS for better concurrent performance ---"
-sudo nvidia-smi -i 0 -c EXCLUSIVE_PROCESS # Set GPU 0 to exclusive mode if possible
-sudo systemctl start nvidia-mps # This may fail if not configured, which is OK
-# The scheduler will also try to start it, this is just an early attempt.
+# --- Start NVIDIA MPS for GPU sharing ---
+echo "--- Setting up NVIDIA MPS for concurrent GPU access ---"
+
+# Get number of GPUs
+NUM_GPUS=$(nvidia-smi --query-gpu=count --format=csv,noheader | head -1)
+echo "Detected $NUM_GPUS GPU(s)"
+
+# Set ALL GPUs to exclusive process mode (required for MPS)
+for i in $(seq 0 $((NUM_GPUS - 1))); do
+  echo "Setting GPU $i to EXCLUSIVE_PROCESS mode..."
+  sudo nvidia-smi -i $i -c EXCLUSIVE_PROCESS || true
+done
+
+# Start MPS daemon
+echo "Starting NVIDIA MPS daemon..."
+export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
+export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
+sudo mkdir -p /tmp/nvidia-mps
+sudo chmod 1777 /tmp/nvidia-mps
+
+# Stop any existing MPS daemon first
+echo quit | sudo nvidia-cuda-mps-control 2>/dev/null || true
+sleep 1
+
+# Start MPS control daemon
+sudo nvidia-cuda-mps-control -d
+sleep 2
+
+# Verify MPS is running
+if pgrep -x "nvidia-cuda-mps" > /dev/null; then
+  echo "✓ MPS daemon is running"
+else
+  echo "WARNING: MPS daemon may not have started properly"
+fi
 
 # --- Run the scheduler in the background ---
 echo "--- Starting GPU scheduler (log: $SCHEDULER_LOG) ---"

@@ -103,11 +103,14 @@ def parse_args():
 
 def main():
     args = parse_args()
+    # MPS should already be started by run_gpu_test.sh, but try again just in case
     subprocess.run(["sudo", "systemctl", "start", "nvidia-mps"], check=False)
 
     containers = []
     port = args.start_port
     print(f"[scheduler] Starting to launch {args.instances} containers...")
+    print(f"[scheduler] Image: {args.image}, VRAM per container: {args.vram_slice_mb}MB")
+    
     for i in range(args.instances):
         gpu_id = select_gpu(args.vram_slice_mb)
         if gpu_id is None:
@@ -117,8 +120,12 @@ def main():
         info = launch_container(args.image, gpu_id, port, args.vram_slice_mb)
         containers.append(info)
         port += 1
-        print(f"[scheduler] Waiting 5 seconds before next launch...")
-        time.sleep(5)  # Increased from 1 to 5 seconds
+        
+        # Wait longer for the container to fully initialize on the GPU
+        # This prevents CUDA "device busy" errors when multiple containers start on same GPU
+        wait_time = 15  # seconds
+        print(f"[scheduler] Waiting {wait_time}s for container to initialize...")
+        time.sleep(wait_time)
 
     print(f"[scheduler] Successfully launched {len(containers)} containers")
     print("[scheduler] Entering monitoring loop...")
