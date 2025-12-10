@@ -171,6 +171,7 @@ echo "Using base image: $BASE_IMAGE"
 echo "--- Building Docker image: $IMAGE (log: $BUILD_LOG) ---"
 # Pass MODEL_NAME and BASE_IMAGE as build arguments
 sudo docker build \
+  --network host \
   --build-arg "MODEL_NAME=${MODEL_NAME}" \
   --build-arg "BASE_IMAGE=${BASE_IMAGE}" \
   -t "$IMAGE" \
