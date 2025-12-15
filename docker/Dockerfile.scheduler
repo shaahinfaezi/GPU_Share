@@ -25,16 +25,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # --- PyTorch Installation ---
-# Install PyTorch for CUDA 11.8 - split into separate commands for better resume
-# Test connection first, then install with curl progress
-RUN echo "Testing connection to PyTorch index..." && \
-    curl -v --connect-timeout 10 https://download.pytorch.org/whl/cu118/ 2>&1 | head -20
-
+# Install PyTorch - Using Aliyun mirror for speed
+# This pulls the default wheel (usually CUDA 12.x bundled) which works with Driver 535+
 RUN pip install --no-cache-dir --timeout 600 --retries 10 -vv \
-    torch --index-url https://download.pytorch.org/whl/cu118 2>&1
-
-RUN pip install --no-cache-dir --timeout 600 --retries 10 -vv \
-    torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 2>&1
+    -i https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com \
+    torch torchvision torchaudio 2>&1
 
 # --- VRAM Limiter Shim Installation ---
 # Copy shim source, compile, and install it.
@@ -46,11 +42,9 @@ ENV LD_PRELOAD=/usr/local/lib/vram_limiter_runtime.so
 
 # --- Python Dependencies ---
 # Install runtime dependencies for the server
-RUN echo "Testing PyPI connection..." && \
-    curl -v --connect-timeout 10 https://pypi.org/simple/ 2>&1 | head -20
-
 RUN pip install --no-cache-dir --timeout 300 --retries 10 -vv \
-    -i https://pypi.org/simple/ \
+    -i https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com \
     flask transformers==4.36.2 "nvidia-ml-py<12" 2>&1
 
 # --- Download the model into the image ---
