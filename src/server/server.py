@@ -17,6 +17,9 @@ MODEL_PATH = "/app/model"
 MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", "48"))
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+if not torch.cuda.is_available():
+    raise RuntimeError("CUDA is not available. This container requires GPU support.")
+
 print(f"[server] Loading model from path={MODEL_PATH} on device={DEVICE}")
 # Load the tokenizer and model from the local directory
 tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
