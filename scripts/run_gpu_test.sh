@@ -80,6 +80,10 @@ install_prereqs() {
   fi
 
   # Python deps for scheduler using venv
+  # (Moved to setup_venv function so it runs even if install_prereqs is skipped)
+}
+
+setup_venv() {
   echo "Setting up Python virtual environment at $VENV_DIR ..."
   if [ ! -d "$VENV_DIR" ]; then
     sudo python3 -m venv "$VENV_DIR"
@@ -99,6 +103,7 @@ install_prereqs() {
 
 # Comment out to skip reinstalling dependencies on every run
 #install_prereqs
+setup_venv
 
 # Config (override via env)
 IMAGE="${IMAGE:-gpu-llm:cu118}"
@@ -234,7 +239,14 @@ export CONTAINER_PREFIX
 
 # Run the scheduler as a background process and save its PID
 # Use explicit PYTHONPATH to ensure venv packages are found under sudo
-sudo PYTHONPATH="$VENV_DIR/lib/python3.10/site-packages" \
+# Dynamically find site-packages to avoid hardcoding python version
+SITE_PACKAGES=$(find "$VENV_DIR/lib" -maxdepth 2 -type d -name "site-packages" | head -n 1)
+if [ -z "$SITE_PACKAGES" ]; then
+    echo "Error: Could not find site-packages in $VENV_DIR"
+    exit 1
+fi
+
+sudo PYTHONPATH="$SITE_PACKAGES" \
   "$VENV_DIR/bin/python" src/gpu_scheduler.py > "$SCHEDULER_LOG" 2>&1 &
 SCHEDULER_PID=$!
 echo $SCHEDULER_PID > "$LOG_DIR/scheduler.pid"

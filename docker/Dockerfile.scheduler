@@ -20,10 +20,19 @@ RUN apt-get update && apt-get install -y \
     curl \
     python3 \
     python3-pip \
+    python3-venv \
     && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
+# Create and activate virtual environment
+ENV VIRTUAL_ENV=/opt/gpu_share_scheduler_venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
 # --- PyTorch Installation ---
+# Check connection to Aliyun mirror
+RUN curl -I https://mirrors.aliyun.com/pypi/simple/
+
 # Install PyTorch using Aliyun mirror (PyPI version)
 # Upgrading pip first to avoid some hash/mirror issues
 RUN pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com && \
