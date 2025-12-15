@@ -25,9 +25,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # --- PyTorch Installation ---
-# Install PyTorch - Using Aliyun mirror for speed
-# This pulls the default wheel (usually CUDA 12.x bundled) which works with Driver 535+
-RUN pip install --no-cache-dir --timeout 600 --retries 10 --no-verify-ssl \
+# Install PyTorch using Aliyun mirror (PyPI version)
+# Upgrading pip first to avoid some hash/mirror issues
+RUN pip install --no-cache-dir --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com && \
+    pip install --no-cache-dir --timeout 600 --retries 10 \
     -i https://mirrors.aliyun.com/pypi/simple/ \
     --trusted-host mirrors.aliyun.com \
     torch torchvision torchaudio 2>&1
@@ -42,7 +43,7 @@ ENV LD_PRELOAD=/usr/local/lib/vram_limiter_runtime.so
 
 # --- Python Dependencies ---
 # Install runtime dependencies for the server
-RUN pip install --no-cache-dir --timeout 300 --retries 10 --no-verify-ssl \
+RUN pip install --no-cache-dir --timeout 300 --retries 10 \
     -i https://mirrors.aliyun.com/pypi/simple/ \
     --trusted-host mirrors.aliyun.com \
     flask transformers==4.36.2 "nvidia-ml-py<12" 2>&1
