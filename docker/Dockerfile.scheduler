@@ -27,11 +27,11 @@ RUN apt-get update && apt-get install -y \
 # --- PyTorch Installation ---
 # Install PyTorch for CUDA 11.8 - split into separate commands for better resume
 # Using --retries and longer timeout for unstable connections
-RUN pip install -v --no-cache-dir --timeout 120 --retries 5 \
-    torch --index-url https://download.pytorch.org/whl/cu118
+RUN pip install -v --progress-bar on --timeout 120 --retries 5 \
+    torch --index-url https://download.pytorch.org/whl/cu118 2>&1 | tee /tmp/torch_install.log
 
-RUN pip install -v --no-cache-dir --timeout 120 --retries 5 \
-    torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+RUN pip install -v --progress-bar on --timeout 120 --retries 5 \
+    torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118 2>&1 | tee /tmp/torchvision_install.log
 
 # --- VRAM Limiter Shim Installation ---
 # Copy shim source, compile, and install it.
@@ -43,9 +43,9 @@ ENV LD_PRELOAD=/usr/local/lib/vram_limiter_runtime.so
 
 # --- Python Dependencies ---
 # Install runtime dependencies for the server
-RUN pip install -v --timeout 120 --retries 5 --no-cache-dir \
+RUN pip install -v --progress-bar on --timeout 120 --retries 5 \
     -i https://pypi.org/simple/ \
-    flask transformers==4.36.2 "nvidia-ml-py<12"
+    flask transformers==4.36.2 "nvidia-ml-py<12" 2>&1 | tee /tmp/deps_install.log
 
 # --- Download the model into the image ---
 # This command runs during the 'docker build' step.
