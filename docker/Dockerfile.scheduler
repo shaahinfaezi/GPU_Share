@@ -27,10 +27,10 @@ RUN apt-get update && apt-get install -y \
 # --- PyTorch Installation ---
 # Install PyTorch for CUDA 11.8 - split into separate commands for better resume
 # Using --retries and longer timeout for unstable connections
-RUN pip install --timeout 60 --retries 5 --no-cache-dir \
+RUN pip install --no-cache-dir \
     torch --index-url https://download.pytorch.org/whl/cu118
 
-RUN pip install --timeout 60 --retries 5 --no-cache-dir \
+RUN pip install --no-cache-dir \
     torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
 # --- VRAM Limiter Shim Installation ---
