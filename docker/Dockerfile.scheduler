@@ -5,8 +5,8 @@ FROM ${BASE_IMAGE}
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     HF_HUB_DISABLE_TELEMETRY=1 \
-    HF_HUB_DOWNLOAD_TIMEOUT=120 \
-    HF_HUB_DOWNLOAD_RETRIES=5
+    HF_HUB_DOWNLOAD_TIMEOUT=10800 \
+    HF_HUB_DOWNLOAD_RETRIES=2
 
 # Add a build argument for the model name
 ARG MODEL_NAME=distilgpt2
@@ -36,7 +36,7 @@ RUN curl -I https://mirrors.aliyun.com/pypi/simple/
 # Install PyTorch using Aliyun mirror (PyPI version)
 # Upgrading pip first to avoid some hash/mirror issues
 RUN pip install --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ --trusted-host mirrors.aliyun.com && \
-    pip install --timeout 600 --retries 10 \
+    pip install --timeout 10800 --retries 2 \
     -i https://mirrors.aliyun.com/pypi/simple/ \
     --trusted-host mirrors.aliyun.com \
     torch torchvision torchaudio 2>&1
@@ -51,7 +51,7 @@ ENV LD_PRELOAD=/usr/local/lib/vram_limiter_runtime.so
 
 # --- Python Dependencies ---
 # Install runtime dependencies for the server
-RUN pip install --timeout 300 --retries 10 \
+RUN pip install --timeout 10800 --retries 2 \
     -i https://mirrors.aliyun.com/pypi/simple/ \
     --trusted-host mirrors.aliyun.com \
     flask transformers==4.36.2 "nvidia-ml-py<12" 2>&1
