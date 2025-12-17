@@ -213,7 +213,12 @@ sudo mkdir -p /tmp/nvidia-mps
 sudo chmod 1777 /tmp/nvidia-mps
 
 # Stop any existing MPS daemon first
+echo "Stopping existing MPS daemon..."
 echo quit | sudo nvidia-cuda-mps-control 2>/dev/null || true
+# Wait for it to actually exit
+sleep 2
+# Force kill if still running
+sudo pkill -x "nvidia-cuda-mps" || true
 sleep 1
 
 # Start MPS control daemon
@@ -252,6 +257,14 @@ SCHEDULER_PID=$!
 echo $SCHEDULER_PID > "$LOG_DIR/scheduler.pid"
 echo "Scheduler running in background with PID $SCHEDULER_PID."
 echo "View logs with: sudo tail -f $SCHEDULER_LOG"
+
+# Give the scheduler a moment to start up or fail
+sleep 5
+if ! ps -p $SCHEDULER_PID > /dev/null; then
+    echo "ERROR: Scheduler failed to start immediately. Checking logs:"
+    tail -n 20 "$SCHEDULER_LOG"
+    exit 1
+fi
 
 # --- Wait for containers to launch and become healthy ---
 echo "--- Waiting for containers to be launched by the scheduler... ---"
