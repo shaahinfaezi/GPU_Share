@@ -209,20 +209,30 @@ echo "Starting NVIDIA MPS daemon..."
 export CUDA_VISIBLE_DEVICES=0,1
 export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
 export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
-sudo mkdir -p /tmp/nvidia-mps
-sudo chmod 1777 /tmp/nvidia-mps
 
 # Stop any existing MPS daemon first
 echo "Stopping existing MPS daemon..."
-echo quit | sudo nvidia-cuda-mps-control 2>/dev/null || true
-# Wait for it to actually exit
+# Try graceful shutdown first
+export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
+echo quit | sudo -E nvidia-cuda-mps-control 2>/dev/null || true
 sleep 2
-# Force kill if still running
-sudo pkill -x "nvidia-cuda-mps" || true
+
+# Force kill all MPS processes
+echo "Force stopping all MPS processes..."
+sudo pkill -9 nvidia-cuda-mps-control || true
+sudo pkill -9 nvidia-cuda-mps-server || true
+sudo pkill -9 nvidia-cuda-mps || true
 sleep 1
 
+# Clean up MPS directories to ensure fresh start
+echo "Cleaning MPS directories..."
+sudo rm -rf /tmp/nvidia-mps/*
+sudo mkdir -p /tmp/nvidia-mps
+sudo chmod 1777 /tmp/nvidia-mps
+
 # Start MPS control daemon
-sudo nvidia-cuda-mps-control -d
+echo "Starting new MPS control daemon..."
+sudo -E nvidia-cuda-mps-control -d
 sleep 2
 
 # Verify MPS is running
