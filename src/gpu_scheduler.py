@@ -58,7 +58,10 @@ def launch_container(image, gpu_id, port, vram_slice_mb):
     env = {
         "NVIDIA_VISIBLE_DEVICES": str(gpu_id),
         "MODEL_NAME": os.environ.get("MODEL_NAME", "distilgpt2"),
-        "GPU_VRAM_LIMIT_MB": str(vram_slice_mb) # Pass the VRAM limit to the container
+        "GPU_VRAM_LIMIT_MB": str(vram_slice_mb), # Pass the VRAM limit to the container
+        "CUDA_LAUNCH_BLOCKING": "1", # Better error messages
+        "CUDA_MPS_PIPE_DIRECTORY": os.environ.get("CUDA_MPS_PIPE_DIRECTORY", "/tmp/nvidia-mps"),
+        "CUDA_MPS_LOG_DIRECTORY": os.environ.get("CUDA_MPS_LOG_DIRECTORY", "/tmp/nvidia-mps")
     }
     name = f"{CONTAINER_PREFIX}_{gpu_id}_{port}"
     
@@ -72,6 +75,9 @@ def launch_container(image, gpu_id, port, vram_slice_mb):
     except Exception as e:
         print(f"[scheduler] Error removing container {name}: {e}")
 
+    # Mount MPS pipe directory for GPU sharing
+    mps_pipe_dir = os.environ.get("CUDA_MPS_PIPE_DIRECTORY", "/tmp/nvidia-mps")
+    
     c = client.containers.run(
         image,
         detach=True,
@@ -79,7 +85,9 @@ def launch_container(image, gpu_id, port, vram_slice_mb):
         environment=env,
         runtime="nvidia",
         ports={"5000/tcp": port},
-        mem_limit=f"{vram_slice_mb}m"
+        mem_limit=f"{vram_slice_mb}m",
+        volumes={mps_pipe_dir: {"bind": mps_pipe_dir, "mode": "rw"}},
+        ipc_mode="host"  # Required for MPS
     )
     print(f"[scheduler] started {name} gpu={gpu_id} port={port}")
     return {"name": name, "gpu_id": gpu_id, "port": port}

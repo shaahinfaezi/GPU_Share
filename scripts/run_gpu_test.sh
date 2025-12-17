@@ -233,7 +233,8 @@ sudo chmod 1777 /tmp/nvidia-mps
 # Start MPS control daemon
 echo "Starting new MPS control daemon..."
 sudo -E nvidia-cuda-mps-control -d
-sleep 2
+echo "Waiting for MPS daemon to fully initialize..."
+sleep 5
 
 # Verify MPS is running
 if pgrep -x "nvidia-cuda-mps" > /dev/null; then
@@ -319,9 +320,17 @@ for PORT in $(seq $START_PORT $END_PORT); do
     if [ $SECONDS_WAITED -ge $HEALTH_CHECK_TIMEOUT ]; then
       echo "Error: Timeout reached waiting for containers to become healthy."
       echo "--- Current Docker container status: ---"
-      sudo docker ps -a
-      echo "--- Last 20 lines of scheduler log ($SCHEDULER_LOG): ---"
-      tail -n 20 "$SCHEDULER_LOG"
+      sudo docker ps -a --filter "name=${CONTAINER_PREFIX}"
+      echo ""
+      echo "--- Checking logs of failed/exited containers: ---"
+      for CONTAINER in $(sudo docker ps -aq --filter "name=${CONTAINER_PREFIX}" --filter "status=exited"); do
+        CONTAINER_NAME=$(sudo docker inspect --format='{{.Name}}' $CONTAINER | sed 's/\///')
+        echo "=== Logs for $CONTAINER_NAME ==="
+        sudo docker logs --tail 50 $CONTAINER
+        echo ""
+      done
+      echo "--- Last 50 lines of scheduler log ($SCHEDULER_LOG): ---"
+      tail -n 50 "$SCHEDULER_LOG"
       echo "--------------------------------------------------------"
       exit 1
     fi
