@@ -347,14 +347,29 @@ def main():
         print("\n" + "="*60)
         print(" BENCHMARK SUMMARY")
         print("="*60)
-        print(f"\n  {'Test':<40} {'Time (ms)':<12} {'Throughput':<12}")
-        print("  " + "-"*64)
+        print(f"\n  {'Test':<40} {'Requests':<10} {'Time (ms)':<12} {'Throughput':<12}")
+        print("  " + "-"*74)
         for r in results:
-            print(f"  {r['test_name']:<40} {r['total_time_ms']:<12.2f} {r['throughput_rps']:<12.2f} req/s")
+            total_requests = r.get('successful', 0) + r.get('failed', 0)
+            print(f"  {r['test_name']:<40} {total_requests:<10} {r['total_time_ms']:<12.2f} {r['throughput_rps']:<12.2f} req/s")
         
         if len(results) >= 2:
-            speedup = results[0]['total_time_ms'] / results[1]['total_time_ms'] if results[1]['total_time_ms'] > 0 else 0
-            print(f"\n  MPS Speedup: {speedup:.2f}x")
+            # Calculate throughput improvement (the correct metric)
+            throughput_speedup = results[1]['throughput_rps'] / results[0]['throughput_rps'] if results[0]['throughput_rps'] > 0 else 0
+            
+            # Old misleading metric (time ratio with different request counts)
+            time_ratio = results[0]['total_time_ms'] / results[1]['total_time_ms'] if results[1]['total_time_ms'] > 0 else 0
+            
+            print(f"\n  Analysis:")
+            print(f"    Throughput Improvement (MPS vs Baseline): {throughput_speedup:.2f}x")
+            print(f"    (Test 2 processes {results[1].get('successful', 0) + results[1].get('failed', 0)} requests vs {results[0].get('successful', 0) + results[0].get('failed', 0)} in Test 1)")
+            
+            if throughput_speedup > 1.0:
+                print(f"\n  ✓ MPS is working! {(throughput_speedup - 1) * 100:.1f}% more throughput with 4 containers vs 2")
+            elif throughput_speedup > 0.9:
+                print(f"\n  ~ MPS is working but minimal benefit (workload may be CPU-bound)")
+            else:
+                print(f"\n  ✗ MPS may not be configured correctly")
     
     print(f"\n Benchmark completed at: {datetime.now().isoformat()}")
 
