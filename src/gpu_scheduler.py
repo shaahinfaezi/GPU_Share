@@ -1,5 +1,19 @@
 import docker
 import warnings
+import logging
+import sys
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
 # Suppress the pynvml deprecation warning that nvidia-ml-py still shows
 warnings.filterwarnings("ignore", category=FutureWarning, module="pynvml")
 try:
@@ -7,8 +21,8 @@ try:
 except ImportError:
     # Fallback for when pynvml is not found, try importing nvidia_ml_py directly if possible
     # or just print a clearer error message
-    print("Error: 'pynvml' module not found. Please ensure 'nvidia-ml-py' is installed.")
-    print("If you installed 'nvidia-ml-py', try running: pip install pynvml")
+    logger.error("'pynvml' module not found. Please ensure 'nvidia-ml-py' is installed.")
+    logger.error("If you installed 'nvidia-ml-py', try running: pip install pynvml")
     # In newer versions of nvidia-ml-py, the module is still called pynvml, 
     # but sometimes there are path issues.
     raise
@@ -40,21 +54,57 @@ def get_gpus():
     for i in range(pynvml.nvmlDeviceGetCount()):
         h = pynvml.nvmlDeviceGetHandleByIndex(i)
         mem = pynvml.nvmlDeviceGetMemoryInfo(h)
+        try:
+            util = pynvml.nvmlDeviceGetUtilizationRates(h)
+            gpu_util = util.gpu
+            mem_util = util.memory
+        except:
+            gpu_util = -1
+            mem_util = -1
         g.append({
             "id": i,
             "free_mb": mem.free // (1024*1024),
             "used_mb": mem.used // (1024*1024),
-            "total_mb": mem.total // (1024*1024)
+            "total_mb": mem.total // (1024*1024),
+            "gpu_util": gpu_util,
+            "mem_util": mem_util
         })
     return g
 
 def select_gpu(required_mb):
-    for g in sorted(get_gpus(), key=lambda x: -x["free_mb"]):
+    gpus = get_gpus()
+    logger.debug(f"GPU selection - required: {required_mb}MB")
+    for g in gpus:
+        logger.debug(f"  GPU {g['id']}: free={g['free_mb']}MB, used={g['used_mb']}MB, util={g['gpu_util']}%")
+    
+    for g in sorted(gpus, key=lambda x: -x["free_mb"]):
         if g["free_mb"] > required_mb:
+            logger.info(f"Selected GPU {g['id']} with {g['free_mb']}MB free")
             return g["id"]
+    logger.warning(f"No GPU found with {required_mb}MB free memory")
     return None
 
+def check_mps_status():
+    """Check if MPS daemon is running and accessible"""
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-compute-apps=pid,name", "--format=csv,noheader"],
+            capture_output=True, text=True, timeout=5
+        )
+        logger.info(f"Current GPU compute apps: {result.stdout.strip() or 'None'}")
+    except Exception as e:
+        logger.warning(f"Could not query compute apps: {e}")
+    
+    mps_pipe = os.environ.get("CUDA_MPS_PIPE_DIRECTORY", "/tmp/nvidia-mps")
+    if os.path.exists(mps_pipe):
+        contents = os.listdir(mps_pipe)
+        logger.info(f"MPS pipe directory ({mps_pipe}) contents: {contents}")
+    else:
+        logger.warning(f"MPS pipe directory ({mps_pipe}) does not exist!")
+
 def launch_container(image, gpu_id, port, vram_slice_mb):
+    logger.info(f"Launching container: image={image}, gpu={gpu_id}, port={port}, vram_limit={vram_slice_mb}MB")
+    
     env = {
         "NVIDIA_VISIBLE_DEVICES": str(gpu_id),
         "MODEL_NAME": os.environ.get("MODEL_NAME", "distilgpt2"),
@@ -63,43 +113,49 @@ def launch_container(image, gpu_id, port, vram_slice_mb):
         "CUDA_MPS_PIPE_DIRECTORY": os.environ.get("CUDA_MPS_PIPE_DIRECTORY", "/tmp/nvidia-mps"),
         "CUDA_MPS_LOG_DIRECTORY": os.environ.get("CUDA_MPS_LOG_DIRECTORY", "/tmp/nvidia-mps")
     }
+    logger.debug(f"Container environment: {env}")
+    
     name = f"{CONTAINER_PREFIX}_{gpu_id}_{port}"
     
     # Remove existing container with the same name to prevent conflict
     try:
         existing_container = client.containers.get(name)
-        print(f"[scheduler] Removing conflicting container: {name}")
+        logger.warning(f"Removing conflicting container: {name}")
         existing_container.remove(force=True)
     except docker.errors.NotFound:
         pass # This is the expected case, no conflict
     except Exception as e:
-        print(f"[scheduler] Error removing container {name}: {e}")
+        logger.error(f"Error removing container {name}: {e}")
 
     # Mount MPS pipe directory for GPU sharing
     mps_pipe_dir = os.environ.get("CUDA_MPS_PIPE_DIRECTORY", "/tmp/nvidia-mps")
     
-    c = client.containers.run(
-        image,
-        detach=True,
-        name=name,
-        environment=env,
-        runtime="nvidia",
-        ports={"5000/tcp": port},
-        mem_limit=f"{vram_slice_mb}m",
-        volumes={mps_pipe_dir: {"bind": mps_pipe_dir, "mode": "rw"}},
-        ipc_mode="host"  # Required for MPS
-    )
-    print(f"[scheduler] started {name} gpu={gpu_id} port={port}")
-    return {"name": name, "gpu_id": gpu_id, "port": port}
+    try:
+        c = client.containers.run(
+            image,
+            detach=True,
+            name=name,
+            environment=env,
+            runtime="nvidia",
+            ports={"5000/tcp": port},
+            mem_limit=f"{vram_slice_mb}m",
+            volumes={mps_pipe_dir: {"bind": mps_pipe_dir, "mode": "rw"}},
+            ipc_mode="host"  # Required for MPS
+        )
+        logger.info(f"✓ Started container {name} (id={c.short_id}) on GPU {gpu_id}, port {port}")
+        return {"name": name, "gpu_id": gpu_id, "port": port, "container_id": c.short_id}
+    except Exception as e:
+        logger.error(f"✗ Failed to start container {name}: {e}")
+        raise
 
 def write_snapshot():
     snap = get_gpus()
     ts = datetime.utcnow().isoformat()
     with open("vram_log.jsonl", "a") as f:
         f.write(json.dumps({"ts": ts, "snapshot": snap}) + "\n")
-    print(f"[{ts}] GPU status:")
+    logger.info(f"GPU Snapshot:")
     for g in snap:
-        print(f"  gpu {g['id']}: used={g['used_mb']}MB free={g['free_mb']}MB total={g['total_mb']}MB")
+        logger.info(f"  GPU {g['id']}: used={g['used_mb']}MB free={g['free_mb']}MB total={g['total_mb']}MB | util={g['gpu_util']}% mem_util={g['mem_util']}%")
 
 def parse_args():
     p = argparse.ArgumentParser()
@@ -111,20 +167,42 @@ def parse_args():
 
 def main():
     args = parse_args()
+    
+    logger.info("=" * 60)
+    logger.info("GPU Scheduler Starting")
+    logger.info("=" * 60)
+    logger.info(f"Configuration:")
+    logger.info(f"  Image: {args.image}")
+    logger.info(f"  Instances: {args.instances}")
+    logger.info(f"  VRAM per container: {args.vram_slice_mb}MB")
+    logger.info(f"  Start port: {args.start_port}")
+    logger.info(f"  Container prefix: {CONTAINER_PREFIX}")
+    logger.info(f"  MPS pipe dir: {os.environ.get('CUDA_MPS_PIPE_DIRECTORY', '/tmp/nvidia-mps')}")
+    
+    # Check MPS status
+    logger.info("-" * 40)
+    logger.info("Checking MPS status...")
+    check_mps_status()
+    
+    # Log initial GPU state
+    logger.info("-" * 40)
+    logger.info("Initial GPU State:")
+    write_snapshot()
+    
     # MPS should already be started by run_gpu_test.sh, but try again just in case
     subprocess.run(["sudo", "systemctl", "start", "nvidia-mps"], check=False)
 
     containers = []
     port = args.start_port
-    print(f"[scheduler] Starting to launch {args.instances} containers...")
-    print(f"[scheduler] Image: {args.image}, VRAM per container: {args.vram_slice_mb}MB")
+    logger.info("-" * 40)
+    logger.info(f"Starting to launch {args.instances} containers...")
     
     for i in range(args.instances):
         gpu_id = select_gpu(args.vram_slice_mb)
         if gpu_id is None:
-            print("[scheduler] insufficient free memory, stop launching.")
+            logger.error("Insufficient free memory, stopping container launches.")
             break
-        print(f"[scheduler] Launching container {i+1}/{args.instances} on GPU {gpu_id}, port {port}")
+        logger.info(f"Launching container {i+1}/{args.instances} on GPU {gpu_id}, port {port}")
         info = launch_container(args.image, gpu_id, port, args.vram_slice_mb)
         containers.append(info)
         port += 1
@@ -132,11 +210,20 @@ def main():
         # Wait longer for the container to fully initialize on the GPU
         # This prevents CUDA "device busy" errors when multiple containers start on same GPU
         wait_time = 15  # seconds
-        print(f"[scheduler] Waiting {wait_time}s for container to initialize...")
+        logger.info(f"Waiting {wait_time}s for container to initialize...")
         time.sleep(wait_time)
+        
+        # Log GPU state after each container launch
+        logger.info("GPU state after container launch:")
+        write_snapshot()
 
-    print(f"[scheduler] Successfully launched {len(containers)} containers")
-    print("[scheduler] Entering monitoring loop...")
+    logger.info("=" * 60)
+    logger.info(f"Successfully launched {len(containers)} containers")
+    logger.info("Container Summary:")
+    for c in containers:
+        logger.info(f"  {c['name']} -> GPU {c['gpu_id']}, port {c['port']}")
+    logger.info("=" * 60)
+    logger.info("Entering monitoring loop...")
     while True:
         write_snapshot()
         time.sleep(CHECK_INTERVAL)

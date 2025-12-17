@@ -220,6 +220,65 @@ def run_benchmark(test_name, ports, num_requests, prompt, max_tokens):
         'throughput_rps': len(successful) / total_time if successful else 0
     }
 
+def check_mps_status():
+    """Check if MPS daemon is running and show diagnostic info"""
+    print("\n" + "="*60)
+    print(" MPS DIAGNOSTIC CHECK")
+    print("="*60)
+    
+    # Check MPS daemon process
+    try:
+        result = subprocess.run(['pgrep', '-x', 'nvidia-cuda-mps'], capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"  ✓ MPS daemon is running (PID: {result.stdout.strip()})")
+        else:
+            print("  ✗ MPS daemon is NOT running!")
+    except Exception as e:
+        print(f"  ? Could not check MPS daemon: {e}")
+    
+    # Check MPS pipe directory
+    import os
+    mps_dir = "/tmp/nvidia-mps"
+    if os.path.exists(mps_dir):
+        contents = os.listdir(mps_dir)
+        print(f"  ✓ MPS pipe directory exists: {mps_dir}")
+        print(f"    Contents: {contents}")
+    else:
+        print(f"  ✗ MPS pipe directory does not exist: {mps_dir}")
+    
+    # Check GPU compute mode
+    try:
+        result = subprocess.run(
+            ['nvidia-smi', '--query-gpu=index,compute_mode', '--format=csv,noheader'],
+            capture_output=True, text=True, check=True
+        )
+        print(f"  GPU Compute Modes:")
+        for line in result.stdout.strip().split('\n'):
+            parts = [p.strip() for p in line.split(',')]
+            mode = parts[1] if len(parts) > 1 else 'Unknown'
+            print(f"    GPU {parts[0]}: {mode}")
+            if 'Exclusive' not in mode:
+                print(f"      ⚠ Warning: GPU should be in EXCLUSIVE_PROCESS mode for MPS")
+    except Exception as e:
+        print(f"  ? Could not check compute mode: {e}")
+    
+    # Check active compute processes
+    try:
+        result = subprocess.run(
+            ['nvidia-smi', '--query-compute-apps=pid,name,gpu_uuid', '--format=csv,noheader'],
+            capture_output=True, text=True, check=True
+        )
+        if result.stdout.strip():
+            print(f"  Active compute processes:")
+            for line in result.stdout.strip().split('\n'):
+                print(f"    {line}")
+        else:
+            print("  No active compute processes on GPUs")
+    except Exception as e:
+        print(f"  ? Could not check compute processes: {e}")
+    
+    print("="*60)
+
 def main():
     print("="*60)
     print(" MPS BENCHMARK - GPU Sharing Performance Test")
@@ -227,6 +286,9 @@ def main():
     print(f" Started at: {datetime.now().isoformat()}")
     print(f" Prompt length: {len(LONG_PROMPT)} characters")
     print(f" Max new tokens: {MAX_NEW_TOKENS}")
+    
+    # Run MPS diagnostic check first
+    check_mps_status()
     
     # Detect available containers
     print("\n Detecting containers...")
