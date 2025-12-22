@@ -212,8 +212,8 @@ def run_benchmark(test_name, ports, num_requests, prompt, max_tokens):
             )
             print(f"    GPU {gpu_id}: {peak} MB")
     
-    # Save outputs to file
-    output_file = "benchmark_outputs.txt"
+    # Save outputs to file (use /tmp to avoid permission issues)
+    output_file = "/tmp/benchmark_outputs.txt"
     try:
         with open(output_file, "a", encoding="utf-8") as f:
             f.write(f"\n\n{'='*60}\n")
@@ -339,14 +339,14 @@ def main():
         if result:
             results.append(result)
     
-    # Test 2: Two containers on GPU 0 (MPS benefit test)
-    if 6000 in available_ports and 6001 in available_ports:
+    # Test 2: Three containers on GPU 0 (MPS benefit test)
+    if 6000 in available_ports and 6001 in available_ports and 6002 in available_ports:
         print("\n" + "="*60)
-        print(" TEST 2: Two containers on GPU 0 (MPS Test)")
+        print(" TEST 2: Three containers on GPU 0 (MPS Test)")
         print("="*60)
         result = run_benchmark(
-            "2 Containers on GPU 0 - 10 requests each",
-            [6000, 6001],
+            "3 Containers on GPU 0 - 10 requests each",
+            [6000, 6001, 6002],
             10,
             LONG_PROMPT,
             MAX_NEW_TOKENS
@@ -377,7 +377,7 @@ def main():
             print(f"    (Test 2 processes {results[1].get('successful', 0) + results[1].get('failed', 0)} requests vs {results[0].get('successful', 0) + results[0].get('failed', 0)} in Test 1)")
             
             if throughput_speedup > 1.0:
-                print(f"\n  ✓ MPS is working! {(throughput_speedup - 1) * 100:.1f}% more throughput with 2 containers vs 1 on same GPU")
+                print(f"\n  ✓ MPS is working! {(throughput_speedup - 1) * 100:.1f}% more throughput with 3 containers vs 1 on same GPU")
                 print(f"    VRAM isolation and SM time-sharing are both active")
             elif throughput_speedup > 0.9:
                 print(f"\n  ~ MPS is working but minimal benefit (workload may be CPU-bound)")
