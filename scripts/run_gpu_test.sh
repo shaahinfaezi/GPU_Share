@@ -107,7 +107,7 @@ setup_venv
 
 # Config (override via env)
 IMAGE="${IMAGE:-gpu-llm:cu118}"
-NUM_CONTAINERS="${NUM_CONTAINERS:-2}"
+NUM_CONTAINERS="${NUM_CONTAINERS:-3}"
 START_PORT="${START_PORT:-6000}"
 VRAM_LIMIT_MB="${VRAM_LIMIT_MB:-3000}" # Renamed for clarity with the shim
 MODEL_NAME="${MODEL_NAME:-gpt2}"
