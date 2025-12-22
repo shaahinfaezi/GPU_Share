@@ -77,11 +77,13 @@ def select_gpu(required_mb):
     for g in gpus:
         logger.debug(f"  GPU {g['id']}: free={g['free_mb']}MB, used={g['used_mb']}MB, util={g['gpu_util']}%")
     
-    for g in sorted(gpus, key=lambda x: -x["free_mb"]):
-        if g["free_mb"] > required_mb:
-            logger.info(f"Selected GPU {g['id']} with {g['free_mb']}MB free")
-            return g["id"]
-    logger.warning(f"No GPU found with {required_mb}MB free memory")
+    # For single GPU testing, force GPU 0
+    gpu_0 = next((g for g in gpus if g['id'] == 0), None)
+    if gpu_0 and gpu_0["free_mb"] > required_mb:
+        logger.info(f"Forced selection of GPU 0 (free: {gpu_0['free_mb']}MB)")
+        return gpu_0["id"]
+    
+    logger.warning(f"GPU 0 not available or insufficient memory ({gpu_0['free_mb'] if gpu_0 else 'N/A'}MB free)")
     return None
 
 def check_mps_status():

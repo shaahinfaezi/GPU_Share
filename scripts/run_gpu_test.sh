@@ -107,7 +107,7 @@ setup_venv
 
 # Config (override via env)
 IMAGE="${IMAGE:-gpu-llm:cu118}"
-NUM_CONTAINERS="${NUM_CONTAINERS:-4}"
+NUM_CONTAINERS="${NUM_CONTAINERS:-2}"
 START_PORT="${START_PORT:-6000}"
 VRAM_LIMIT_MB="${VRAM_LIMIT_MB:-3000}" # Renamed for clarity with the shim
 MODEL_NAME="${MODEL_NAME:-gpt2}"
@@ -199,14 +199,13 @@ NUM_GPUS=$(nvidia-smi --query-gpu=count --format=csv,noheader | head -1)
 echo "Detected $NUM_GPUS GPU(s)"
 
 # Set ALL GPUs to exclusive process mode (required for MPS)
-for i in $(seq 0 $((NUM_GPUS - 1))); do
-  echo "Setting GPU $i to EXCLUSIVE_PROCESS mode..."
-  sudo nvidia-smi -i $i -c EXCLUSIVE_PROCESS || true
-done
+# For single GPU test, only set GPU 0
+echo "Setting GPU 0 to EXCLUSIVE_PROCESS mode..."
+sudo nvidia-smi -i 0 -c EXCLUSIVE_PROCESS || true
 
 # Start MPS daemon
 echo "Starting NVIDIA MPS daemon..."
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0
 export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
 export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
 

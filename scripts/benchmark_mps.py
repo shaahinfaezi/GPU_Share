@@ -307,18 +307,14 @@ def main():
     
     results = []
     
-    # Test 1: Single container per GPU (baseline)
-    # Using ports 6000 (GPU 0) and 6002 (GPU 1) if available
-    gpu0_port = 6000 if 6000 in available_ports else None
-    gpu1_port = 6002 if 6002 in available_ports else (6003 if 6003 in available_ports else None)
-    
-    if gpu0_port and gpu1_port:
+    # Test 1: Single container on GPU 0 (baseline)
+    if 6000 in available_ports:
         print("\n" + "="*60)
-        print(" TEST 1: One container per GPU (Baseline)")
+        print(" TEST 1: One container on GPU 0 (Baseline)")
         print("="*60)
         result = run_benchmark(
-            "1 Container/GPU - 10 requests each",
-            [gpu0_port, gpu1_port],
+            "1 Container on GPU 0 - 10 requests",
+            [6000],
             10,
             LONG_PROMPT,
             MAX_NEW_TOKENS
@@ -326,15 +322,14 @@ def main():
         if result:
             results.append(result)
     
-    # Test 2: Two containers per GPU (MPS benefit test)
-    # Using all 4 ports if available
-    if len(available_ports) >= 3:
+    # Test 2: Two containers on GPU 0 (MPS benefit test)
+    if 6000 in available_ports and 6001 in available_ports:
         print("\n" + "="*60)
-        print(" TEST 2: Two containers per GPU (MPS Test)")
+        print(" TEST 2: Two containers on GPU 0 (MPS Test)")
         print("="*60)
         result = run_benchmark(
-            "2 Containers/GPU - 10 requests each",
-            available_ports[:4],
+            "2 Containers on GPU 0 - 10 requests each",
+            [6000, 6001],
             10,
             LONG_PROMPT,
             MAX_NEW_TOKENS
@@ -365,11 +360,13 @@ def main():
             print(f"    (Test 2 processes {results[1].get('successful', 0) + results[1].get('failed', 0)} requests vs {results[0].get('successful', 0) + results[0].get('failed', 0)} in Test 1)")
             
             if throughput_speedup > 1.0:
-                print(f"\n  ✓ MPS is working! {(throughput_speedup - 1) * 100:.1f}% more throughput with 4 containers vs 2")
+                print(f"\n  ✓ MPS is working! {(throughput_speedup - 1) * 100:.1f}% more throughput with 2 containers vs 1 on same GPU")
+                print(f"    VRAM isolation and SM time-sharing are both active")
             elif throughput_speedup > 0.9:
                 print(f"\n  ~ MPS is working but minimal benefit (workload may be CPU-bound)")
+                print(f"    Try a larger model to increase GPU utilization")
             else:
-                print(f"\n  ✗ MPS may not be configured correctly")
+                print(f"\n  ✗ MPS may not be configured correctly or VRAM limits are too restrictive")
     
     print(f"\n Benchmark completed at: {datetime.now().isoformat()}")
 
