@@ -17,10 +17,12 @@ from datetime import datetime
 
 NUM_REQUESTS_PER_CONTAINER = 3  # Requests per container in each test
 
-# Configuration
-LONG_PROMPT = """The history of artificial intelligence began in antiquity, with myths, stories and rumors of artificial beings endowed with intelligence or consciousness by master craftsmen. The seeds of modern AI were planted by classical philosophers who attempted to describe the process of human thinking as the mechanical manipulation of symbols. This work culminated in the invention of the programmable digital computer in the 1940s, a machine based on the abstract essence of mathematical reasoning. This device and the ideas behind it inspired a handful of scientists to begin seriously discussing the possibility of building an electronic brain. The field of AI research was founded at a workshop held on the campus of Dartmouth College during the summer of 1956. Those who attended would become the leaders of AI research for decades. Many of them predicted that a machine as intelligent as a human being would exist in no more than a generation, and they were given millions of dollars to make this vision come true. Eventually, it became obvious that they had grossly underestimated the difficulty of the project. In 1973, in response to the criticism from James Lighthill and ongoing pressure from congress, the U.S. and British Governments stopped funding undirected research into artificial intelligence, and the difficult years that followed would later be known as an AI winter. Seven years later, a visionary initiative by the Japanese Government inspired governments and industry to provide AI with billions of dollars, but by the late 1980s the investors became disillusioned and withdrew funding again."""
+# Configuration - Two different prompts for different outputs
+PROMPT_TEST1 = """The evolution of computing technology has been one of the most transformative developments in human history. From the earliest mechanical calculators to modern quantum computers, each generation has brought exponential improvements in processing power, storage capacity, and energy efficiency. The first electronic computers of the 1940s filled entire rooms and could perform only basic calculations. Today, smartphones carry more computing power than all of NASA had during the Apollo moon landings. This remarkable progress has been driven by innovations in semiconductor manufacturing, software engineering, and network infrastructure. Cloud computing has democratized access to powerful computing resources, enabling startups and researchers to leverage capabilities that were once available only to large corporations. As we look to the future, emerging technologies like neuromorphic computing and photonic processors promise to push the boundaries even further."""
 
-MAX_NEW_TOKENS = 300  # Generate enough tokens to take measurable time
+PROMPT_TEST2 = """Space exploration represents humanity's greatest adventure into the unknown. Since the launch of Sputnik in 1957, we have sent probes to every planet in our solar system, landed rovers on Mars, and even dispatched spacecraft beyond the boundaries of our cosmic neighborhood. The International Space Station has served as a laboratory for groundbreaking research in microgravity for over two decades. Private companies like SpaceX and Blue Origin are now revolutionizing the industry with reusable rockets and ambitious plans for Mars colonization. Scientists continue to discover exoplanets in habitable zones around distant stars, fueling speculation about extraterrestrial life. The James Webb Space Telescope is revealing the universe's earliest galaxies in unprecedented detail. Future missions aim to return humans to the Moon and eventually establish permanent settlements on other worlds."""
+
+MAX_NEW_TOKENS = 100  # Generate enough tokens to take measurable time
 
 def get_gpu_stats():
     """Get current GPU memory usage"""
@@ -71,6 +73,70 @@ def check_gpu_available():
     except Exception as e:
         print(f"ERROR: Failed to check GPU: {e}")
         sys.exit(1)
+
+def stop_mps_daemon():
+    """Stop the MPS daemon completely"""
+    print("\n  Stopping MPS daemon...")
+    try:
+        # Try graceful shutdown first
+        subprocess.run(
+            'echo quit | sudo nvidia-cuda-mps-control 2>/dev/null',
+            shell=True, timeout=5
+        )
+        time.sleep(1)
+    except:
+        pass
+    
+    # Force kill all MPS processes
+    subprocess.run(['sudo', 'pkill', '-9', 'nvidia-cuda-mps-control'], capture_output=True)
+    subprocess.run(['sudo', 'pkill', '-9', 'nvidia-cuda-mps-server'], capture_output=True)
+    subprocess.run(['sudo', 'pkill', '-9', 'nvidia-cuda-mps'], capture_output=True)
+    time.sleep(2)
+    
+    # Verify it's stopped
+    result = subprocess.run(['pgrep', '-x', 'nvidia-cuda-mps'], capture_output=True, text=True)
+    if result.returncode != 0:
+        print("  ✓ MPS daemon stopped successfully")
+        return True
+    else:
+        print("  ✗ WARNING: MPS daemon may still be running")
+        return False
+
+def start_mps_daemon():
+    """Start the MPS daemon"""
+    print("\n  Starting MPS daemon...")
+    
+    # Clean up MPS directories
+    subprocess.run(['sudo', 'rm', '-rf', '/tmp/nvidia-mps/*'], capture_output=True)
+    subprocess.run(['sudo', 'mkdir', '-p', '/tmp/nvidia-mps'], capture_output=True)
+    subprocess.run(['sudo', 'chmod', '1777', '/tmp/nvidia-mps'], capture_output=True)
+    
+    # Set GPU to exclusive process mode
+    subprocess.run(['sudo', 'nvidia-smi', '-i', '0', '-c', 'EXCLUSIVE_PROCESS'], capture_output=True)
+    
+    # Start MPS control daemon
+    env = os.environ.copy()
+    env['CUDA_VISIBLE_DEVICES'] = '0'
+    env['CUDA_MPS_PIPE_DIRECTORY'] = '/tmp/nvidia-mps'
+    env['CUDA_MPS_LOG_DIRECTORY'] = '/tmp/nvidia-mps'
+    
+    subprocess.run(
+        'sudo -E nvidia-cuda-mps-control -d',
+        shell=True, env=env
+    )
+    
+    # Wait for it to initialize
+    print("  Waiting for MPS to initialize...")
+    time.sleep(5)
+    
+    # Verify it's running
+    result = subprocess.run(['pgrep', '-x', 'nvidia-cuda-mps'], capture_output=True, text=True)
+    if result.returncode == 0:
+        print(f"  ✓ MPS daemon started (PID: {result.stdout.strip()})")
+        return True
+    else:
+        print("  ✗ WARNING: MPS daemon may not have started")
+        return False
 
 def get_container_vram_shim_log(container_name):
     """Get VRAM limiter shim log from inside a container"""
@@ -415,19 +481,15 @@ def check_mps_status():
 def main():
     print("="*60)
     print(" MPS BENCHMARK - GPU Sharing Performance Test")
-    print(" Sequential vs Parallel (MPS) Comparison")
+    print(" Test 1: WITHOUT MPS  vs  Test 2: WITH MPS")
     print("="*60)
     print(f" Started at: {datetime.now().isoformat()}")
-    print(f" Prompt length: {len(LONG_PROMPT)} characters")
     print(f" Max new tokens: {MAX_NEW_TOKENS}")
     print(f" Requests per container: {NUM_REQUESTS_PER_CONTAINER}")
     
     # Check GPU availability first
     print("\n Checking GPU availability...")
     check_gpu_available()
-    
-    # Run MPS diagnostic check first
-    check_mps_status()
     
     # Detect available containers
     print("\n Detecting containers...")
@@ -451,41 +513,62 @@ def main():
     results = []
     
     # ============================================================
-    # TEST 1: SEQUENTIAL (No MPS benefit - requests one at a time)
+    # TEST 1: WITHOUT MPS - Stop MPS daemon first
     # ============================================================
     print("\n" + "="*60)
-    print(" TEST 1: SEQUENTIAL EXECUTION (No MPS Benefit)")
-    print(" Each container processes requests one at a time")
+    print(" TEST 1: PARALLEL EXECUTION WITHOUT MPS")
+    print(" MPS daemon will be STOPPED for this test")
     print("="*60)
+    
+    # Stop MPS daemon
+    stop_mps_daemon()
+    
+    # Reset GPU to default compute mode (not exclusive)
+    print("  Setting GPU to DEFAULT compute mode...")
+    subprocess.run(['sudo', 'nvidia-smi', '-i', '0', '-c', 'DEFAULT'], capture_output=True)
+    time.sleep(2)
+    
+    # Check MPS status (should be off)
+    check_mps_status()
+    
     result = run_benchmark(
-        f"Sequential - 3 containers x {NUM_REQUESTS_PER_CONTAINER} requests",
+        f"Without MPS - 3 containers x {NUM_REQUESTS_PER_CONTAINER} requests",
         test_ports,
         NUM_REQUESTS_PER_CONTAINER,
-        LONG_PROMPT,
+        PROMPT_TEST1,
         MAX_NEW_TOKENS,
-        parallel=False  # Sequential execution
+        parallel=True  # Parallel but WITHOUT MPS
     )
     if result:
         results.append(result)
     
-    # Small pause between tests
-    print("\n Pausing 5 seconds before next test...")
-    time.sleep(5)
+    # Pause between tests
+    print("\n" + "="*60)
+    print(" Pausing 10 seconds before starting MPS test...")
+    print("="*60)
+    time.sleep(10)
     
     # ============================================================
-    # TEST 2: PARALLEL (MPS benefit - all requests at once)
+    # TEST 2: WITH MPS - Start MPS daemon
     # ============================================================
     print("\n" + "="*60)
-    print(" TEST 2: PARALLEL EXECUTION (With MPS)")
-    print(" All 3 containers process requests simultaneously")
+    print(" TEST 2: PARALLEL EXECUTION WITH MPS")
+    print(" MPS daemon will be STARTED for this test")
     print("="*60)
+    
+    # Start MPS daemon
+    start_mps_daemon()
+    
+    # Check MPS status (should be on)
+    check_mps_status()
+    
     result = run_benchmark(
-        f"Parallel (MPS) - 3 containers x {NUM_REQUESTS_PER_CONTAINER} requests",
+        f"With MPS - 3 containers x {NUM_REQUESTS_PER_CONTAINER} requests",
         test_ports,
         NUM_REQUESTS_PER_CONTAINER,
-        LONG_PROMPT,
+        PROMPT_TEST2,
         MAX_NEW_TOKENS,
-        parallel=True  # Parallel execution with MPS
+        parallel=True  # Parallel WITH MPS
     )
     if result:
         results.append(result)
@@ -496,8 +579,8 @@ def main():
         print(" BENCHMARK SUMMARY")
         print("="*60)
         
-        seq_result = results[0]
-        par_result = results[1]
+        no_mps_result = results[0]
+        mps_result = results[1]
         
         print(f"\n  {'Test':<50} {'Requests':<10} {'Time (sec)':<12} {'Throughput':<12}")
         print("  " + "-"*84)
@@ -506,16 +589,16 @@ def main():
             print(f"  {r['test_name']:<50} {total_requests:<10} {r['total_time_sec']:<12.2f} {r['throughput_rps']:<12.2f} req/s")
         
         # Calculate improvements
-        speedup = seq_result['total_time_sec'] / par_result['total_time_sec'] if par_result['total_time_sec'] > 0 else 0
-        throughput_improvement = par_result['throughput_rps'] / seq_result['throughput_rps'] if seq_result['throughput_rps'] > 0 else 0
-        time_saved = seq_result['total_time_sec'] - par_result['total_time_sec']
-        time_saved_pct = (time_saved / seq_result['total_time_sec']) * 100 if seq_result['total_time_sec'] > 0 else 0
+        speedup = no_mps_result['total_time_sec'] / mps_result['total_time_sec'] if mps_result['total_time_sec'] > 0 else 0
+        throughput_improvement = mps_result['throughput_rps'] / no_mps_result['throughput_rps'] if no_mps_result['throughput_rps'] > 0 else 0
+        time_saved = no_mps_result['total_time_sec'] - mps_result['total_time_sec']
+        time_saved_pct = (time_saved / no_mps_result['total_time_sec']) * 100 if no_mps_result['total_time_sec'] > 0 else 0
         
         print(f"\n  {'='*60}")
         print(f"  ANALYSIS: MPS Performance Impact")
         print(f"  {'='*60}")
-        print(f"\n  Sequential Time:  {seq_result['total_time_sec']:.2f} sec ({seq_result['total_time_ms']:.0f} ms)")
-        print(f"  Parallel Time:    {par_result['total_time_sec']:.2f} sec ({par_result['total_time_ms']:.0f} ms)")
+        print(f"\n  Without MPS:  {no_mps_result['total_time_sec']:.2f} sec ({no_mps_result['total_time_ms']:.0f} ms)")
+        print(f"  With MPS:     {mps_result['total_time_sec']:.2f} sec ({mps_result['total_time_ms']:.0f} ms)")
         print(f"\n  Time Saved:       {time_saved:.2f} sec ({time_saved_pct:.1f}% faster)")
         print(f"  Speedup Factor:   {speedup:.2f}x")
         print(f"  Throughput Boost: {throughput_improvement:.2f}x ({(throughput_improvement-1)*100:.1f}% improvement)")
@@ -525,25 +608,23 @@ def main():
         print(f"  {'='*60}")
         
         if speedup > 1.5:
-            print(f"\n  ✓ MPS is working excellently!")
+            print(f"\n  ✓ MPS provides significant benefit!")
             print(f"    - {speedup:.1f}x speedup demonstrates effective SM time-sharing")
             print(f"    - All 3 containers ran concurrently on the same GPU")
-            print(f"    - VRAM isolation shim is enforcing memory limits per container")
+            print(f"    - Without MPS, containers had to wait for GPU access")
         elif speedup > 1.1:
-            print(f"\n  ✓ MPS is working!")
-            print(f"    - {speedup:.1f}x speedup shows parallel execution benefit")
-            print(f"    - VRAM isolation is active")
-            print(f"    - Consider a larger model for more GPU-bound workload")
+            print(f"\n  ✓ MPS provides measurable benefit!")
+            print(f"    - {speedup:.1f}x speedup shows parallel execution works better with MPS")
+            print(f"    - VRAM isolation shim is enforcing memory limits per container")
         else:
-            print(f"\n  ~ MPS benefit is minimal")
-            print(f"    - Workload may be CPU-bound rather than GPU-bound")
+            print(f"\n  ~ MPS benefit is minimal in this test")
+            print(f"    - Workload may be too light to show MPS benefits")
             print(f"    - Try increasing MAX_NEW_TOKENS or using a larger model")
         
-        print(f"\n  How it works:")
-        print(f"    1. MPS allows multiple CUDA contexts to share GPU SMs")
-        print(f"    2. VRAM Limiter Shim intercepts cudaMalloc to enforce memory limits")
-        print(f"    3. Each container thinks it has exclusive GPU access")
-        print(f"    4. Sequential test = no overlap, Parallel test = full overlap via MPS")
+        print(f"\n  How MPS helps:")
+        print(f"    - Without MPS: Multiple CUDA contexts compete for GPU, causing serialization")
+        print(f"    - With MPS: Single CUDA context manages all requests, enabling true parallelism")
+        print(f"    - VRAM Shim: Intercepts cudaMalloc to enforce per-container memory limits")
     
     print(f"\n{'='*60}")
     print(f" Benchmark completed at: {datetime.now().isoformat()}")
