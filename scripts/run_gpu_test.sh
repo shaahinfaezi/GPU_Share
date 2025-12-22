@@ -211,10 +211,14 @@ export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
 
 # Stop any existing MPS daemon first
 echo "Stopping existing MPS daemon..."
-# Try graceful shutdown first
+# Try graceful shutdown first with timeout to avoid hanging
 export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
-echo quit | sudo -E nvidia-cuda-mps-control 2>/dev/null || true
-sleep 2
+if command -v timeout >/dev/null 2>&1; then
+  echo quit | sudo timeout 3s nvidia-cuda-mps-control 2>/dev/null || true
+else
+  echo "Skipping graceful shutdown (timeout command not found)"
+fi
+sleep 1
 
 # Force kill all MPS processes
 echo "Force stopping all MPS processes..."

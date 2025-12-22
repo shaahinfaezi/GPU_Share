@@ -58,7 +58,8 @@ def send_inference_request(port, prompt, max_tokens, request_id):
                 'success': True,
                 'latency_ms': data.get('latency_ms', (end_time - start_time) * 1000),
                 'total_time_ms': (end_time - start_time) * 1000,
-                'output_preview': data.get('text', '')[:100] + '...'
+                'output_preview': data.get('text', '')[:100] + '...',
+                'text': data.get('text', '')
             }
         else:
             return {
@@ -211,6 +212,22 @@ def run_benchmark(test_name, ports, num_requests, prompt, max_tokens):
             )
             print(f"    GPU {gpu_id}: {peak} MB")
     
+    # Save outputs to file
+    output_file = "benchmark_outputs.txt"
+    try:
+        with open(output_file, "a", encoding="utf-8") as f:
+            f.write(f"\n\n{'='*60}\n")
+            f.write(f"TEST: {test_name}\n")
+            f.write(f"DATE: {datetime.now().isoformat()}\n")
+            f.write(f"{'='*60}\n")
+            for r in successful:
+                f.write(f"\n[Request {r['request_id']} | Port {r['port']} | Latency {r['latency_ms']:.2f}ms]\n")
+                f.write(f"{r.get('text', '')}\n")
+                f.write("-" * 40 + "\n")
+        print(f"\n  Outputs saved to {output_file}")
+    except Exception as e:
+        print(f"\n  Failed to save outputs to file: {e}")
+
     return {
         'test_name': test_name,
         'total_time_ms': total_time * 1000,
