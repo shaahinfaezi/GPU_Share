@@ -97,6 +97,9 @@ def stop_mps_daemon():
     result = subprocess.run(['pgrep', '-x', 'nvidia-cuda-mps'], capture_output=True, text=True)
     if result.returncode != 0:
         print("  ✓ MPS daemon stopped successfully")
+        # Set GPU back to default mode for non-MPS operation
+        subprocess.run(['sudo', 'nvidia-smi', '-i', '0', '-c', 'DEFAULT'], capture_output=True)
+        print("  ✓ GPU set to DEFAULT compute mode")
         return True
     else:
         print("  ✗ WARNING: MPS daemon may still be running")
@@ -522,11 +525,6 @@ def main():
     
     # Stop MPS daemon
     stop_mps_daemon()
-    
-    # Reset GPU to default compute mode (not exclusive)
-    print("  Setting GPU to DEFAULT compute mode...")
-    subprocess.run(['sudo', 'nvidia-smi', '-i', '0', '-c', 'DEFAULT'], capture_output=True)
-    time.sleep(2)
     
     # Check MPS status (should be off)
     check_mps_status()

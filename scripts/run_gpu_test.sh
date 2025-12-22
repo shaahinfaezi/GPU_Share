@@ -198,53 +198,13 @@ echo "--- Setting up NVIDIA MPS for concurrent GPU access ---"
 NUM_GPUS=$(nvidia-smi --query-gpu=count --format=csv,noheader | head -1)
 echo "Detected $NUM_GPUS GPU(s)"
 
-# Set ALL GPUs to exclusive process mode (required for MPS)
-# For single GPU test, only set GPU 0
-echo "Setting GPU 0 to EXCLUSIVE_PROCESS mode..."
-sudo nvidia-smi -i 0 -c EXCLUSIVE_PROCESS || true
+# Set GPU to DEFAULT mode (not exclusive) for initial setup
+# MPS will be started later by the benchmark script if needed
+echo "Setting GPU 0 to DEFAULT compute mode for initial setup..."
+sudo nvidia-smi -i 0 -c DEFAULT || true
 
-# Start MPS daemon
-echo "Starting NVIDIA MPS daemon..."
-export CUDA_VISIBLE_DEVICES=0
-export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
-export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
-
-# Stop any existing MPS daemon first
-echo "Stopping existing MPS daemon..."
-# Try graceful shutdown first with timeout to avoid hanging
-export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
-if command -v timeout >/dev/null 2>&1; then
-  echo quit | sudo timeout 3s nvidia-cuda-mps-control 2>/dev/null || true
-else
-  echo "Skipping graceful shutdown (timeout command not found)"
-fi
-sleep 1
-
-# Force kill all MPS processes
-echo "Force stopping all MPS processes..."
-sudo pkill -9 nvidia-cuda-mps-control || true
-sudo pkill -9 nvidia-cuda-mps-server || true
-sudo pkill -9 nvidia-cuda-mps || true
-sleep 1
-
-# Clean up MPS directories to ensure fresh start
-echo "Cleaning MPS directories..."
-sudo rm -rf /tmp/nvidia-mps/*
-sudo mkdir -p /tmp/nvidia-mps
-sudo chmod 1777 /tmp/nvidia-mps
-
-# Start MPS control daemon
-echo "Starting new MPS control daemon..."
-sudo -E nvidia-cuda-mps-control -d
-echo "Waiting for MPS daemon to fully initialize..."
-sleep 5
-
-# Verify MPS is running
-if pgrep -x "nvidia-cuda-mps" > /dev/null; then
-  echo "✓ MPS daemon is running"
-else
-  echo "WARNING: MPS daemon may not have started properly"
-fi
+# MPS will be started by benchmark_mps.py before Test 2
+echo "MPS daemon will be started later by the benchmark script"
 
 # --- Run the scheduler in the background ---
 echo "--- Starting GPU scheduler (log: $SCHEDULER_LOG) ---"
