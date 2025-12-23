@@ -77,8 +77,16 @@ def check_gpu_available():
 def stop_mps_daemon():
     """Stop the MPS daemon completely"""
     print("\n  Stopping MPS daemon...")
+    
+    # Try systemctl stop first (if MPS was started as a service)
     try:
-        # Try graceful shutdown first
+        subprocess.run(['sudo', 'systemctl', 'stop', 'nvidia-mps'], capture_output=True, timeout=10)
+        time.sleep(2)
+    except:
+        pass
+    
+    # Try graceful shutdown via control socket
+    try:
         subprocess.run(
             'echo quit | sudo nvidia-cuda-mps-control 2>/dev/null',
             shell=True, timeout=5
@@ -87,11 +95,27 @@ def stop_mps_daemon():
     except:
         pass
     
-    # Force kill all MPS processes
-    subprocess.run(['sudo', 'pkill', '-9', 'nvidia-cuda-mps-control'], capture_output=True)
-    subprocess.run(['sudo', 'pkill', '-9', 'nvidia-cuda-mps-server'], capture_output=True)
-    subprocess.run(['sudo', 'pkill', '-9', 'nvidia-cuda-mps'], capture_output=True)
+    # Force kill all MPS-related processes aggressively
+    for proc in ['nvidia-cuda-mps-control', 'nvidia-cuda-mps-server', 'nvidia-cuda-mps']:
+        subprocess.run(['sudo', 'pkill', '-9', '-f', proc], capture_output=True)
     time.sleep(2)
+    
+    # Additional cleanup: kill any remaining MPS processes by name pattern
+    try:
+        # Find and kill any processes with 'mps' in name
+        result = subprocess.run(['pgrep', '-f', 'nvidia.*mps'], capture_output=True, text=True)
+        if result.returncode == 0:
+            pids = result.stdout.strip().split('\n')
+            for pid in pids:
+                if pid.strip():
+                    subprocess.run(['sudo', 'kill', '-9', pid.strip()], capture_output=True)
+    except:
+        pass
+    
+    time.sleep(2)
+    
+    # Clean up MPS pipe directory
+    subprocess.run(['sudo', 'rm', '-rf', '/tmp/nvidia-mps/*'], capture_output=True)
     
     # Verify it's stopped
     result = subprocess.run(['pgrep', '-x', 'nvidia-cuda-mps'], capture_output=True, text=True)
@@ -103,6 +127,7 @@ def stop_mps_daemon():
         return True
     else:
         print("  ✗ WARNING: MPS daemon may still be running")
+        print(f"    Remaining processes: {result.stdout.strip()}")
         return False
 
 def start_mps_daemon():
@@ -278,8 +303,17 @@ def monitor_gpu_during_test(duration_sec, interval=0.5):
         time.sleep(interval)
     return snapshots
 
-def run_parallel_requests(ports, num_requests_per_port, prompt, max_tokens):
-    """Run inference requests in parallel across multiple ports"""
+def generate_prompts(base_prompt, num_prompts):
+    """Generate different prompts with similar token counts"""
+    prompts = []
+    for i in range(num_prompts):
+        # Add a unique prefix to make each prompt different
+        prompt = f"Request {i+1}: {base_prompt}"
+        prompts.append(prompt)
+    return prompts
+
+def run_parallel_requests(ports, num_requests_per_port, prompts, max_tokens):
+    """Run inference requests in parallel across multiple ports with different prompts"""
     results = []
     
     with ThreadPoolExecutor(max_workers=len(ports) * num_requests_per_port) as executor:
@@ -287,11 +321,14 @@ def run_parallel_requests(ports, num_requests_per_port, prompt, max_tokens):
         request_id = 0
         
         # Submit all requests
+        prompt_idx = 0
         for port in ports:
             for i in range(num_requests_per_port):
+                prompt = prompts[prompt_idx % len(prompts)]
                 future = executor.submit(send_inference_request, port, prompt, max_tokens, request_id)
                 futures.append(future)
                 request_id += 1
+                prompt_idx += 1
         
         # Collect results
         for future in as_completed(futures):
@@ -333,9 +370,9 @@ def print_gpu_stats_visual(stats, title="GPU Memory Usage"):
         print_ascii_bar("VRAM", gpu['used_mb'], gpu['total_mb'])
         print(f"  Utilization: {gpu['util_pct']}%")
 
-def run_benchmark(test_name, ports, num_requests, prompt, max_tokens, parallel=True):
+def run_benchmark(test_name, ports, num_requests, base_prompt, max_tokens, parallel=True):
     """Run a single benchmark test"""
-    mode_str = "PARALLEL (MPS)" if parallel else "SEQUENTIAL (no MPS benefit)"
+    mode_str = "PARALLEL" + (" (MPS)" if "MPS" in test_name else " (no MPS benefit)")
     print(f"\n{'#'*60}")
     print(f"# {test_name}")
     print(f"# Ports: {ports}")
@@ -359,6 +396,10 @@ def run_benchmark(test_name, ports, num_requests, prompt, max_tokens, parallel=T
     # Show VRAM isolation status
     print_vram_isolation_status(ports)
     
+    # Generate different prompts for each request
+    total_requests = len(ports) * num_requests
+    prompts = generate_prompts(base_prompt, total_requests)
+    
     # Start GPU monitoring in background
     monitor_duration = 120  # Monitor for up to 120 seconds
     gpu_snapshots = []
@@ -366,16 +407,15 @@ def run_benchmark(test_name, ports, num_requests, prompt, max_tokens, parallel=T
         target=lambda: gpu_snapshots.extend(monitor_gpu_during_test(monitor_duration, 0.5))
     )
     
-    total_requests = len(ports) * num_requests
     print(f"\nStarting {total_requests} {mode_str.lower()} inference requests...")
     
     # Run the actual benchmark
     monitor_thread.start()
     start_time = time.time()
     if parallel:
-        results = run_parallel_requests(ports, num_requests, prompt, max_tokens)
+        results = run_parallel_requests(ports, num_requests, prompts, max_tokens)
     else:
-        results = run_sequential_requests(ports, num_requests, prompt, max_tokens)
+        results = run_sequential_requests(ports, num_requests, base_prompt, max_tokens)  # Keep sequential with single prompt for now
     end_time = time.time()
     total_time = end_time - start_time
     
@@ -541,7 +581,7 @@ def main():
     results = []
     
     # ============================================================
-    # TEST 1: WITHOUT MPS - single container, sequential requests
+    # TEST 1: WITHOUT MPS - single container, parallel requests
     # ============================================================
     print("\n" + "="*60)
     print(" TEST 1: PARALLEL EXECUTION WITHOUT MPS")
@@ -557,12 +597,12 @@ def main():
     # Use only ONE container for Test 1 and run sequentially
     test1_ports = [test_ports[0]]
     result = run_benchmark(
-        f"Without MPS - 1 container x {NUM_REQUESTS_PER_CONTAINER} sequential requests",
+        f"Without MPS - 1 container x {NUM_REQUESTS_PER_CONTAINER} parallel requests",
         test1_ports,
         NUM_REQUESTS_PER_CONTAINER,
         PROMPT_TEST1,
         MAX_NEW_TOKENS,
-        parallel=False  # Sequential without MPS
+        parallel=True  # Parallel without MPS
     )
     if result:
         results.append(result)
