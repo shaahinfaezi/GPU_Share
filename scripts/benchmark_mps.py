@@ -192,7 +192,7 @@ def get_container_name_by_port(port):
 
 def restart_containers_for_ports(ports, wait_health=True, timeout=120):
     """Restart containers mapped to the given ports and optionally wait for health"""
-    print("\nRestarting containers so CUDA contexts initialize under MPS...")
+    print("\nRestarting containers to reinitialize CUDA contexts...")
     for port in ports:
         name = get_container_name_by_port(port)
         if not name:
@@ -303,12 +303,12 @@ def monitor_gpu_during_test(duration_sec, interval=0.5):
         time.sleep(interval)
     return snapshots
 
-def generate_prompts(base_prompt, num_prompts):
+def generate_prompts(base_prompt, num_prompts, test_label=""):
     """Generate different prompts with similar token counts"""
     prompts = []
     for i in range(num_prompts):
         # Add a unique prefix to make each prompt different
-        prompt = f"Request {i+1}: {base_prompt}"
+        prompt = f"{test_label}Request {i+1}: {base_prompt}"
         prompts.append(prompt)
     return prompts
 
@@ -372,7 +372,7 @@ def print_gpu_stats_visual(stats, title="GPU Memory Usage"):
 
 def run_benchmark(test_name, ports, num_requests, base_prompt, max_tokens, parallel=True):
     """Run a single benchmark test"""
-    mode_str = "PARALLEL" + (" (with MPS)" if "MPS" in test_name else " (without MPS)")
+    mode_str = "PARALLEL" + (" (with MPS)" if "With MPS" in test_name else " (without MPS)")
     print(f"\n{'#'*60}")
     print(f"# {test_name}")
     print(f"# Ports: {ports}")
@@ -398,7 +398,8 @@ def run_benchmark(test_name, ports, num_requests, base_prompt, max_tokens, paral
     
     # Generate different prompts for each request
     total_requests = len(ports) * num_requests
-    prompts = generate_prompts(base_prompt, total_requests)
+    test_label = "Test1 " if "Without MPS" in test_name else "Test2 "
+    prompts = generate_prompts(base_prompt, total_requests, test_label)
     
     # Start GPU monitoring in background
     monitor_duration = 120  # Monitor for up to 120 seconds
@@ -660,17 +661,22 @@ def main():
             total_requests = r.get('successful', 0) + r.get('failed', 0)
             print(f"  {r['test_name']:<50} {total_requests:<10} {r['total_time_sec']:<12.2f} {r['throughput_rps']:<12.2f} req/s")
         
-        # Calculate improvements
-        speedup = no_mps_result['total_time_sec'] / mps_result['total_time_sec'] if mps_result['total_time_sec'] > 0 else 0
+        # Calculate adjusted time for Test 1 (simulating sequential execution across all containers)
+        num_containers_test1 = len(test1_ports)
+        num_containers_test2 = len(test_ports)
+        adjusted_no_mps_time_sec = no_mps_result['total_time_sec'] * num_containers_test2 / num_containers_test1
+        adjusted_no_mps_time_ms = adjusted_no_mps_time_sec * 1000
+        
+        speedup = adjusted_no_mps_time_sec / mps_result['total_time_sec'] if mps_result['total_time_sec'] > 0 else 0
         throughput_improvement = mps_result['throughput_rps'] / no_mps_result['throughput_rps'] if no_mps_result['throughput_rps'] > 0 else 0
-        time_saved = no_mps_result['total_time_sec'] - mps_result['total_time_sec']
-        time_saved_pct = (time_saved / no_mps_result['total_time_sec']) * 100 if no_mps_result['total_time_sec'] > 0 else 0
+        time_saved = adjusted_no_mps_time_sec - mps_result['total_time_sec']
+        time_saved_pct = (time_saved / adjusted_no_mps_time_sec) * 100 if adjusted_no_mps_time_sec > 0 else 0
         
         print(f"\n  {'='*60}")
         print(f"  ANALYSIS: MPS Performance Impact")
         print(f"  {'='*60}")
-        print(f"\n  Without MPS:  {no_mps_result['total_time_sec']:.2f} sec ({no_mps_result['total_time_ms']:.0f} ms)")
-        print(f"  With MPS:     {mps_result['total_time_sec']:.2f} sec ({mps_result['total_time_ms']:.0f} ms)")
+        print(f"\n  Without MPS (adjusted for {num_containers_test2} containers):  {adjusted_no_mps_time_sec:.2f} sec ({adjusted_no_mps_time_ms:.0f} ms)")
+        print(f"  With MPS ({num_containers_test2} containers parallel):     {mps_result['total_time_sec']:.2f} sec ({mps_result['total_time_ms']:.0f} ms)")
         print(f"\n  Time Saved:       {time_saved:.2f} sec ({time_saved_pct:.1f}% faster)")
         print(f"  Speedup Factor:   {speedup:.2f}x")
         print(f"  Throughput Boost: {throughput_improvement:.2f}x ({(throughput_improvement-1)*100:.1f}% improvement)")
