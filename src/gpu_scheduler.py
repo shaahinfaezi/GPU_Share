@@ -107,13 +107,15 @@ def check_mps_status():
 def launch_container(image, gpu_id, port, vram_slice_mb):
     logger.info(f"Launching container: image={image}, gpu={gpu_id}, port={port}, vram_limit={vram_slice_mb}MB")
     
+    # Do NOT force MPS environment for every container.
+    # Containers should work without MPS; when an MPS daemon is running
+    # with the default pipe dir (/tmp/nvidia-mps) and the directory is bind-mounted,
+    # CUDA can route contexts through MPS without requiring explicit envs here.
     env = {
         "NVIDIA_VISIBLE_DEVICES": str(gpu_id),
         "MODEL_NAME": os.environ.get("MODEL_NAME", "distilgpt2"),
         "GPU_VRAM_LIMIT_MB": str(vram_slice_mb), # Pass the VRAM limit to the container
         "CUDA_LAUNCH_BLOCKING": "1", # Better error messages
-        "CUDA_MPS_PIPE_DIRECTORY": os.environ.get("CUDA_MPS_PIPE_DIRECTORY", "/tmp/nvidia-mps"),
-        "CUDA_MPS_LOG_DIRECTORY": os.environ.get("CUDA_MPS_LOG_DIRECTORY", "/tmp/nvidia-mps")
     }
     logger.debug(f"Container environment: {env}")
     
@@ -129,7 +131,9 @@ def launch_container(image, gpu_id, port, vram_slice_mb):
     except Exception as e:
         logger.error(f"Error removing container {name}: {e}")
 
-    # Mount MPS pipe directory for GPU sharing
+    # Mount MPS pipe directory for GPU sharing (bind host -> container)
+    # This is harmless if the MPS daemon is not running; when it is,
+    # the default /tmp/nvidia-mps path will be used by CUDA.
     mps_pipe_dir = os.environ.get("CUDA_MPS_PIPE_DIRECTORY", "/tmp/nvidia-mps")
     
     try:
@@ -191,8 +195,7 @@ def main():
     logger.info("Initial GPU State:")
     write_snapshot()
     
-    # MPS should already be started by run_gpu_test.sh, but try again just in case
-    subprocess.run(["sudo", "systemctl", "start", "nvidia-mps"], check=False)
+    # Do not auto-start MPS here; tests/scripts control MPS lifecycle explicitly
 
     containers = []
     port = args.start_port

@@ -15,7 +15,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
-NUM_REQUESTS_PER_CONTAINER = 3  # Requests per container in each test
+NUM_REQUESTS_PER_CONTAINER = 10  # Requests per container in each test
 
 # Configuration - Two different prompts for different outputs
 PROMPT_TEST1 = """The evolution of computing technology has been one of the most transformative developments in human history. From the earliest mechanical calculators to modern quantum computers, each generation has brought exponential improvements in processing power, storage capacity, and energy efficiency. The first electronic computers of the 1940s filled entire rooms and could perform only basic calculations. Today, smartphones carry more computing power than all of NASA had during the Apollo moon landings. This remarkable progress has been driven by innovations in semiconductor manufacturing, software engineering, and network infrastructure. Cloud computing has democratized access to powerful computing resources, enabling startups and researchers to leverage capabilities that were once available only to large corporations. As we look to the future, emerging technologies like neuromorphic computing and photonic processors promise to push the boundaries even further."""
@@ -164,6 +164,31 @@ def get_container_name_by_port(port):
         return result.stdout.strip() if result.returncode == 0 else None
     except:
         return None
+
+def restart_containers_for_ports(ports, wait_health=True, timeout=120):
+    """Restart containers mapped to the given ports and optionally wait for health"""
+    print("\nRestarting containers so CUDA contexts initialize under MPS...")
+    for port in ports:
+        name = get_container_name_by_port(port)
+        if not name:
+            print(f"  ✗ No container found for port {port}")
+            continue
+        print(f"  Restarting {name} (port {port})...")
+        subprocess.run(['sudo', 'docker', 'restart', name], check=False)
+    
+    if wait_health:
+        print("  Waiting for containers to become healthy...")
+        start = time.time()
+        unhealthy = set(ports)
+        while unhealthy and (time.time() - start) < timeout:
+            for port in list(unhealthy):
+                if check_container_health(port):
+                    print(f"    ✓ Port {port} healthy")
+                    unhealthy.remove(port)
+            if unhealthy:
+                time.sleep(2)
+        if unhealthy:
+            print(f"  ✗ Some containers failed to become healthy: {sorted(unhealthy)}")
 
 def print_vram_isolation_status(ports):
     """Print VRAM isolation status from shim logs"""
@@ -516,7 +541,7 @@ def main():
     results = []
     
     # ============================================================
-    # TEST 1: WITHOUT MPS - Stop MPS daemon first
+    # TEST 1: WITHOUT MPS - single container, sequential requests
     # ============================================================
     print("\n" + "="*60)
     print(" TEST 1: PARALLEL EXECUTION WITHOUT MPS")
@@ -529,13 +554,15 @@ def main():
     # Check MPS status (should be off)
     check_mps_status()
     
+    # Use only ONE container for Test 1 and run sequentially
+    test1_ports = [test_ports[0]]
     result = run_benchmark(
-        f"Without MPS - 3 containers x {NUM_REQUESTS_PER_CONTAINER} requests",
-        test_ports,
+        f"Without MPS - 1 container x {NUM_REQUESTS_PER_CONTAINER} sequential requests",
+        test1_ports,
         NUM_REQUESTS_PER_CONTAINER,
         PROMPT_TEST1,
         MAX_NEW_TOKENS,
-        parallel=True  # Parallel but WITHOUT MPS
+        parallel=False  # Sequential without MPS
     )
     if result:
         results.append(result)
@@ -560,8 +587,11 @@ def main():
     # Check MPS status (should be on)
     check_mps_status()
     
+    # Ensure containers reinitialize after MPS starts so contexts use MPS
+    restart_containers_for_ports(test_ports, wait_health=True)
+    
     result = run_benchmark(
-        f"With MPS - 3 containers x {NUM_REQUESTS_PER_CONTAINER} requests",
+        f"With MPS - 3 containers x {NUM_REQUESTS_PER_CONTAINER} parallel requests",
         test_ports,
         NUM_REQUESTS_PER_CONTAINER,
         PROMPT_TEST2,
