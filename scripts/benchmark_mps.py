@@ -372,7 +372,7 @@ def print_gpu_stats_visual(stats, title="GPU Memory Usage"):
 
 def run_benchmark(test_name, ports, num_requests, base_prompt, max_tokens, parallel=True):
     """Run a single benchmark test"""
-    mode_str = "PARALLEL" + (" (MPS)" if "MPS" in test_name else " (no MPS benefit)")
+    mode_str = "PARALLEL" + (" (with MPS)" if "MPS" in test_name else " (without MPS)")
     print(f"\n{'#'*60}")
     print(f"# {test_name}")
     print(f"# Ports: {ports}")
@@ -588,14 +588,18 @@ def main():
     print(" MPS daemon will be STOPPED for this test")
     print("="*60)
     
+    # Use only ONE container for Test 1
+    test1_ports = [test_ports[0]]
+    
     # Stop MPS daemon
     stop_mps_daemon()
     
     # Check MPS status (should be off)
     check_mps_status()
     
-    # Use only ONE container for Test 1 and run sequentially
-    test1_ports = [test_ports[0]]
+    # Restart container to ensure CUDA context initializes without MPS
+    restart_containers_for_ports(test1_ports, wait_health=True)
+    
     result = run_benchmark(
         f"Without MPS - 1 container x {NUM_REQUESTS_PER_CONTAINER} parallel requests",
         test1_ports,
