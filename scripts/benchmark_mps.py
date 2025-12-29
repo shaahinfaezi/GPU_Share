@@ -15,7 +15,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
-NUM_REQUESTS_PER_CONTAINER = 10  # Requests per container in each test
+NUM_REQUESTS_PER_CONTAINER = 100  # Requests per container in each test
 
 # Configuration - Two different prompts for different outputs
 PROMPT_TEST1 = """The evolution of computing technology has been one of the most transformative developments in human history. From the earliest mechanical calculators to modern quantum computers, each generation has brought exponential improvements in processing power, storage capacity, and energy efficiency. The first electronic computers of the 1940s filled entire rooms and could perform only basic calculations. Today, smartphones carry more computing power than all of NASA had during the Apollo moon landings. This remarkable progress has been driven by innovations in semiconductor manufacturing, software engineering, and network infrastructure. Cloud computing has democratized access to powerful computing resources, enabling startups and researchers to leverage capabilities that were once available only to large corporations. As we look to the future, emerging technologies like neuromorphic computing and photonic processors promise to push the boundaries even further."""
