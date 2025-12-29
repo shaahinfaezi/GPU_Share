@@ -200,8 +200,8 @@ echo "Detected $NUM_GPUS GPU(s)"
 
 # Set GPU to DEFAULT mode (not exclusive) for initial setup
 # MPS will be started later by the benchmark script if needed
-echo "Setting GPU 0 to DEFAULT compute mode for initial setup..."
-sudo nvidia-smi -i 0 -c DEFAULT || true
+echo "Setting GPU 1 to DEFAULT compute mode for initial setup..."
+sudo nvidia-smi -i 1 -c DEFAULT || true
 
 # MPS will be started by benchmark_mps.py before Test 2
 echo "MPS daemon will be started later by the benchmark script"

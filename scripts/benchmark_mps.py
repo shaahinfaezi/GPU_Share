@@ -122,7 +122,7 @@ def stop_mps_daemon():
     if result.returncode != 0:
         print("  ✓ MPS daemon stopped successfully")
         # Set GPU back to default mode for non-MPS operation
-        subprocess.run(['sudo', 'nvidia-smi', '-i', '0', '-c', 'DEFAULT'], capture_output=True)
+        subprocess.run(['sudo', 'nvidia-smi', '-i', '1', '-c', 'DEFAULT'], capture_output=True)
         print("  ✓ GPU set to DEFAULT compute mode")
         return True
     else:
@@ -140,11 +140,11 @@ def start_mps_daemon():
     subprocess.run(['sudo', 'chmod', '1777', '/tmp/nvidia-mps'], capture_output=True)
     
     # Set GPU to exclusive process mode
-    subprocess.run(['sudo', 'nvidia-smi', '-i', '0', '-c', 'EXCLUSIVE_PROCESS'], capture_output=True)
+    subprocess.run(['sudo', 'nvidia-smi', '-i', '1', '-c', 'EXCLUSIVE_PROCESS'], capture_output=True)
     
     # Start MPS control daemon
     env = os.environ.copy()
-    env['CUDA_VISIBLE_DEVICES'] = '0'
+    env['CUDA_VISIBLE_DEVICES'] = '1'
     env['CUDA_MPS_PIPE_DIRECTORY'] = '/tmp/nvidia-mps'
     env['CUDA_MPS_LOG_DIRECTORY'] = '/tmp/nvidia-mps'
     
