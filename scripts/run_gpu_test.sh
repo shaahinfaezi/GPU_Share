@@ -200,6 +200,9 @@ echo "Detected $NUM_GPUS GPU(s)"
 
 # Set GPU to DEFAULT mode (not exclusive) for initial setup
 # MPS will be started later by the benchmark script if needed
+# Ensure TARGET_GPU is defined (defaults to 1)
+TARGET_GPU="${TARGET_GPU:-1}"
+export TARGET_GPU
 echo "Setting GPU ${TARGET_GPU} to DEFAULT compute mode for initial setup..."
 sudo nvidia-smi -i ${TARGET_GPU} -c DEFAULT || true
 
