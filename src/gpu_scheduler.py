@@ -169,72 +169,86 @@ def parse_args():
     p.add_argument("--instances", type=int, default=int(os.environ.get("NUM_CONTAINERS", "4")))
     p.add_argument("--vram_slice_mb", type=int, default=VRAM_SLICE_MB)
     p.add_argument("--start_port", type=int, default=INFER_PORT_START)
+    p.add_argument("--startup-grace", type=int, default=int(os.environ.get("STARTUP_GRACE_SEC", "30")),
+                   help="seconds to wait during startup and before exiting on fatal error")
     return p.parse_args()
 
 def main():
     args = parse_args()
-    
-    logger.info("=" * 60)
-    logger.info("GPU Scheduler Starting")
-    logger.info("=" * 60)
-    logger.info(f"Configuration:")
-    logger.info(f"  Image: {args.image}")
-    logger.info(f"  Instances: {args.instances}")
-    logger.info(f"  VRAM per container: {args.vram_slice_mb}MB")
-    logger.info(f"  Start port: {args.start_port}")
-    logger.info(f"  Container prefix: {CONTAINER_PREFIX}")
-    logger.info(f"  MPS pipe dir: {os.environ.get('CUDA_MPS_PIPE_DIRECTORY', '/tmp/nvidia-mps')}")
-    
-    # Check MPS status
-    logger.info("-" * 40)
-    logger.info("Checking MPS status...")
-    check_mps_status()
-    
-    # Log initial GPU state
-    logger.info("-" * 40)
-    logger.info("Initial GPU State:")
-    write_snapshot()
-    
-    # Do not auto-start MPS here; tests/scripts control MPS lifecycle explicitly
-
-    containers = []
-    port = args.start_port
-    logger.info("-" * 40)
-    logger.info(f"Starting to launch {args.instances} containers...")
-    
-    for i in range(args.instances):
-        # Always use GPU 1 for all containers
-        gpu_id = 1
-        gpus = get_gpus()
-        gpu_1 = next((g for g in gpus if g['id'] == 1), None)
-        if not gpu_1 or gpu_1['free_mb'] < args.vram_slice_mb:
-            logger.error("Insufficient free memory on GPU 1, stopping container launches.")
-            break
-        logger.info(f"Launching container {i+1}/{args.instances} on GPU {gpu_id}, port {port}")
-        info = launch_container(args.image, gpu_id, port, args.vram_slice_mb)
-        containers.append(info)
-        port += 1
+    try:
+        logger.info("=" * 60)
+        logger.info("GPU Scheduler Starting")
+        logger.info("=" * 60)
+        logger.info(f"Configuration:")
+        logger.info(f"  Image: {args.image}")
+        logger.info(f"  Instances: {args.instances}")
+        logger.info(f"  VRAM per container: {args.vram_slice_mb}MB")
+        logger.info(f"  Start port: {args.start_port}")
+        logger.info(f"  Container prefix: {CONTAINER_PREFIX}")
+        logger.info(f"  MPS pipe dir: {os.environ.get('CUDA_MPS_PIPE_DIRECTORY', '/tmp/nvidia-mps')}")
         
-        # Wait longer for the container to fully initialize on the GPU
-        # This prevents CUDA "device busy" errors when multiple containers start on same GPU
-        wait_time = 15  # seconds
-        logger.info(f"Waiting {wait_time}s for container to initialize...")
-        time.sleep(wait_time)
+        # Check MPS status
+        logger.info("-" * 40)
+        logger.info("Checking MPS status...")
+        check_mps_status()
         
-        # Log GPU state after each container launch
-        logger.info("GPU state after container launch:")
+        # Log initial GPU state
+        logger.info("-" * 40)
+        logger.info("Initial GPU State:")
         write_snapshot()
+        
+        # Give scheduler a short grace period to let services settle and make debugging easier
+        if args.startup_grace and args.startup_grace > 0:
+            logger.info(f"Waiting {args.startup_grace}s for scheduler warmup...")
+            time.sleep(args.startup_grace)
+        
+        # Do not auto-start MPS here; tests/scripts control MPS lifecycle explicitly
 
-    logger.info("=" * 60)
-    logger.info(f"Successfully launched {len(containers)} containers")
-    logger.info("Container Summary:")
-    for c in containers:
-        logger.info(f"  {c['name']} -> GPU {c['gpu_id']}, port {c['port']}")
-    logger.info("=" * 60)
-    logger.info("Entering monitoring loop...")
-    while True:
-        write_snapshot()
-        time.sleep(CHECK_INTERVAL)
+        containers = []
+        port = args.start_port
+        logger.info("-" * 40)
+        logger.info(f"Starting to launch {args.instances} containers...")
+        
+        for i in range(args.instances):
+            gpu_id = select_gpu(args.vram_slice_mb)
+            if gpu_id is None:
+                logger.error("Insufficient free memory, stopping container launches.")
+                break
+            logger.info(f"Launching container {i+1}/{args.instances} on GPU {gpu_id}, port {port}")
+            info = launch_container(args.image, gpu_id, port, args.vram_slice_mb)
+            containers.append(info)
+            port += 1
+            
+            # Wait longer for the container to fully initialize on the GPU
+            # This prevents CUDA "device busy" errors when multiple containers start on same GPU
+            wait_time = 15  # seconds
+            logger.info(f"Waiting {wait_time}s for container to initialize...")
+            time.sleep(wait_time)
+            
+            # Log GPU state after each container launch
+            logger.info("GPU state after container launch:")
+            write_snapshot()
+
+        logger.info("=" * 60)
+        logger.info(f"Successfully launched {len(containers)} containers")
+        logger.info("Container Summary:")
+        for c in containers:
+            logger.info(f"  {c['name']} -> GPU {c['gpu_id']}, port {c['port']}")
+        logger.info("=" * 60)
+        logger.info("Entering monitoring loop...")
+        while True:
+            write_snapshot()
+            time.sleep(CHECK_INTERVAL)
+    except Exception as e:
+        logger.exception("Unhandled exception in scheduler: %s", e)
+        # Sleep a bit before exiting so logs can be inspected
+        try:
+            if args.startup_grace and args.startup_grace > 0:
+                logger.info(f"Sleeping {args.startup_grace}s before exit to allow debugging...")
+                time.sleep(args.startup_grace)
+        except Exception:
+            pass
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
