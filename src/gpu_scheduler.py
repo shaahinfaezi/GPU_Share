@@ -203,9 +203,12 @@ def main():
     logger.info(f"Starting to launch {args.instances} containers...")
     
     for i in range(args.instances):
-        gpu_id = select_gpu(args.vram_slice_mb)
-        if gpu_id is None:
-            logger.error("Insufficient free memory, stopping container launches.")
+        # Always use GPU 1 for all containers
+        gpu_id = 1
+        gpus = get_gpus()
+        gpu_1 = next((g for g in gpus if g['id'] == 1), None)
+        if not gpu_1 or gpu_1['free_mb'] < args.vram_slice_mb:
+            logger.error("Insufficient free memory on GPU 1, stopping container launches.")
             break
         logger.info(f"Launching container {i+1}/{args.instances} on GPU {gpu_id}, port {port}")
         info = launch_container(args.image, gpu_id, port, args.vram_slice_mb)
