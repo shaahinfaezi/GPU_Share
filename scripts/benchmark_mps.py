@@ -17,6 +17,9 @@ from datetime import datetime
 
 NUM_REQUESTS_PER_CONTAINER = 100  # Requests per container in each test
 
+# Target GPU (environment override)
+TARGET_GPU = os.environ.get('TARGET_GPU', os.environ.get('CUDA_DEVICE', '1'))
+
 # Configuration - Two different prompts for different outputs
 PROMPT_TEST1 = """The evolution of computing technology has been one of the most transformative developments in human history. From the earliest mechanical calculators to modern quantum computers, each generation has brought exponential improvements in processing power, storage capacity, and energy efficiency. The first electronic computers of the 1940s filled entire rooms and could perform only basic calculations. Today, smartphones carry more computing power than all of NASA had during the Apollo moon landings. This remarkable progress has been driven by innovations in semiconductor manufacturing, software engineering, and network infrastructure. Cloud computing has democratized access to powerful computing resources, enabling startups and researchers to leverage capabilities that were once available only to large corporations. As we look to the future, emerging technologies like neuromorphic computing and photonic processors promise to push the boundaries even further."""
 
@@ -122,7 +125,7 @@ def stop_mps_daemon():
     if result.returncode != 0:
         print("  ✓ MPS daemon stopped successfully")
         # Set GPU back to default mode for non-MPS operation
-        subprocess.run(['sudo', 'nvidia-smi', '-i', '1', '-c', 'DEFAULT'], capture_output=True)
+        subprocess.run(['sudo', 'nvidia-smi', '-i', TARGET_GPU, '-c', 'DEFAULT'], capture_output=True)
         print("  ✓ GPU set to DEFAULT compute mode")
         return True
     else:
@@ -140,11 +143,11 @@ def start_mps_daemon():
     subprocess.run(['sudo', 'chmod', '1777', '/tmp/nvidia-mps'], capture_output=True)
     
     # Set GPU to exclusive process mode
-    subprocess.run(['sudo', 'nvidia-smi', '-i', '1', '-c', 'EXCLUSIVE_PROCESS'], capture_output=True)
+    subprocess.run(['sudo', 'nvidia-smi', '-i', TARGET_GPU, '-c', 'EXCLUSIVE_PROCESS'], capture_output=True)
     
     # Start MPS control daemon
     env = os.environ.copy()
-    env['CUDA_VISIBLE_DEVICES'] = '1'
+    env['CUDA_VISIBLE_DEVICES'] = str(TARGET_GPU)
     env['CUDA_MPS_PIPE_DIRECTORY'] = '/tmp/nvidia-mps'
     env['CUDA_MPS_LOG_DIRECTORY'] = '/tmp/nvidia-mps'
     

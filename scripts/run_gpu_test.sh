@@ -200,8 +200,8 @@ echo "Detected $NUM_GPUS GPU(s)"
 
 # Set GPU to DEFAULT mode (not exclusive) for initial setup
 # MPS will be started later by the benchmark script if needed
-echo "Setting GPU 1 to DEFAULT compute mode for initial setup..."
-sudo nvidia-smi -i 1 -c DEFAULT || true
+echo "Setting GPU ${TARGET_GPU} to DEFAULT compute mode for initial setup..."
+sudo nvidia-smi -i ${TARGET_GPU} -c DEFAULT || true
 
 # MPS will be started by benchmark_mps.py before Test 2
 echo "MPS daemon will be started later by the benchmark script"
@@ -215,6 +215,8 @@ export START_PORT
 export VRAM_SLICE_MB="$VRAM_LIMIT_MB" # Pass the limit to the scheduler
 export MODEL_NAME
 export CONTAINER_PREFIX
+# Target GPU for all scripts (set to '1' by default)
+export TARGET_GPU="1"
 
 # Run the scheduler as a background process and save its PID
 # Use explicit PYTHONPATH to ensure venv packages are found under sudo
