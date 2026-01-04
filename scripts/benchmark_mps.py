@@ -15,7 +15,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
-NUM_REQUESTS_PER_CONTAINER = 100  # Requests per container in each test
+NUM_REQUESTS_PER_CONTAINER = 20  # Requests per container in each test (reduced from 100 to avoid OOM)
 
 # Target GPU (environment override)
 TARGET_GPU = os.environ.get('TARGET_GPU', os.environ.get('CUDA_DEVICE', '0'))
@@ -256,7 +256,7 @@ def send_inference_request(port, prompt, max_tokens, request_id):
     
     start_time = time.time()
     try:
-        response = requests.post(url, json=payload, timeout=300)  # Increased timeout for 100 requests
+        response = requests.post(url, json=payload, timeout=300)
         end_time = time.time()
         elapsed_ms = (end_time - start_time) * 1000
         
@@ -272,8 +272,7 @@ def send_inference_request(port, prompt, max_tokens, request_id):
                     'output_preview': str(data.get('text', ''))[:100] + '...',
                     'text': data.get('text', '')
                 }
-            except Exception as json_err:
-                # Response was 200 but JSON parsing failed - still count as success
+            except:
                 return {
                     'request_id': request_id,
                     'port': port,
@@ -297,7 +296,7 @@ def send_inference_request(port, prompt, max_tokens, request_id):
             'port': port,
             'success': False,
             'latency_ms': (time.time() - start_time) * 1000,
-            'error': f"Timeout after 300s"
+            'error': "Timeout"
         }
     except Exception as e:
         return {
