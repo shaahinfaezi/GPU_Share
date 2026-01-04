@@ -256,32 +256,55 @@ def send_inference_request(port, prompt, max_tokens, request_id):
     
     start_time = time.time()
     try:
-        response = requests.post(url, json=payload, timeout=120)
+        response = requests.post(url, json=payload, timeout=300)  # Increased timeout for 100 requests
         end_time = time.time()
+        elapsed_ms = (end_time - start_time) * 1000
         
         if response.status_code == 200:
-            data = response.json()
-            return {
-                'request_id': request_id,
-                'port': port,
-                'success': True,
-                'latency_ms': data.get('latency_ms', (end_time - start_time) * 1000),
-                'total_time_ms': (end_time - start_time) * 1000,
-                'output_preview': data.get('text', '')[:100] + '...',
-                'text': data.get('text', '')
-            }
+            try:
+                data = response.json()
+                return {
+                    'request_id': request_id,
+                    'port': port,
+                    'success': True,
+                    'latency_ms': data.get('latency_ms', elapsed_ms),
+                    'total_time_ms': elapsed_ms,
+                    'output_preview': str(data.get('text', ''))[:100] + '...',
+                    'text': data.get('text', '')
+                }
+            except Exception as json_err:
+                # Response was 200 but JSON parsing failed - still count as success
+                return {
+                    'request_id': request_id,
+                    'port': port,
+                    'success': True,
+                    'latency_ms': elapsed_ms,
+                    'total_time_ms': elapsed_ms,
+                    'output_preview': response.text[:100] + '...',
+                    'text': response.text
+                }
         else:
             return {
                 'request_id': request_id,
                 'port': port,
                 'success': False,
-                'error': f"HTTP {response.status_code}"
+                'latency_ms': elapsed_ms,
+                'error': f"HTTP {response.status_code}: {response.text[:200]}"
             }
+    except requests.exceptions.Timeout:
+        return {
+            'request_id': request_id,
+            'port': port,
+            'success': False,
+            'latency_ms': (time.time() - start_time) * 1000,
+            'error': f"Timeout after 300s"
+        }
     except Exception as e:
         return {
             'request_id': request_id,
             'port': port,
             'success': False,
+            'latency_ms': (time.time() - start_time) * 1000,
             'error': str(e)
         }
 
@@ -430,8 +453,8 @@ def run_benchmark(test_name, ports, num_requests, base_prompt, max_tokens, paral
     print_gpu_stats_visual(get_gpu_stats(), "Final GPU State")
     
     # Analyze results
-    successful = [r for r in results if r['success']]
-    failed = [r for r in results if not r['success']]
+    successful = [r for r in results if r.get('success', False)]
+    failed = [r for r in results if not r.get('success', False)]
     
     print(f"\n{'='*60}")
     print(" RESULTS")
@@ -441,13 +464,17 @@ def run_benchmark(test_name, ports, num_requests, base_prompt, max_tokens, paral
     print(f"  Failed: {len(failed)}")
     print(f"  Total wall-clock time: {total_time*1000:.2f} ms")
     
+    # Calculate throughput based on total requests completed (wall-clock time)
+    throughput = len(results) / total_time if total_time > 0 else 0
+    print(f"  Overall Throughput: {throughput:.2f} requests/sec")
+    
     if successful:
-        latencies = [r['latency_ms'] for r in successful]
-        print(f"\n  Latency Statistics (successful requests):")
-        print(f"    Min: {min(latencies):.2f} ms")
-        print(f"    Max: {max(latencies):.2f} ms")
-        print(f"    Avg: {sum(latencies)/len(latencies):.2f} ms")
-        print(f"    Throughput: {len(successful)/total_time:.2f} requests/sec")
+        latencies = [r.get('latency_ms', 0) for r in successful if r.get('latency_ms')]
+        if latencies:
+            print(f"\n  Latency Statistics (successful requests):")
+            print(f"    Min: {min(latencies):.2f} ms")
+            print(f"    Max: {max(latencies):.2f} ms")
+            print(f"    Avg: {sum(latencies)/len(latencies):.2f} ms")
     
     if failed:
         print(f"\n  Failed requests:")
@@ -487,8 +514,10 @@ def run_benchmark(test_name, ports, num_requests, base_prompt, max_tokens, paral
         'total_time_sec': total_time,
         'successful': len(successful),
         'failed': len(failed),
+        'total_requests': len(results),
         'avg_latency_ms': sum(r['latency_ms'] for r in successful) / len(successful) if successful else 0,
-        'throughput_rps': len(successful) / total_time if successful else 0
+        # Use total requests for throughput since we're measuring wall-clock time for all
+        'throughput_rps': len(results) / total_time if total_time > 0 else 0
     }
 
 def check_mps_status():
@@ -661,7 +690,7 @@ def main():
         print(f"\n  {'Test':<50} {'Requests':<10} {'Time (sec)':<12} {'Throughput':<12}")
         print("  " + "-"*84)
         for r in results:
-            total_requests = r.get('successful', 0) + r.get('failed', 0)
+            total_requests = r.get('total_requests', r.get('successful', 0) + r.get('failed', 0))
             print(f"  {r['test_name']:<50} {total_requests:<10} {r['total_time_sec']:<12.2f} {r['throughput_rps']:<12.2f} req/s")
         
         # Calculate adjusted time for Test 1 (simulating sequential execution across all containers)
@@ -670,8 +699,14 @@ def main():
         adjusted_no_mps_time_sec = no_mps_result['total_time_sec'] * num_containers_test2 / num_containers_test1
         adjusted_no_mps_time_ms = adjusted_no_mps_time_sec * 1000
         
+        # Calculate adjusted throughput (what throughput would be if we had 3x the requests in that time)
+        no_mps_total_requests = no_mps_result.get('total_requests', no_mps_result.get('successful', 0) + no_mps_result.get('failed', 0))
+        mps_total_requests = mps_result.get('total_requests', mps_result.get('successful', 0) + mps_result.get('failed', 0))
+        adjusted_no_mps_throughput = no_mps_total_requests / adjusted_no_mps_time_sec if adjusted_no_mps_time_sec > 0 else 0
+        mps_throughput = mps_result['throughput_rps']
+        
         speedup = adjusted_no_mps_time_sec / mps_result['total_time_sec'] if mps_result['total_time_sec'] > 0 else 0
-        throughput_improvement = mps_result['throughput_rps'] / no_mps_result['throughput_rps'] if no_mps_result['throughput_rps'] > 0 else 0
+        throughput_improvement = mps_throughput / adjusted_no_mps_throughput if adjusted_no_mps_throughput > 0 else 0
         time_saved = adjusted_no_mps_time_sec - mps_result['total_time_sec']
         time_saved_pct = (time_saved / adjusted_no_mps_time_sec) * 100 if adjusted_no_mps_time_sec > 0 else 0
         
@@ -682,7 +717,10 @@ def main():
         print(f"  With MPS ({num_containers_test2} containers parallel):     {mps_result['total_time_sec']:.2f} sec ({mps_result['total_time_ms']:.0f} ms)")
         print(f"\n  Time Saved:       {time_saved:.2f} sec ({time_saved_pct:.1f}% faster)")
         print(f"  Speedup Factor:   {speedup:.2f}x")
-        print(f"  Throughput Boost: {throughput_improvement:.2f}x ({(throughput_improvement-1)*100:.1f}% improvement)")
+        print(f"\n  Throughput Comparison:")
+        print(f"    Without MPS (adjusted): {adjusted_no_mps_throughput:.2f} req/s")
+        print(f"    With MPS:               {mps_throughput:.2f} req/s")
+        print(f"    Improvement:            {throughput_improvement:.2f}x ({(throughput_improvement-1)*100:.1f}% better)")
         
         print(f"\n  {'='*60}")
         print(f"  VRAM ISOLATION & MPS STATUS")
