@@ -1,42 +1,95 @@
-# KServe InferenceService with HuggingFace Server Runtime
-# Gemma 3 1B model using official kserve/huggingfaceserver
+# Standard Kubernetes Deployment for Gemma 3 1B
+# Uses huggingfaceserver image directly (no KServe/Knative required)
 #
 # Prerequisites:
 # 1. Download model: kubectl apply -f 07-download-model.yaml
 #
-apiVersion: "serving.kserve.io/v1beta1"
-kind: "InferenceService"
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: "gemma-llm"
+  name: gemma-llm
+  namespace: gpu-share
+  labels:
+    app: gemma-llm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gemma-llm
+  template:
+    metadata:
+      labels:
+        app: gemma-llm
+    spec:
+      tolerations:
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+      
+      containers:
+      - name: huggingface-server
+        image: kserve/huggingfaceserver:v0.16.0-gpu
+        args:
+          - --model_name=gemma
+          - --model_id=/mnt/models
+          - --max-model-len=2048
+          - --gpu-memory-utilization=0.8
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+          - name: CUDA_VISIBLE_DEVICES
+            value: "0"
+          - name: VRAM_LIMIT_MB
+            value: "4000"
+          - name: CUDA_MPS_PIPE_DIRECTORY
+            value: "/tmp/nvidia-mps"
+        volumeMounts:
+        - name: model-storage
+          mountPath: /mnt/models
+          readOnly: true
+        - name: mps-pipe
+          mountPath: /tmp/nvidia-mps
+        resources:
+          limits:
+            cpu: "4"
+            memory: 8Gi
+            nvidia.com/gpu: "1"
+          requests:
+            cpu: "2"
+            memory: 4Gi
+            nvidia.com/gpu: "1"
+        readinessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /v1/models
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+      
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-storage
+      - name: mps-pipe
+        hostPath:
+          path: /tmp/nvidia-mps
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gemma-llm
   namespace: gpu-share
 spec:
-  predictor:
-    tolerations:
-    - key: "node.kubernetes.io/disk-pressure"
-      operator: "Exists"
-    model:
-      modelFormat:
-        name: huggingface
-      args:
-        - --model_name=gemma
-        - --model_id=/mnt/models
-        - --max-model-len=2048
-        - --gpu-memory-utilization=0.8
-      env:
-        - name: CUDA_VISIBLE_DEVICES
-          value: "0"
-        - name: VRAM_LIMIT_MB
-          value: "4000"
-        - name: CUDA_MPS_PIPE_DIRECTORY
-          value: "/tmp/nvidia-mps"
-      storageUri: pvc://model-storage/gemma-3-1b
-      image: kserve/huggingfaceserver:v0.16.0-gpu
-      resources:
-        limits:
-          cpu: "4"
-          memory: 8Gi
-          nvidia.com/gpu: "1"
-        requests:
-          cpu: "2"
-          memory: 4Gi
-          nvidia.com/gpu: "1"
+  selector:
+    app: gemma-llm
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8080
+    nodePort: 30080
+  type: NodePort
