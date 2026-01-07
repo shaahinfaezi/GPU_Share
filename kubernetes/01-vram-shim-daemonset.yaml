@@ -1,0 +1,179 @@
+# VRAM Shim Installer DaemonSet
+# Installs the VRAM limiter shim on each GPU node
+# The shim is then available to be mounted by inference pods
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: vram-shim-installer
+  namespace: gpu-share
+  labels:
+    app: vram-shim-installer
+spec:
+  selector:
+    matchLabels:
+      app: vram-shim-installer
+  template:
+    metadata:
+      labels:
+        app: vram-shim-installer
+    spec:
+      # Only run on GPU nodes
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      
+      # Tolerate GPU taints
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      
+      # Init container builds and installs the shim
+      initContainers:
+      - name: build-shim
+        image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "=== Building VRAM Limiter Shim ==="
+          
+          # Install build tools
+          apt-get update && apt-get install -y build-essential
+          
+          # Create shim source
+          cat > /build/vram_limiter_runtime.c << 'EOF'
+          // SPDX-License-Identifier: MIT
+          // VRAM Limiter Shim - CUDA Runtime API Version
+          #define _GNU_SOURCE
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <stdarg.h>
+          #include <dlfcn.h>
+          #include <pthread.h>
+          #include <sys/types.h>
+          #include <unistd.h>
+          #include <string.h>
+
+          typedef enum {
+              cudaSuccess = 0,
+              cudaErrorMemoryAllocation = 2,
+              cudaErrorInsufficientDriver = 35
+          } cudaError_t;
+
+          static cudaError_t (*real_cudaMalloc)(void** devPtr, size_t size) = NULL;
+          static cudaError_t (*real_cudaFree)(void* devPtr) = NULL;
+          static size_t total_allocated_vram = 0;
+          static size_t vram_limit_mb = 0;
+          static pthread_mutex_t vram_mutex = PTHREAD_MUTEX_INITIALIZER;
+          static int shim_initialized = 0;
+
+          #define LOG_FILE "/tmp/vram_limiter.log"
+
+          static void log_message(const char* format, ...) {
+              FILE* f = fopen(LOG_FILE, "a");
+              if (!f) return;
+              va_list args;
+              va_start(args, format);
+              fprintf(f, "[VRAM_SHIM] ");
+              vfprintf(f, format, args);
+              fprintf(f, "\n");
+              va_end(args);
+              fclose(f);
+          }
+
+          static void initialize_shim() {
+              if (shim_initialized) return;
+              shim_initialized = 1;
+              FILE* f = fopen(LOG_FILE, "w");
+              if (f) fclose(f);
+              log_message("Init PID %d", getpid());
+              const char* env = getenv("GPU_VRAM_LIMIT_MB");
+              if (env) {
+                  vram_limit_mb = (size_t)atoi(env);
+                  log_message("VRAM limit: %zu MB", vram_limit_mb);
+              }
+              void* lib = dlopen("libcudart.so", RTLD_LAZY);
+              if (lib) {
+                  real_cudaMalloc = dlsym(lib, "cudaMalloc");
+                  real_cudaFree = dlsym(lib, "cudaFree");
+              }
+              log_message("Shim ready");
+          }
+
+          cudaError_t cudaMalloc(void** devPtr, size_t size) {
+              if (!shim_initialized) initialize_shim();
+              if (!real_cudaMalloc) return cudaErrorInsufficientDriver;
+              pthread_mutex_lock(&vram_mutex);
+              size_t limit_bytes = vram_limit_mb * 1024 * 1024;
+              if (vram_limit_mb > 0 && (total_allocated_vram + size) > limit_bytes) {
+                  pthread_mutex_unlock(&vram_mutex);
+                  log_message("DENIED: %zu bytes (limit %zu MB)", size, vram_limit_mb);
+                  return cudaErrorMemoryAllocation;
+              }
+              cudaError_t result = real_cudaMalloc(devPtr, size);
+              if (result == cudaSuccess) {
+                  total_allocated_vram += size;
+                  log_message("Alloc %zu bytes, total %.2f MB", size, total_allocated_vram/(1024.0*1024.0));
+              }
+              pthread_mutex_unlock(&vram_mutex);
+              return result;
+          }
+
+          cudaError_t cudaFree(void* devPtr) {
+              if (!shim_initialized) initialize_shim();
+              if (!real_cudaFree) return cudaErrorInsufficientDriver;
+              return real_cudaFree(devPtr);
+          }
+          EOF
+          
+          # Compile shim
+          cd /build
+          gcc -shared -fPIC -o vram_limiter_runtime.so vram_limiter_runtime.c -ldl -lpthread
+          
+          # Install to host path
+          mkdir -p /host-shim
+          cp vram_limiter_runtime.so /host-shim/
+          chmod 755 /host-shim/vram_limiter_runtime.so
+          
+          echo "=== Shim installed to /opt/vram-shim on host ==="
+          ls -la /host-shim/
+        volumeMounts:
+        - name: host-shim-dir
+          mountPath: /host-shim
+        - name: build-dir
+          mountPath: /build
+      
+      # Main container just keeps running to maintain the DaemonSet
+      containers:
+      - name: shim-keeper
+        image: busybox:latest
+        command: ["sleep", "infinity"]
+        resources:
+          limits:
+            cpu: "10m"
+            memory: "16Mi"
+          requests:
+            cpu: "5m"
+            memory: "8Mi"
+        volumeMounts:
+        - name: host-shim-dir
+          mountPath: /opt/vram-shim
+          readOnly: true
+        livenessProbe:
+          exec:
+            command:
+            - test
+            - -f
+            - /opt/vram-shim/vram_limiter_runtime.so
+          initialDelaySeconds: 10
+          periodSeconds: 60
+      
+      volumes:
+      - name: host-shim-dir
+        hostPath:
+          path: /opt/vram-shim
+          type: DirectoryOrCreate
+      - name: build-dir
+        emptyDir: {}

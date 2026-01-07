@@ -1,0 +1,41 @@
+# PVC for model storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: task-pv-claim
+  namespace: kserve-test
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard  # Change to your storage class
+---
+# Example: NFS-based PV for shared model storage across nodes
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: model-nfs-pv
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+  - ReadWriteMany
+  nfs:
+    server: <nfs-server-ip>
+    path: /models
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-nfs-pvc
+  namespace: kserve-test
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  volumeName: model-nfs-pv

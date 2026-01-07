@@ -1,0 +1,91 @@
+# Pod Preset / Runtime Class for automatic shim injection
+# This allows pods to automatically get the VRAM shim without manual configuration
+
+# RuntimeClass for MPS-enabled pods
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: nvidia-mps
+handler: nvidia
+scheduling:
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
+  tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+---
+# PodPreset alternative using Kyverno ClusterPolicy
+# Automatically injects VRAM shim and MPS config into pods with label gpu-share=true
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: inject-gpu-share
+spec:
+  rules:
+  - name: inject-vram-shim
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod
+          selector:
+            matchLabels:
+              gpu-share: "true"
+    mutate:
+      patchStrategicMerge:
+        spec:
+          containers:
+          - name: "*"
+            env:
+            - name: LD_PRELOAD
+              value: /opt/vram-shim/vram_limiter_runtime.so
+            - name: GPU_VRAM_LIMIT_MB
+              value: "3000"
+            - name: CUDA_MPS_PIPE_DIRECTORY
+              value: /tmp/nvidia-mps
+            - name: NVIDIA_MPS_ACTIVE_THREAD_PERCENTAGE
+              value: "25"
+            volumeMounts:
+            - name: vram-shim
+              mountPath: /opt/vram-shim
+              readOnly: true
+            - name: mps-pipe
+              mountPath: /tmp/nvidia-mps
+          volumes:
+          - name: vram-shim
+            hostPath:
+              path: /opt/vram-shim
+              type: Directory
+          - name: mps-pipe
+            hostPath:
+              path: /tmp/nvidia-mps
+              type: Directory
+---
+# Alternative: Use a MutatingWebhook for more control
+# This is more complex but gives finer control over injection
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: gpu-share-injector
+  labels:
+    app: gpu-share-injector
+webhooks:
+- name: gpu-share.kserve.io
+  clientConfig:
+    service:
+      name: gpu-share-webhook
+      namespace: gpu-share
+      path: /mutate
+    # caBundle will be injected by cert-manager
+  rules:
+  - operations: ["CREATE"]
+    apiGroups: [""]
+    apiVersions: ["v1"]
+    resources: ["pods"]
+  namespaceSelector:
+    matchLabels:
+      gpu-share-enabled: "true"
+  sideEffects: None
+  admissionReviewVersions: ["v1"]
+  failurePolicy: Ignore  # Don't block pod creation if webhook fails

@@ -1,0 +1,113 @@
+# Download GPT-2 model to PVC for KServe
+# Run this ONCE before deploying InferenceServices
+# The PVC persists data - models are NOT re-downloaded if they exist
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: download-gpt2-model
+  namespace: gpu-share
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: downloader
+        image: python:3.10-slim
+        command:
+        - bash
+        - -c
+        - |
+          pip install transformers torch --quiet
+          python << 'EOF'
+          from transformers import AutoModelForCausalLM, AutoTokenizer
+          import os
+          
+          model_name = "gpt2"
+          save_path = "/models/gpt2"
+          
+          # Check if model already exists
+          config_file = os.path.join(save_path, "config.json")
+          if os.path.exists(config_file):
+              print(f"Model already exists at {save_path}, skipping download!")
+              print("Files:")
+              for f in os.listdir(save_path):
+                  size = os.path.getsize(os.path.join(save_path, f))
+                  print(f"  {f}: {size / 1024 / 1024:.2f} MB")
+          else:
+              print(f"Downloading {model_name} to {save_path}...")
+              os.makedirs(save_path, exist_ok=True)
+              
+              # Download model and tokenizer
+              tokenizer = AutoTokenizer.from_pretrained(model_name)
+              model = AutoModelForCausalLM.from_pretrained(model_name)
+              
+              # Save locally
+              tokenizer.save_pretrained(save_path)
+              model.save_pretrained(save_path)
+              
+              print(f"Model saved to {save_path}")
+              print("Files:")
+              for f in os.listdir(save_path):
+                  size = os.path.getsize(os.path.join(save_path, f))
+                  print(f"  {f}: {size / 1024 / 1024:.2f} MB")
+          EOF
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+        # Cache pip packages to avoid re-downloading
+        - name: pip-cache
+          mountPath: /root/.cache/pip
+        # Cache HuggingFace models
+        - name: hf-cache
+          mountPath: /root/.cache/huggingface
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-storage
+      - name: pip-cache
+        persistentVolumeClaim:
+          claimName: pip-cache
+      - name: hf-cache
+        persistentVolumeClaim:
+          claimName: hf-cache
+---
+# PVC for model storage (persists downloaded models)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-storage
+  namespace: gpu-share
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  # storageClassName: standard  # Uncomment and set your storage class
+---
+# PVC for pip cache (persists pip packages)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pip-cache
+  namespace: gpu-share
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# PVC for HuggingFace cache (persists HF downloads)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hf-cache
+  namespace: gpu-share
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

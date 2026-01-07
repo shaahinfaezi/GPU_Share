@@ -1,0 +1,94 @@
+# MPS Device Plugin
+# Exposes virtual MPS GPU resources (nvidia.com/mps-gpu) to Kubernetes scheduler
+# This allows multiple pods to share a single physical GPU via MPS
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: mps-device-plugin
+  namespace: gpu-share
+  labels:
+    app: mps-device-plugin
+spec:
+  selector:
+    matchLabels:
+      app: mps-device-plugin
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: mps-device-plugin
+    spec:
+      # Only run on GPU nodes
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      - key: CriticalAddonsOnly
+        operator: Exists
+      
+      # Require host PID for GPU detection
+      hostPID: true
+      
+      containers:
+      - name: mps-device-plugin
+        # Use NVIDIA's MPS device plugin image
+        # Or use a custom one that exposes nvidia.com/mps-gpu
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.15.0
+        securityContext:
+          privileged: true
+        env:
+        # Number of virtual MPS GPUs per physical GPU
+        # e.g., 4 means each physical GPU becomes 4 schedulable units
+        - name: MPS_GPU_COUNT
+          value: "4"
+        # Pass through MPS environment
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_LOG_DIRECTORY
+          value: /tmp/nvidia-mps
+        # Default thread percentage per client
+        - name: NVIDIA_MPS_ACTIVE_THREAD_PERCENTAGE
+          value: "25"
+        volumeMounts:
+        - name: device-plugin
+          mountPath: /var/lib/kubelet/device-plugins
+        - name: mps-pipe
+          mountPath: /tmp/nvidia-mps
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+      
+      volumes:
+      - name: device-plugin
+        hostPath:
+          path: /var/lib/kubelet/device-plugins
+      - name: mps-pipe
+        hostPath:
+          path: /tmp/nvidia-mps
+          type: Directory
+      
+      priorityClassName: system-node-critical
+---
+# Alternative: Simple ConfigMap-based MPS device plugin
+# If the official plugin doesn't work, use this custom approach
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mps-device-plugin-config
+  namespace: gpu-share
+data:
+  # Number of virtual GPUs per physical GPU
+  mps-gpu-count: "4"
+  # SM thread percentage per virtual GPU (100/mps-gpu-count for equal sharing)
+  mps-thread-percentage: "25"
+  # VRAM limit per virtual GPU in MB
+  vram-limit-mb: "3000"

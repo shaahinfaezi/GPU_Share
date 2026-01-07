@@ -1,0 +1,9 @@
+# Namespace for GPU sharing components and KServe
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gpu-share
+  labels:
+    name: gpu-share
+    # Enable shim injection if using webhook
+    gpu-share-enabled: "true"

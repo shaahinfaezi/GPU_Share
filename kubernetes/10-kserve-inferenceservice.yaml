@@ -1,0 +1,37 @@
+# KServe InferenceService with MPS + VRAM Shim
+# GPT-2 model (same as run_gpu_test.sh)
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "gpt2-llm"
+  namespace: gpu-share
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: huggingface
+      args:
+        - --model_name=gpt2
+        - --max-model-len=1024
+        - --gpu-memory-utilization=0.3
+      env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        # VRAM Shim
+        - name: LD_PRELOAD
+          value: "/opt/vram-shim/vram_limiter_runtime.so"
+        - name: VRAM_LIMIT_MB
+          value: "3000"
+        # MPS
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: "/tmp/nvidia-mps"
+      storageUri: pvc://model-storage/gpt2
+      resources:
+        limits:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: "1"
+        requests:
+          cpu: "1"
+          memory: 2Gi
+          nvidia.com/gpu: "1"

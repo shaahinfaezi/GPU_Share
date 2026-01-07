@@ -1,0 +1,30 @@
+# Shared ConfigMap for GPU sharing configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-share-config
+  namespace: gpu-share
+data:
+  # VRAM limit per pod in MB
+  vram-limit-mb: "3000"
+  
+  # MPS thread percentage (25 = 4 pods can share equally)
+  mps-thread-percentage: "25"
+  
+  # Path to VRAM limiter shim on host
+  shim-path: "/opt/vram-shim/vram_limiter_runtime.so"
+  
+  # MPS pipe directory
+  mps-pipe-dir: "/tmp/nvidia-mps"
+---
+# ConfigMap for KServe namespace
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-share-config
+  namespace: kserve-test
+data:
+  vram-limit-mb: "3000"
+  mps-thread-percentage: "25"
+  shim-path: "/opt/vram-shim/vram_limiter_runtime.so"
+  mps-pipe-dir: "/tmp/nvidia-mps"

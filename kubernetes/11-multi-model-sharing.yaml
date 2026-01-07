@@ -1,0 +1,108 @@
+# Multiple KServe InferenceServices sharing ONE GPU via MPS
+# 3 GPT-2 instances sharing the same GPU (like run_gpu_test.sh)
+
+---
+# Service 1: GPT-2 Instance 1 (33% GPU threads, 3GB VRAM)
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "gpt2-tenant1"
+  namespace: gpu-share
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: huggingface
+      args:
+        - --model_name=gpt2
+        - --max-model-len=1024
+        - --gpu-memory-utilization=0.3
+      env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: LD_PRELOAD
+          value: "/opt/vram-shim/vram_limiter_runtime.so"
+        - name: VRAM_LIMIT_MB
+          value: "3000"
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: "/tmp/nvidia-mps"
+      storageUri: pvc://model-storage/gpt2
+      resources:
+        limits:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: "1"
+        requests:
+          cpu: "1"
+          memory: 2Gi
+          nvidia.com/gpu: "1"
+---
+# Service 2: GPT-2 Instance 2 (33% GPU threads, 3GB VRAM)
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "gpt2-tenant2"
+  namespace: gpu-share
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: huggingface
+      args:
+        - --model_name=gpt2
+        - --max-model-len=1024
+        - --gpu-memory-utilization=0.3
+      env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: LD_PRELOAD
+          value: "/opt/vram-shim/vram_limiter_runtime.so"
+        - name: VRAM_LIMIT_MB
+          value: "3000"
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: "/tmp/nvidia-mps"
+      storageUri: pvc://model-storage/gpt2
+      resources:
+        limits:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: "1"
+        requests:
+          cpu: "1"
+          memory: 2Gi
+          nvidia.com/gpu: "1"
+---
+# Service 3: GPT-2 Instance 3 (33% GPU threads, 3GB VRAM)
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "gpt2-tenant3"
+  namespace: gpu-share
+spec:
+  predictor:
+    model:
+      modelFormat:
+        name: huggingface
+      args:
+        - --model_name=gpt2
+        - --max-model-len=1024
+        - --gpu-memory-utilization=0.3
+      env:
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"
+        - name: LD_PRELOAD
+          value: "/opt/vram-shim/vram_limiter_runtime.so"
+        - name: VRAM_LIMIT_MB
+          value: "3000"
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: "/tmp/nvidia-mps"
+      storageUri: pvc://model-storage/gpt2
+      resources:
+        limits:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: "1"
+        requests:
+          cpu: "1"
+          memory: 2Gi
+          nvidia.com/gpu: "1"

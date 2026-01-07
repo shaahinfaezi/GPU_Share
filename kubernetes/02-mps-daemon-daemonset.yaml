@@ -1,0 +1,135 @@
+# MPS Control Daemon DaemonSet
+# Runs NVIDIA MPS daemon on each GPU node to enable GPU sharing
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvidia-mps-daemon
+  namespace: gpu-share
+  labels:
+    app: nvidia-mps-daemon
+spec:
+  selector:
+    matchLabels:
+      app: nvidia-mps-daemon
+  template:
+    metadata:
+      labels:
+        app: nvidia-mps-daemon
+    spec:
+      # Only run on GPU nodes
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      
+      # Tolerate GPU taints
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      
+      # Need host PID and network for MPS daemon
+      hostPID: true
+      hostNetwork: true
+      
+      # Init container sets up GPU mode
+      initContainers:
+      - name: setup-gpu-mode
+        image: nvidia/cuda:11.8.0-base-ubuntu22.04
+        securityContext:
+          privileged: true
+        command:
+        - /bin/bash
+        - -c
+        - |
+          echo "=== Setting up GPU for MPS ==="
+          
+          # Set GPU to EXCLUSIVE_PROCESS mode (required for MPS)
+          nvidia-smi -c EXCLUSIVE_PROCESS || true
+          
+          # Create and set permissions on MPS directory
+          mkdir -p /tmp/nvidia-mps
+          chmod 1777 /tmp/nvidia-mps
+          
+          # Clean any stale MPS state
+          rm -rf /tmp/nvidia-mps/* || true
+          
+          echo "GPU mode set. Ready for MPS daemon."
+          nvidia-smi
+        volumeMounts:
+        - name: mps-pipe
+          mountPath: /tmp/nvidia-mps
+      
+      containers:
+      - name: mps-daemon
+        image: nvidia/cuda:11.8.0-base-ubuntu22.04
+        securityContext:
+          privileged: true
+        env:
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_LOG_DIRECTORY
+          value: /tmp/nvidia-mps
+        # Default active thread percentage (can be overridden per-pod)
+        - name: NVIDIA_MPS_ACTIVE_THREAD_PERCENTAGE
+          value: "100"
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          echo "=== Starting NVIDIA MPS Control Daemon ==="
+          
+          export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
+          export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
+          
+          # Start MPS control daemon
+          nvidia-cuda-mps-control -d
+          
+          echo "MPS daemon started"
+          echo "Pipe directory: $CUDA_MPS_PIPE_DIRECTORY"
+          ls -la /tmp/nvidia-mps/
+          
+          # Monitor and restart if needed
+          while true; do
+            if ! pgrep -x "nvidia-cuda-mps" > /dev/null 2>&1; then
+              echo "MPS daemon died, restarting..."
+              nvidia-cuda-mps-control -d || true
+            fi
+            sleep 30
+          done
+        volumeMounts:
+        - name: mps-pipe
+          mountPath: /tmp/nvidia-mps
+        resources:
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - pgrep -x nvidia-cuda-mps || pgrep nvidia-cuda-mps-control
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - test
+            - -S
+            - /tmp/nvidia-mps/control
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      
+      volumes:
+      - name: mps-pipe
+        hostPath:
+          path: /tmp/nvidia-mps
+          type: DirectoryOrCreate
+      
+      # Ensure this runs before inference pods
+      priorityClassName: system-node-critical
