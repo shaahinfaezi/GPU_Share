@@ -22,8 +22,8 @@ spec:
       dnsPolicy: None
       dnsConfig:
         nameservers:
-          - 8.8.8.8
-          - 1.1.1.1
+          - 178.22.122.101
+          - 185.51.200.1
       # Tolerate disk pressure to allow running even if / partition is full
       tolerations:
       - key: "node.kubernetes.io/disk-pressure"
