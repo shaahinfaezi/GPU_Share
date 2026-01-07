@@ -20,16 +20,16 @@ spec:
       labels:
         app: mps-device-plugin
     spec:
-      # Only run on GPU nodes
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
-      
+      # Tolerate taints
       tolerations:
       - key: nvidia.com/gpu
         operator: Exists
         effect: NoSchedule
       - key: CriticalAddonsOnly
         operator: Exists
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
       
       # Require host PID for GPU detection
       hostPID: true

@@ -25,12 +25,16 @@ spec:
       - key: "node.kubernetes.io/disk-pressure"
         operator: "Exists"
       
+      # Use host network for DNS
+      hostNetwork: true
+      dnsPolicy: Default
+      
       containers:
       - name: huggingface-server
         image: kserve/huggingfaceserver:v0.16.0-gpu
         args:
           - --model_name=gemma
-          - --model_id=/mnt/models
+          - --model_id=/mnt/models/gemma-3-1b
           - --max-model-len=2048
           - --gpu-memory-utilization=0.8
         ports:
@@ -39,23 +43,21 @@ spec:
         env:
           - name: CUDA_VISIBLE_DEVICES
             value: "0"
-          - name: VRAM_LIMIT_MB
-            value: "4000"
-          - name: CUDA_MPS_PIPE_DIRECTORY
-            value: "/tmp/nvidia-mps"
+          - name: NVIDIA_VISIBLE_DEVICES
+            value: "all"
         volumeMounts:
         - name: model-storage
           mountPath: /mnt/models
           readOnly: true
-        - name: mps-pipe
-          mountPath: /tmp/nvidia-mps
         resources:
           limits:
             cpu: "4"
             memory: 8Gi
+            nvidia.com/gpu: "1"
           requests:
             cpu: "2"
             memory: 4Gi
+            nvidia.com/gpu: "1"
         readinessProbe:
           httpGet:
             path: /v1/models
@@ -73,9 +75,6 @@ spec:
       - name: model-storage
         persistentVolumeClaim:
           claimName: model-storage
-      - name: mps-pipe
-        hostPath:
-          path: /tmp/nvidia-mps
 ---
 apiVersion: v1
 kind: Service

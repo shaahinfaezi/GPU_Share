@@ -18,15 +18,14 @@ spec:
       labels:
         app: vram-shim-installer
     spec:
-      # Only run on GPU nodes
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
-      
-      # Tolerate GPU taints
+      # Tolerate taints
       tolerations:
       - key: nvidia.com/gpu
         operator: Exists
         effect: NoSchedule
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
       
       # Init container builds and installs the shim
       initContainers:

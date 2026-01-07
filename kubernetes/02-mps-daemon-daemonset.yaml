@@ -17,15 +17,14 @@ spec:
       labels:
         app: nvidia-mps-daemon
     spec:
-      # Only run on GPU nodes
-      nodeSelector:
-        nvidia.com/gpu.present: "true"
-      
-      # Tolerate GPU taints
+      # Tolerate taints
       tolerations:
       - key: nvidia.com/gpu
         operator: Exists
         effect: NoSchedule
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
       
       # Need host PID and network for MPS daemon
       hostPID: true
@@ -34,7 +33,7 @@ spec:
       # Init container sets up GPU mode
       initContainers:
       - name: setup-gpu-mode
-        image: nvidia/cuda:11.8.0-base-ubuntu22.04
+        image: nvidia/cuda:13.0.1-base-ubuntu22.04
         securityContext:
           privileged: true
         command:
@@ -61,7 +60,7 @@ spec:
       
       containers:
       - name: mps-daemon
-        image: nvidia/cuda:11.8.0-base-ubuntu22.04
+        image: nvidia/cuda:13.0.1-base-ubuntu22.04
         securityContext:
           privileged: true
         env:
