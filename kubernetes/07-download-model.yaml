@@ -17,13 +17,9 @@ spec:
   template:
     spec:
       restartPolicy: Never
-      # Use host network to bypass K8s DNS issues during disk pressure
+      # Use host network and host DNS (simplest connectivity)
       hostNetwork: true
-      dnsPolicy: None
-      dnsConfig:
-        nameservers:
-          - 178.22.122.101
-          - 185.51.200.1
+      dnsPolicy: Default
       # Tolerate disk pressure to allow running even if / partition is full
       tolerations:
       - key: "node.kubernetes.io/disk-pressure"
