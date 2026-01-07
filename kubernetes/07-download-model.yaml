@@ -17,6 +17,11 @@ spec:
   template:
     spec:
       restartPolicy: Never
+      # Tolerate disk pressure to allow running even if / partition is full
+      tolerations:
+      - key: "node.kubernetes.io/disk-pressure"
+        operator: "Exists"
+        effect: "NoSchedule"
       containers:
       - name: downloader
         image: python:3.10-slim
