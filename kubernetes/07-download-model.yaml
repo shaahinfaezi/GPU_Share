@@ -27,60 +27,42 @@ spec:
         effect: "NoSchedule"
       containers:
       - name: downloader
-        image: python:3.10-slim
+        image: alpine/git
         env:
+        - name: GIT_TERMINAL_PROMPT
+          value: "0"
         - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
               name: hf-token
               key: token
         command:
-        - bash
+        - /bin/sh
         - -c
         - |
-          pip install transformers torch huggingface_hub --quiet
-          python << 'EOF'
-          from transformers import AutoModelForCausalLM, AutoTokenizer
-          from huggingface_hub import login
-          import os
+          echo "Starting generic download via Git..."
+          echo "This avoids pip/python DNS dependencies."
           
-          model_name = "google/gemma-3-1b-it"
-          save_path = "/models/gemma-3-1b"
+          # Initialize LFS
+          git lfs install
           
-          # Login to HuggingFace
-          hf_token = os.environ.get("HF_TOKEN")
-          if hf_token:
-              login(token=hf_token)
-              print("Logged in to HuggingFace")
-          else:
-              print("WARNING: No HF_TOKEN found, download may fail for gated models")
+          MODEL_REPO="https://oauth2:${HF_TOKEN}@huggingface.co/google/gemma-3-1b-it"
+          TARGET_DIR="/models/gemma-3-1b"
           
-          # Check if model already exists
-          config_file = os.path.join(save_path, "config.json")
-          if os.path.exists(config_file):
-              print(f"Model already exists at {save_path}, skipping download!")
-              print("Files:")
-              for f in os.listdir(save_path):
-                  size = os.path.getsize(os.path.join(save_path, f))
-                  print(f"  {f}: {size / 1024 / 1024:.2f} MB")
-          else:
-              print(f"Downloading {model_name} to {save_path}...")
-              os.makedirs(save_path, exist_ok=True)
-              
-              # Download model and tokenizer
-              tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
-              model = AutoModelForCausalLM.from_pretrained(model_name, token=hf_token)
-              
-              # Save locally
-              tokenizer.save_pretrained(save_path)
-              model.save_pretrained(save_path)
-              
-              print(f"Model saved to {save_path}")
-              print("Files:")
-              for f in os.listdir(save_path):
-                  size = os.path.getsize(os.path.join(save_path, f))
-                  print(f"  {f}: {size / 1024 / 1024:.2f} MB")
-          EOF
+          mkdir -p $TARGET_DIR
+          cd /models
+          
+          if [ -d "$TARGET_DIR/.git" ]; then
+             echo "Updating existing model..."
+             cd $TARGET_DIR
+             git pull
+          else
+             echo "Cloning model (this handles all large files automatically)..."
+             git clone $MODEL_REPO $TARGET_DIR
+          fi
+          
+          echo "Download complete. Files:"
+          ls -lh $TARGET_DIR
         volumeMounts:
         - name: model-storage
           mountPath: /models
