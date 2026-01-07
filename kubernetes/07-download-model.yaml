@@ -19,7 +19,7 @@ spec:
       restartPolicy: Never
       # Use host network to bypass K8s DNS issues during disk pressure
       hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: Default
       # Tolerate disk pressure to allow running even if / partition is full
       tolerations:
       - key: "node.kubernetes.io/disk-pressure"
@@ -38,6 +38,12 @@ spec:
         - bash
         - -c
         - |
+          echo "Testing internet connectivity..."
+          if ! wget -q --spider google.com; then
+            echo "ERROR: No internet connection or DNS failure. Check host networking."
+            exit 1
+          fi
+          echo "Connectivity OK. Installing dependencies..."
           pip install transformers torch huggingface_hub --quiet
           python << 'EOF'
           from transformers import AutoModelForCausalLM, AutoTokenizer
