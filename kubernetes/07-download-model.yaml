@@ -1,10 +1,16 @@
-# Download GPT-2 model to PVC for KServe
+# Download Gemma 3 1B model to PVC for KServe
 # Run this ONCE before deploying InferenceServices
-# The PVC persists data - models are NOT re-downloaded if they exist
+# 
+# IMPORTANT: Gemma requires HuggingFace authentication!
+# 1. Create account at https://huggingface.co
+# 2. Accept license at https://huggingface.co/google/gemma-3-1b-it
+# 3. Get token from https://huggingface.co/settings/tokens
+# 4. Create secret: kubectl create secret generic hf-token --from-literal=token=YOUR_TOKEN -n gpu-share
+#
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: download-gpt2-model
+  name: download-gemma-model
   namespace: gpu-share
 spec:
   ttlSecondsAfterFinished: 300
@@ -14,17 +20,32 @@ spec:
       containers:
       - name: downloader
         image: python:3.10-slim
+        env:
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token
+              key: token
         command:
         - bash
         - -c
         - |
-          pip install transformers torch --quiet
+          pip install transformers torch huggingface_hub --quiet
           python << 'EOF'
           from transformers import AutoModelForCausalLM, AutoTokenizer
+          from huggingface_hub import login
           import os
           
-          model_name = "gpt2"
-          save_path = "/models/gpt2"
+          model_name = "google/gemma-3-1b-it"
+          save_path = "/models/gemma-3-1b"
+          
+          # Login to HuggingFace
+          hf_token = os.environ.get("HF_TOKEN")
+          if hf_token:
+              login(token=hf_token)
+              print("Logged in to HuggingFace")
+          else:
+              print("WARNING: No HF_TOKEN found, download may fail for gated models")
           
           # Check if model already exists
           config_file = os.path.join(save_path, "config.json")
@@ -39,8 +60,8 @@ spec:
               os.makedirs(save_path, exist_ok=True)
               
               # Download model and tokenizer
-              tokenizer = AutoTokenizer.from_pretrained(model_name)
-              model = AutoModelForCausalLM.from_pretrained(model_name)
+              tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token)
+              model = AutoModelForCausalLM.from_pretrained(model_name, token=hf_token)
               
               # Save locally
               tokenizer.save_pretrained(save_path)
@@ -55,10 +76,8 @@ spec:
         volumeMounts:
         - name: model-storage
           mountPath: /models
-        # Cache pip packages to avoid re-downloading
         - name: pip-cache
           mountPath: /root/.cache/pip
-        # Cache HuggingFace models
         - name: hf-cache
           mountPath: /root/.cache/huggingface
       volumes:

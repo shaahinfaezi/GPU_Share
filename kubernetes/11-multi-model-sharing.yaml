@@ -1,108 +1,256 @@
-# Multiple KServe InferenceServices sharing ONE GPU via MPS
-# 3 GPT-2 instances sharing the same GPU (like run_gpu_test.sh)
+# Multiple Gemma 3 1B instances sharing ONE GPU via MPS
+# 3 tenants each with 4GB VRAM limit
+#
+# Prerequisites:
+# 1. Create HF token secret: kubectl create secret generic hf-token --from-literal=token=YOUR_TOKEN -n gpu-share
+# 2. Download model: kubectl apply -f 07-download-model.yaml
+#
+---
+# Service 1: Gemma Tenant 1
+apiVersion: "serving.kserve.io/v1beta1"
+kind: "InferenceService"
+metadata:
+  name: "gemma-tenant1"
+  namespace: gpu-share
+spec:
+  predictor:
+    containers:
+    - name: kserve-container
+      image: python:3.10-slim
+      command:
+      - bash
+      - -c
+      - |
+        pip install flask transformers torch --quiet
+        python << 'PYEOF'
+        from flask import Flask, request, jsonify
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        import torch
+        import os
 
----
-# Service 1: GPT-2 Instance 1 (33% GPU threads, 3GB VRAM)
-apiVersion: "serving.kserve.io/v1beta1"
-kind: "InferenceService"
-metadata:
-  name: "gpt2-tenant1"
-  namespace: gpu-share
-spec:
-  predictor:
-    model:
-      modelFormat:
-        name: huggingface
-      args:
-        - --model_name=gpt2
-        - --max-model-len=1024
-        - --gpu-memory-utilization=0.3
+        app = Flask(__name__)
+        tenant = os.environ.get("TENANT_ID", "1")
+
+        print(f"Loading Gemma 3 1B model for tenant {tenant}...")
+        model_path = "/models/gemma-3-1b"
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, device_map="auto")
+        print("Model loaded!")
+
+        @app.route("/v1/completions", methods=["POST"])
+        def generate():
+            data = request.json
+            prompt = data.get("prompt", "Hello")
+            max_tokens = data.get("max_tokens", 100)
+            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+            outputs = model.generate(**inputs, max_new_tokens=max_tokens, do_sample=True, temperature=0.7, pad_token_id=tokenizer.eos_token_id)
+            response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            return jsonify({"text": response, "tenant": tenant})
+
+        @app.route("/health", methods=["GET"])
+        def health():
+            return jsonify({"status": "healthy", "tenant": tenant})
+
+        if __name__ == "__main__":
+            app.run(host="0.0.0.0", port=5000)
+        PYEOF
+      ports:
+      - containerPort: 5000
+        protocol: TCP
       env:
+        - name: TENANT_ID
+          value: "1"
         - name: CUDA_VISIBLE_DEVICES
           value: "0"
-        - name: LD_PRELOAD
-          value: "/opt/vram-shim/vram_limiter_runtime.so"
         - name: VRAM_LIMIT_MB
-          value: "3000"
+          value: "4000"
         - name: CUDA_MPS_PIPE_DIRECTORY
           value: "/tmp/nvidia-mps"
-      storageUri: pvc://model-storage/gpt2
+      volumeMounts:
+      - name: model-storage
+        mountPath: /models
+        readOnly: true
+      - name: mps-pipe
+        mountPath: /tmp/nvidia-mps
       resources:
         limits:
           cpu: "2"
-          memory: 4Gi
+          memory: 6Gi
           nvidia.com/gpu: "1"
         requests:
           cpu: "1"
-          memory: 2Gi
+          memory: 4Gi
           nvidia.com/gpu: "1"
+    volumes:
+    - name: model-storage
+      persistentVolumeClaim:
+        claimName: model-storage
+    - name: mps-pipe
+      hostPath:
+        path: /tmp/nvidia-mps
 ---
-# Service 2: GPT-2 Instance 2 (33% GPU threads, 3GB VRAM)
+# Service 2: Gemma Tenant 2
 apiVersion: "serving.kserve.io/v1beta1"
 kind: "InferenceService"
 metadata:
-  name: "gpt2-tenant2"
+  name: "gemma-tenant2"
   namespace: gpu-share
 spec:
   predictor:
-    model:
-      modelFormat:
-        name: huggingface
-      args:
-        - --model_name=gpt2
-        - --max-model-len=1024
-        - --gpu-memory-utilization=0.3
+    containers:
+    - name: kserve-container
+      image: python:3.10-slim
+      command:
+      - bash
+      - -c
+      - |
+        pip install flask transformers torch --quiet
+        python << 'PYEOF'
+        from flask import Flask, request, jsonify
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        import torch
+        import os
+
+        app = Flask(__name__)
+        tenant = os.environ.get("TENANT_ID", "2")
+
+        print(f"Loading Gemma 3 1B model for tenant {tenant}...")
+        model_path = "/models/gemma-3-1b"
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, device_map="auto")
+        print("Model loaded!")
+
+        @app.route("/v1/completions", methods=["POST"])
+        def generate():
+            data = request.json
+            prompt = data.get("prompt", "Hello")
+            max_tokens = data.get("max_tokens", 100)
+            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+            outputs = model.generate(**inputs, max_new_tokens=max_tokens, do_sample=True, temperature=0.7, pad_token_id=tokenizer.eos_token_id)
+            response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            return jsonify({"text": response, "tenant": tenant})
+
+        @app.route("/health", methods=["GET"])
+        def health():
+            return jsonify({"status": "healthy", "tenant": tenant})
+
+        if __name__ == "__main__":
+            app.run(host="0.0.0.0", port=5000)
+        PYEOF
+      ports:
+      - containerPort: 5000
+        protocol: TCP
       env:
+        - name: TENANT_ID
+          value: "2"
         - name: CUDA_VISIBLE_DEVICES
           value: "0"
-        - name: LD_PRELOAD
-          value: "/opt/vram-shim/vram_limiter_runtime.so"
         - name: VRAM_LIMIT_MB
-          value: "3000"
+          value: "4000"
         - name: CUDA_MPS_PIPE_DIRECTORY
           value: "/tmp/nvidia-mps"
-      storageUri: pvc://model-storage/gpt2
+      volumeMounts:
+      - name: model-storage
+        mountPath: /models
+        readOnly: true
+      - name: mps-pipe
+        mountPath: /tmp/nvidia-mps
       resources:
         limits:
           cpu: "2"
-          memory: 4Gi
+          memory: 6Gi
           nvidia.com/gpu: "1"
         requests:
           cpu: "1"
-          memory: 2Gi
+          memory: 4Gi
           nvidia.com/gpu: "1"
+    volumes:
+    - name: model-storage
+      persistentVolumeClaim:
+        claimName: model-storage
+    - name: mps-pipe
+      hostPath:
+        path: /tmp/nvidia-mps
 ---
-# Service 3: GPT-2 Instance 3 (33% GPU threads, 3GB VRAM)
+# Service 3: Gemma Tenant 3
 apiVersion: "serving.kserve.io/v1beta1"
 kind: "InferenceService"
 metadata:
-  name: "gpt2-tenant3"
+  name: "gemma-tenant3"
   namespace: gpu-share
 spec:
   predictor:
-    model:
-      modelFormat:
-        name: huggingface
-      args:
-        - --model_name=gpt2
-        - --max-model-len=1024
-        - --gpu-memory-utilization=0.3
+    containers:
+    - name: kserve-container
+      image: python:3.10-slim
+      command:
+      - bash
+      - -c
+      - |
+        pip install flask transformers torch --quiet
+        python << 'PYEOF'
+        from flask import Flask, request, jsonify
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        import torch
+        import os
+
+        app = Flask(__name__)
+        tenant = os.environ.get("TENANT_ID", "3")
+
+        print(f"Loading Gemma 3 1B model for tenant {tenant}...")
+        model_path = "/models/gemma-3-1b"
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
+        model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=torch.float16, device_map="auto")
+        print("Model loaded!")
+
+        @app.route("/v1/completions", methods=["POST"])
+        def generate():
+            data = request.json
+            prompt = data.get("prompt", "Hello")
+            max_tokens = data.get("max_tokens", 100)
+            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+            outputs = model.generate(**inputs, max_new_tokens=max_tokens, do_sample=True, temperature=0.7, pad_token_id=tokenizer.eos_token_id)
+            response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            return jsonify({"text": response, "tenant": tenant})
+
+        @app.route("/health", methods=["GET"])
+        def health():
+            return jsonify({"status": "healthy", "tenant": tenant})
+
+        if __name__ == "__main__":
+            app.run(host="0.0.0.0", port=5000)
+        PYEOF
+      ports:
+      - containerPort: 5000
+        protocol: TCP
       env:
+        - name: TENANT_ID
+          value: "3"
         - name: CUDA_VISIBLE_DEVICES
           value: "0"
-        - name: LD_PRELOAD
-          value: "/opt/vram-shim/vram_limiter_runtime.so"
         - name: VRAM_LIMIT_MB
-          value: "3000"
+          value: "4000"
         - name: CUDA_MPS_PIPE_DIRECTORY
           value: "/tmp/nvidia-mps"
-      storageUri: pvc://model-storage/gpt2
+      volumeMounts:
+      - name: model-storage
+        mountPath: /models
+        readOnly: true
+      - name: mps-pipe
+        mountPath: /tmp/nvidia-mps
       resources:
         limits:
           cpu: "2"
-          memory: 4Gi
+          memory: 6Gi
           nvidia.com/gpu: "1"
         requests:
           cpu: "1"
-          memory: 2Gi
+          memory: 4Gi
           nvidia.com/gpu: "1"
+    volumes:
+    - name: model-storage
+      persistentVolumeClaim:
+        claimName: model-storage
+    - name: mps-pipe
+      hostPath:
+        path: /tmp/nvidia-mps
