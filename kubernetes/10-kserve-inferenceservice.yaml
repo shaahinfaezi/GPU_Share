@@ -1,10 +1,8 @@
-# KServe InferenceService with MPS + VRAM Shim
-# Gemma 3 1B model - lightweight but capable
-# 
+# KServe InferenceService with HuggingFace Server Runtime
+# Gemma 3 1B model using official kserve/huggingfaceserver
+#
 # Prerequisites:
-# 1. Create HF token secret: kubectl create secret generic hf-token --from-literal=token=YOUR_TOKEN -n gpu-share
-# 2. Download model: kubectl apply -f 07-download-model.yaml
-# 3. Wait for download: kubectl logs -f job/download-gemma-model -n gpu-share
+# 1. Download model: kubectl apply -f 07-download-model.yaml
 #
 apiVersion: "serving.kserve.io/v1beta1"
 kind: "InferenceService"
@@ -13,60 +11,17 @@ metadata:
   namespace: gpu-share
 spec:
   predictor:
-    containers:
-    - name: kserve-container
-      image: python:3.10-slim
-      command:
-      - bash
-      - -c
-      - |
-        pip install flask transformers torch --quiet
-        python << 'PYEOF'
-        from flask import Flask, request, jsonify
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-        import torch
-        import os
-
-        app = Flask(__name__)
-
-        print("Loading Gemma 3 1B model...")
-        model_path = "/models/gemma-3-1b"
-        tokenizer = AutoTokenizer.from_pretrained(model_path)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_path,
-            torch_dtype=torch.float16,
-            device_map="auto"
-        )
-        print("Model loaded!")
-
-        @app.route("/v1/completions", methods=["POST"])
-        def generate():
-            data = request.json
-            prompt = data.get("prompt", "Hello")
-            max_tokens = data.get("max_tokens", 100)
-            
-            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=max_tokens,
-                do_sample=True,
-                temperature=0.7,
-                pad_token_id=tokenizer.eos_token_id
-            )
-            response = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            
-            return jsonify({"text": response, "model": "gemma-3-1b"})
-
-        @app.route("/health", methods=["GET"])
-        def health():
-            return jsonify({"status": "healthy"})
-
-        if __name__ == "__main__":
-            app.run(host="0.0.0.0", port=5000)
-        PYEOF
-      ports:
-      - containerPort: 5000
-        protocol: TCP
+    tolerations:
+    - key: "node.kubernetes.io/disk-pressure"
+      operator: "Exists"
+    model:
+      modelFormat:
+        name: huggingface
+      args:
+        - --model_name=gemma
+        - --model_id=/mnt/models
+        - --max-model-len=2048
+        - --gpu-memory-utilization=0.8
       env:
         - name: CUDA_VISIBLE_DEVICES
           value: "0"
@@ -74,12 +29,8 @@ spec:
           value: "4000"
         - name: CUDA_MPS_PIPE_DIRECTORY
           value: "/tmp/nvidia-mps"
-      volumeMounts:
-      - name: model-storage
-        mountPath: /models
-        readOnly: true
-      - name: mps-pipe
-        mountPath: /tmp/nvidia-mps
+      storageUri: pvc://model-storage/gemma-3-1b
+      image: kserve/huggingfaceserver:v0.16.0-gpu
       resources:
         limits:
           cpu: "4"
@@ -89,16 +40,3 @@ spec:
           cpu: "2"
           memory: 4Gi
           nvidia.com/gpu: "1"
-      readinessProbe:
-        httpGet:
-          path: /health
-          port: 5000
-        initialDelaySeconds: 120
-        periodSeconds: 10
-    volumes:
-    - name: model-storage
-      persistentVolumeClaim:
-        claimName: model-storage
-    - name: mps-pipe
-      hostPath:
-        path: /tmp/nvidia-mps
