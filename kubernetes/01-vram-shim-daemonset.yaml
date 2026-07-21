@@ -30,7 +30,7 @@ spec:
       # Init container builds and installs the shim
       initContainers:
       - name: build-shim
-        image: nvidia/cuda:11.8.0-devel-ubuntu22.04
+        image: nvidia/cuda:13.0.1-devel-ubuntu22.04
         command:
         - /bin/bash
         - -c

@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-hami-mps-benchmark
+  namespace: gpu-share-bench
+spec:
+  completions: 4
+  parallelism: 4
+  completionMode: Indexed
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: gpu-hami-mps-benchmark
+    spec:
+      restartPolicy: Never
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: benchmark
+        image: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+        imagePullPolicy: IfNotPresent
+        command: ["python", "/bench/benchmark.py"]
+        env:
+        - name: BENCH_MODE
+          value: hami-plus-mps
+        - name: BENCH_ALLOC_MB
+          value: "512"
+        - name: BENCH_MATRIX_SIZE
+          value: "2048"
+        - name: BENCH_ITERS
+          value: "100"
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_LOG_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_ACTIVE_THREAD_PERCENTAGE
+          value: "25"
+        volumeMounts:
+        - name: benchmark-script
+          mountPath: /bench
+          readOnly: true
+        - name: mps-pipe
+          mountPath: /tmp/nvidia-mps
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "4000"
+            nvidia.com/gpucores: "25"
+          requests:
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "4000"
+            nvidia.com/gpucores: "25"
+      volumes:
+      - name: benchmark-script
+        configMap:
+          name: gpu-benchmark-script
+      - name: mps-pipe
+        hostPath:
+          path: /tmp/nvidia-mps
+          type: Directory

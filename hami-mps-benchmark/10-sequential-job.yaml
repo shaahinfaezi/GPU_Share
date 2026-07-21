@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-sequential-benchmark
+  namespace: gpu-share-bench
+spec:
+  completions: 4
+  parallelism: 1
+  completionMode: Indexed
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: gpu-sequential-benchmark
+    spec:
+      restartPolicy: Never
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: benchmark
+        image: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+        imagePullPolicy: IfNotPresent
+        command: ["python", "/bench/benchmark.py"]
+        env:
+        - name: BENCH_MODE
+          value: sequential
+        - name: BENCH_ALLOC_MB
+          value: "512"
+        - name: BENCH_MATRIX_SIZE
+          value: "2048"
+        - name: BENCH_ITERS
+          value: "100"
+        volumeMounts:
+        - name: benchmark-script
+          mountPath: /bench
+          readOnly: true
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+          requests:
+            nvidia.com/gpu: "1"
+      volumes:
+      - name: benchmark-script
+        configMap:
+          name: gpu-benchmark-script

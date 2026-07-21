@@ -38,7 +38,7 @@ spec:
       - name: mps-device-plugin
         # Use NVIDIA's MPS device plugin image
         # Or use a custom one that exposes nvidia.com/mps-gpu
-        image: nvcr.io/nvidia/k8s-device-plugin:v0.15.0
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.17.0
         securityContext:
           privileged: true
         env:

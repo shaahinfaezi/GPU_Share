@@ -1,0 +1,52 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-hami-oom-test
+  namespace: gpu-share-bench
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: gpu-hami-oom-test
+    spec:
+      restartPolicy: Never
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: benchmark
+        image: pytorch/pytorch:2.4.1-cuda12.1-cudnn9-runtime
+        imagePullPolicy: IfNotPresent
+        command: ["python", "/bench/benchmark.py"]
+        env:
+        - name: BENCH_MODE
+          value: hami-oom
+        - name: BENCH_ALLOC_MB
+          value: "2048"
+        - name: BENCH_MATRIX_SIZE
+          value: "1024"
+        - name: BENCH_ITERS
+          value: "1"
+        - name: EXPECT_OOM
+          value: "true"
+        volumeMounts:
+        - name: benchmark-script
+          mountPath: /bench
+          readOnly: true
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "1024"
+            nvidia.com/gpucores: "20"
+          requests:
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "1024"
+            nvidia.com/gpucores: "20"
+      volumes:
+      - name: benchmark-script
+        configMap:
+          name: gpu-benchmark-script

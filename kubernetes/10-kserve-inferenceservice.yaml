@@ -31,7 +31,7 @@ spec:
       
       containers:
       - name: huggingface-server
-        image: kserve/huggingfaceserver:v0.16.0-gpu
+        image: kserve/huggingfaceserver:v0.17.0-gpu
         args:
           - --model_name=gemma
           - --model_id=/mnt/models/gemma-3-1b

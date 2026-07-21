@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpu-benchmark-script
+  namespace: gpu-share-bench
+data:
+  benchmark.py: |
+    import os
+    import subprocess
+    import sys
+    import time
+
+    import torch
+
+
+    def run_cmd(args):
+        print(f"$ {' '.join(args)}", flush=True)
+        try:
+            result = subprocess.run(args, check=False, text=True, capture_output=True, timeout=30)
+            if result.stdout:
+                print(result.stdout, flush=True)
+            if result.stderr:
+                print(result.stderr, file=sys.stderr, flush=True)
+        except Exception as exc:
+            print(f"command failed: {exc}", flush=True)
+
+
+    def allocate_mb(mb):
+        if mb <= 0:
+            return None
+        count = (mb * 1024 * 1024) // 4
+        return torch.empty((count,), dtype=torch.float32, device="cuda")
+
+
+    def main():
+        mode = os.getenv("BENCH_MODE", "unknown")
+        worker = os.getenv("JOB_COMPLETION_INDEX", os.getenv("HOSTNAME", "0"))
+        alloc_mb = int(os.getenv("BENCH_ALLOC_MB", "512"))
+        matrix_size = int(os.getenv("BENCH_MATRIX_SIZE", "2048"))
+        iters = int(os.getenv("BENCH_ITERS", "100"))
+        oom_expect = os.getenv("EXPECT_OOM", "false").lower() == "true"
+
+        print(f"BENCH_MODE={mode}", flush=True)
+        print(f"WORKER={worker}", flush=True)
+        print(f"BENCH_ALLOC_MB={alloc_mb}", flush=True)
+        print(f"BENCH_MATRIX_SIZE={matrix_size}", flush=True)
+        print(f"BENCH_ITERS={iters}", flush=True)
+        print(f"CUDA_VISIBLE_DEVICES={os.getenv('CUDA_VISIBLE_DEVICES', '')}", flush=True)
+        print(f"NVIDIA_VISIBLE_DEVICES={os.getenv('NVIDIA_VISIBLE_DEVICES', '')}", flush=True)
+        print(f"CUDA_MPS_PIPE_DIRECTORY={os.getenv('CUDA_MPS_PIPE_DIRECTORY', '')}", flush=True)
+        print(f"CUDA_MPS_ACTIVE_THREAD_PERCENTAGE={os.getenv('CUDA_MPS_ACTIVE_THREAD_PERCENTAGE', '')}", flush=True)
+
+        run_cmd(["nvidia-smi"])
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA is not available")
+
+        device = torch.device("cuda:0")
+        props = torch.cuda.get_device_properties(device)
+        print(f"CUDA_DEVICE={props.name}", flush=True)
+        print(f"CUDA_TOTAL_MEMORY_MB={props.total_memory // (1024 * 1024)}", flush=True)
+
+        try:
+            reserved = allocate_mb(alloc_mb)
+            torch.cuda.synchronize()
+        except RuntimeError as exc:
+            print(f"ALLOCATION_FAILED={exc}", flush=True)
+            if oom_expect:
+                print("EXPECTED_OOM=true", flush=True)
+                return
+            raise
+
+        if oom_expect:
+            raise RuntimeError("Expected CUDA OOM did not happen")
+
+        a = torch.randn((matrix_size, matrix_size), device=device)
+        b = torch.randn((matrix_size, matrix_size), device=device)
+        c = torch.empty((matrix_size, matrix_size), device=device)
+
+        torch.cuda.synchronize()
+        start = time.perf_counter()
+        for _ in range(iters):
+            c = torch.mm(a, b)
+        torch.cuda.synchronize()
+        duration = time.perf_counter() - start
+
+        if reserved is not None:
+            reserved[0] = 1.0
+
+        print(f"DURATION_SECONDS={duration:.6f}", flush=True)
+        print(f"ITERATIONS_PER_SECOND={iters / duration:.6f}", flush=True)
+        print(f"TORCH_MEMORY_ALLOCATED_MB={torch.cuda.memory_allocated() // (1024 * 1024)}", flush=True)
+        print(f"TORCH_MEMORY_RESERVED_MB={torch.cuda.memory_reserved() // (1024 * 1024)}", flush=True)
+        run_cmd(["nvidia-smi"])
+
+
+    if __name__ == "__main__":
+        main()

@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-bench-mps-daemon
+  namespace: gpu-share-bench
+spec:
+  selector:
+    matchLabels:
+      app: gpu-bench-mps-daemon
+  template:
+    metadata:
+      labels:
+        app: gpu-bench-mps-daemon
+    spec:
+      hostPID: true
+      hostNetwork: true
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      initContainers:
+      - name: setup-mps-dir
+        image: nvidia/cuda:12.4.1-base-ubuntu22.04
+        securityContext:
+          privileged: true
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          mkdir -p /tmp/nvidia-mps
+          chmod 1777 /tmp/nvidia-mps
+          rm -rf /tmp/nvidia-mps/* || true
+          nvidia-smi -c EXCLUSIVE_PROCESS || true
+          nvidia-smi
+        volumeMounts:
+        - name: mps-pipe
+          mountPath: /tmp/nvidia-mps
+      containers:
+      - name: mps-daemon
+        image: nvidia/cuda:12.4.1-base-ubuntu22.04
+        securityContext:
+          privileged: true
+        env:
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_LOG_DIRECTORY
+          value: /tmp/nvidia-mps
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -e
+          export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
+          export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
+          nvidia-cuda-mps-control -d
+          while true; do
+            pgrep -f nvidia-cuda-mps-control >/dev/null || nvidia-cuda-mps-control -d || true
+            sleep 30
+          done
+        volumeMounts:
+        - name: mps-pipe
+          mountPath: /tmp/nvidia-mps
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+        readinessProbe:
+          exec:
+            command: ["test", "-S", "/tmp/nvidia-mps/control"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: mps-pipe
+        hostPath:
+          path: /tmp/nvidia-mps
+          type: DirectoryOrCreate
