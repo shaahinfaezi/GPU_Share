@@ -146,7 +146,13 @@ service_url() {
 
 service_ready() {
   local service="$1"
-  kubectl get "${resource_type}/${service}" -n "${NS}" -o json 2>/dev/null | run_python -c '
+  local payload
+  payload="$(kubectl get "${resource_type}/${service}" -n "${NS}" -o json 2>/dev/null || true)"
+  if [[ -z "${payload}" ]]; then
+    return 1
+  fi
+
+  printf '%s' "${payload}" | run_python -c '
 import json, sys
 data = json.load(sys.stdin)
 ready = any(
@@ -178,9 +184,17 @@ wait_for_service() {
 
 select_pod_name() {
   local service="$1"
-  kubectl get pods -n "${NS}" -o json | run_python -c '
+  local payload
+  payload="$(kubectl get pods -n "${NS}" -o json 2>/dev/null || true)"
+  if [[ -z "${payload}" ]]; then
+    return 1
+  fi
+
+  SERVICE_NAME="${service}" run_python -c '
 import json, sys
-service = sys.argv[1]
+import os
+
+service = os.environ.get("SERVICE_NAME", "")
 data = json.load(sys.stdin)
 candidates = []
 for item in data.get("items", []):
@@ -201,7 +215,7 @@ for item in data.get("items", []):
 if candidates:
     candidates.sort(reverse=True)
     print(candidates[0][1])
-'
+' <<< "${payload}"
 }
 
 collect_service_artifacts() {
@@ -484,6 +498,13 @@ run_mode() {
 
   pod_1="$(select_pod_name "${SERVICE_1}")"
   pod_2="$(select_pod_name "${SERVICE_2}")"
+
+  local resolved_endpoint_1 resolved_endpoint_2
+  resolved_endpoint_1="${endpoint_1:-$(service_url "${SERVICE_1}")}" 
+  resolved_endpoint_2="${endpoint_2:-$(service_url "${SERVICE_2}")}" 
+  if [[ -z "${resolved_endpoint_1}" || -z "${resolved_endpoint_2}" ]]; then
+    log "Service URLs were not available from status; using explicit endpoints is recommended"
+  fi
 
   if [[ "${ready_1}" != "true" || "${ready_2}" != "true" ]]; then
     log "One or both services did not become Ready"
