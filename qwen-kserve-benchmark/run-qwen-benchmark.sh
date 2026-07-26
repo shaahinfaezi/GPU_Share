@@ -172,6 +172,30 @@ sys.exit(0 if ready else 1)
 '
 }
 
+service_ready_condition() {
+  local service="$1"
+  local payload
+  payload="$(kubectl get "${resource_type}/${service}" -n "${NS}" -o json 2>/dev/null || true)"
+  if [[ -z "${payload}" ]]; then
+    return 1
+  fi
+
+  printf '%s' "${payload}" | run_python -c '
+import json, sys
+
+data = json.load(sys.stdin)
+conditions = data.get("status", {}).get("conditions", [])
+for condition in conditions:
+    if condition.get("type") == "Ready":
+        print(json.dumps({
+            "status": condition.get("status"),
+            "reason": condition.get("reason", ""),
+            "message": condition.get("message", ""),
+        }))
+        break
+'
+}
+
 wait_for_service() {
   local service="$1"
   local start_epoch="$2"
@@ -192,8 +216,13 @@ wait_for_service() {
       local elapsed
       elapsed=$((now - start_epoch))
       local pod_snapshot
+      local ready_snapshot
       pod_snapshot="$(service_wait_snapshot "${service}")"
+      ready_snapshot="$(service_ready_condition "${service}" || true)"
       runner_log "Waiting for ${service}: ${elapsed}s elapsed / ${timeout_seconds}s timeout"
+      if [[ -n "${ready_snapshot}" ]]; then
+        runner_log "${service} ready condition: ${ready_snapshot}"
+      fi
       if [[ -n "${pod_snapshot}" ]]; then
         runner_log "${service} pod snapshot:"
         printf '%s\n' "${pod_snapshot}" | sed 's/^/  /'
