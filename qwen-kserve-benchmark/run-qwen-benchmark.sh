@@ -42,6 +42,10 @@ log() {
   printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"
 }
 
+runner_log() {
+  log "$*"
+}
+
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
   exit 1
@@ -102,6 +106,11 @@ validate_hami_components() {
   if [[ -z "${hami_hits}" ]]; then
     fail "HAMi components were not detected in the cluster"
   fi
+}
+
+service_wait_snapshot() {
+  local service="$1"
+  kubectl get pods -n "${NS}" --no-headers 2>/dev/null | grep -E "${service}" || true
 }
 
 apply_mode_manifests() {
@@ -168,13 +177,34 @@ wait_for_service() {
   local start_epoch="$2"
   local timeout_seconds="$3"
   local deadline=$((start_epoch + timeout_seconds))
+  local last_heartbeat=0
 
   while true; do
     if service_ready "${service}"; then
+      runner_log "${service} is Ready"
       return 0
     fi
 
-    if (( $(date +%s) >= deadline )); then
+    local now
+    now=$(date +%s)
+
+    if (( now - last_heartbeat >= 30 )); then
+      local elapsed
+      elapsed=$((now - start_epoch))
+      local pod_snapshot
+      pod_snapshot="$(service_wait_snapshot "${service}")"
+      runner_log "Waiting for ${service}: ${elapsed}s elapsed / ${timeout_seconds}s timeout"
+      if [[ -n "${pod_snapshot}" ]]; then
+        runner_log "${service} pod snapshot:"
+        printf '%s\n' "${pod_snapshot}" | sed 's/^/  /'
+      else
+        runner_log "${service} pod snapshot: none yet"
+      fi
+      last_heartbeat=${now}
+    fi
+
+    if (( now >= deadline )); then
+      runner_log "Timed out waiting for ${service} after ${timeout_seconds}s"
       return 1
     fi
 
@@ -530,6 +560,12 @@ run_mode() {
 }
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+RUN_DIR="${RESULTS_ROOT}/${timestamp}"
+RUN_LOG_FILE="${RUN_DIR}/runner.log"
+mkdir -p "${RUN_DIR}"
+exec > >(tee -a "${RUN_LOG_FILE}") 2>&1
+
+runner_log "Writing benchmark results to ${RUN_DIR}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -582,8 +618,6 @@ done
 require_cmd kubectl
 require_cmd python3
 
-mkdir -p "${RESULTS_ROOT}/${timestamp}"
-
 validate_common_cluster_state
 
 case "${MODE}" in
@@ -597,8 +631,6 @@ esac
 if [[ "${MODE}" == hami || "${MODE}" == hami-mps || ( "${MODE}" == all && "${WITH_HAMI_MPS}" == "true" ) ]]; then
   validate_hami_components
 fi
-
-log "Writing benchmark results to ${RESULTS_ROOT}/${timestamp}"
 
 overall_status=0
 
