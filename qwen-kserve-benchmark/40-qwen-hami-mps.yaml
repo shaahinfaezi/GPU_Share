@@ -27,7 +27,7 @@ spec:
           - --gpu-memory-utilization=0.30
           - --max-model-len=512
           - --max-num-seqs=1
-          - --enable-prefix-caching=false
+          - --no-enable-prefix-caching
         resources:
           limits:
             cpu: '2'
@@ -88,7 +88,7 @@ spec:
           - --gpu-memory-utilization=0.30
           - --max-model-len=512
           - --max-num-seqs=1
-          - --enable-prefix-caching=false
+          - --no-enable-prefix-caching
         resources:
           limits:
             cpu: '2'
