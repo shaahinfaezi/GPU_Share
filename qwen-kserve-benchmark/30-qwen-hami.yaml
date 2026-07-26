@@ -23,7 +23,6 @@ spec:
       - name: main
         image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
         args:
-          - --backend=vllm
           - --gpu-memory-utilization=0.30
           - --max-model-len=512
           - --max-num-seqs=1
@@ -70,7 +69,6 @@ spec:
       - name: main
         image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
         args:
-          - --backend=vllm
           - --gpu-memory-utilization=0.30
           - --max-model-len=512
           - --max-num-seqs=1
