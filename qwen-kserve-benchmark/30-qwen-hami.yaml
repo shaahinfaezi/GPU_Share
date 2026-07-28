@@ -1,3 +1,20 @@
+# HAMi concurrent execution, no MPS.
+#
+# IMPORTANT — why --gpu-memory-utilization is 0.90 here and 0.30 elsewhere:
+# HAMi's vGPU library intercepts the CUDA/NVML memory queries, so vLLM does not
+# see the 12288 MiB device. It sees the nvidia.com/gpumem quota (4096 MiB).
+# --gpu-memory-utilization is a *fraction of what the process can see*, so
+# reusing 0.30 would give vLLM 0.30 x 4096 = 1229 MiB, which cannot even hold
+# the 0.5B weights plus a CUDA context, and the Pod crash-loops.
+#
+#   0.90 x 4096 MiB = 3686 MiB
+#
+# which is the identical absolute VRAM budget used by the sequential and MPS
+# modes. That is what keeps the four modes comparable.
+#
+# The gpucores/gpumem values below are the `balanced` profile defaults; the
+# runner overwrites them from 31-qwen-hami-compute-profiles.yaml when
+# --hami-profile is passed.
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
@@ -23,7 +40,7 @@ spec:
       - name: main
         image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
         args:
-          - --gpu-memory-utilization=0.30
+          - --gpu-memory-utilization=0.90
           - --max-model-len=512
           - --max-num-seqs=1
           - --no-enable-prefix-caching
@@ -32,13 +49,13 @@ spec:
             cpu: '2'
             memory: 6Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "3686"
+            nvidia.com/gpumem: "4096"
             nvidia.com/gpucores: "50"
           requests:
             cpu: '100m'
-            memory: 2Gi
+            memory: 1Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "3686"
+            nvidia.com/gpumem: "4096"
             nvidia.com/gpucores: "50"
         env:
           - name: HF_HOME
@@ -69,7 +86,7 @@ spec:
       - name: main
         image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
         args:
-          - --gpu-memory-utilization=0.30
+          - --gpu-memory-utilization=0.90
           - --max-model-len=512
           - --max-num-seqs=1
           - --no-enable-prefix-caching
@@ -78,13 +95,13 @@ spec:
             cpu: '2'
             memory: 6Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "3686"
+            nvidia.com/gpumem: "4096"
             nvidia.com/gpucores: "50"
           requests:
             cpu: '100m'
-            memory: 2Gi
+            memory: 1Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "3686"
+            nvidia.com/gpumem: "4096"
             nvidia.com/gpucores: "50"
         env:
           - name: HF_HOME

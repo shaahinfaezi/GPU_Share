@@ -1,3 +1,11 @@
+# HAMi (scheduling + VRAM quota) plus MPS (CUDA process sharing).
+#
+# Same --gpu-memory-utilization=0.90 reasoning as 30-qwen-hami.yaml: under HAMi
+# the value is a fraction of the 4096 MiB quota, not of the 12288 MiB device.
+#
+# CUDA_MPS_ACTIVE_THREAD_PERCENTAGE and nvidia.com/gpucores are two independent
+# throttles applied to the same process. Both are set to 50 so they agree;
+# leaving them inconsistent makes the result impossible to attribute.
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
@@ -23,7 +31,7 @@ spec:
       - name: main
         image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
         args:
-          - --gpu-memory-utilization=0.30
+          - --gpu-memory-utilization=0.90
           - --max-model-len=512
           - --max-num-seqs=1
           - --no-enable-prefix-caching
@@ -32,13 +40,13 @@ spec:
             cpu: '2'
             memory: 6Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "3686"
+            nvidia.com/gpumem: "4096"
             nvidia.com/gpucores: "50"
           requests:
             cpu: '100m'
-            memory: 2Gi
+            memory: 1Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "3686"
+            nvidia.com/gpumem: "4096"
             nvidia.com/gpucores: "50"
         env:
           - name: HF_HOME
@@ -83,7 +91,7 @@ spec:
       - name: main
         image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
         args:
-          - --gpu-memory-utilization=0.30
+          - --gpu-memory-utilization=0.90
           - --max-model-len=512
           - --max-num-seqs=1
           - --no-enable-prefix-caching
@@ -92,13 +100,13 @@ spec:
             cpu: '2'
             memory: 6Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "3686"
+            nvidia.com/gpumem: "4096"
             nvidia.com/gpucores: "50"
           requests:
             cpu: '100m'
-            memory: 2Gi
+            memory: 1Gi
             nvidia.com/gpu: "1"
-            nvidia.com/gpumem: "3686"
+            nvidia.com/gpumem: "4096"
             nvidia.com/gpucores: "50"
         env:
           - name: HF_HOME

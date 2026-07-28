@@ -1,0 +1,43 @@
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: qwen-bench-02
+  namespace: llm-demo
+  labels:
+    qwen-benchmark-mode: sequential
+    qwen-benchmark-phase: "2"
+spec:
+  model:
+    name: Qwen/Qwen2.5-0.5B-Instruct
+    uri: pvc://qwen-local-pv-claim/
+  replicas: 1
+  router:
+    scheduler: {}
+    route: {}
+    gateway:
+      refs:
+        - name: kserve-ingress-gateway
+          namespace: kserve
+  template:
+    containers:
+      - name: main
+        image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+        args:
+          # Absolute VRAM budget: 0.30 x 12288 MiB = 3686 MiB.
+          # Identical absolute budget is used in every mode so the modes stay comparable.
+          - --gpu-memory-utilization=0.30
+          - --max-model-len=512
+          - --max-num-seqs=1
+          - --no-enable-prefix-caching
+        resources:
+          limits:
+            cpu: '2'
+            memory: 6Gi
+            nvidia.com/gpu: "1"
+          requests:
+            cpu: '100m'
+            memory: 1Gi
+            nvidia.com/gpu: "1"
+        env:
+          - name: HF_HOME
+            value: "/mnt/models"

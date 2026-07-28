@@ -1,0 +1,61 @@
+# Host-level GPU observer.
+#
+# Deployed for every mode so that GPU memory/utilization samples come from one
+# consistent vantage point. Sampling nvidia-smi inside a workload Pod is not
+# comparable across modes: under HAMi the vGPU library virtualizes what
+# nvidia-smi reports, so a HAMi Pod sees its own quota rather than the device.
+# This probe is privileged and does NOT request nvidia.com/gpu, so it never
+# competes with the benchmarked services for the device.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: qwen-benchmark-gpu-probe
+  namespace: llm-demo
+  labels:
+    app: qwen-benchmark-gpu-probe
+spec:
+  selector:
+    matchLabels:
+      app: qwen-benchmark-gpu-probe
+  template:
+    metadata:
+      labels:
+        app: qwen-benchmark-gpu-probe
+    spec:
+      hostPID: true
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: probe
+          image: nvidia/cuda:12.4.1-base-ubuntu22.04
+          securityContext:
+            privileged: true
+          env:
+            # Required: without these the NVIDIA container runtime does not
+            # inject the driver libraries or nvidia-smi into the container.
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "utility,compute"
+            # Do not let the HAMi vGPU library virtualize this container's view.
+            - name: CUDA_DEVICE_MEMORY_SHARED_CACHE
+              value: ""
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              nvidia-smi || true
+              while true; do sleep 30; done
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            exec:
+              command: ["bash", "-c", "nvidia-smi -L"]
+            initialDelaySeconds: 3
+            periodSeconds: 10

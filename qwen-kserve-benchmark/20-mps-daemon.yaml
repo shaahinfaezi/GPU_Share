@@ -15,7 +15,7 @@ spec:
         app: qwen-benchmark-mps-daemon
     spec:
       hostPID: true
-      hostNetwork: true
+      hostIPC: true
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists
@@ -25,14 +25,33 @@ spec:
           image: nvidia/cuda:12.4.1-base-ubuntu22.04
           securityContext:
             privileged: true
+          env:
+            # Without these the NVIDIA container runtime injects no driver, and
+            # nvidia-smi / nvidia-cuda-mps-control are missing from the image.
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "utility,compute"
           command: ["/bin/bash", "-c"]
           args:
             - |
-              set -e
+              set -uo pipefail
               mkdir -p /tmp/nvidia-mps
               chmod 1777 /tmp/nvidia-mps
+              # Remove stale pipes/sockets from a previous run, otherwise the
+              # control daemon refuses to start.
               rm -rf /tmp/nvidia-mps/* || true
-              nvidia-smi -c EXCLUSIVE_PROCESS || true
+              # Keep the GPU in DEFAULT compute mode.
+              #
+              # EXCLUSIVE_PROCESS is the classic way to *force* every client
+              # through MPS, but it is a persistent, node-global driver setting:
+              # if the benchmark is interrupted, every later single-process run
+              # (the sequential baseline and both HAMi modes) fails with
+              # "all CUDA-capable devices are busy or unavailable". MPS works in
+              # DEFAULT mode too; the workload Pods opt in explicitly through
+              # CUDA_MPS_PIPE_DIRECTORY.
+              nvidia-smi -c DEFAULT || true
+              nvidia-smi || true
           volumeMounts:
             - name: mps-pipe
               mountPath: /tmp/nvidia-mps
@@ -42,6 +61,10 @@ spec:
           securityContext:
             privileged: true
           env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "utility,compute"
             - name: CUDA_MPS_PIPE_DIRECTORY
               value: /tmp/nvidia-mps
             - name: CUDA_MPS_LOG_DIRECTORY
@@ -49,23 +72,48 @@ spec:
           command: ["/bin/bash", "-c"]
           args:
             - |
-              set -e
+              set -uo pipefail
               export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
               export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
+              # The control daemon runs as root, so client processes running as
+              # any UID (the vLLM container is non-root) are allowed to connect.
               nvidia-cuda-mps-control -d
+              # Self-heal. If the daemon dies the control pipe disappears and
+              # every client silently falls back to non-MPS execution, which
+              # would quietly invalidate the MPS measurement.
               while true; do
-                sleep 30
+                if [ ! -S /tmp/nvidia-mps/control ]; then
+                  echo "MPS control pipe missing, restarting daemon"
+                  nvidia-cuda-mps-control -d || true
+                fi
+                sleep 15
               done
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    echo quit | nvidia-cuda-mps-control || true
+                    nvidia-smi -c DEFAULT || true
           volumeMounts:
             - name: mps-pipe
               mountPath: /tmp/nvidia-mps
+          # rollout status only means something if readiness tracks the pipe.
+          readinessProbe:
+            exec:
+              command: ["test", "-S", "/tmp/nvidia-mps/control"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
           resources:
             requests:
               cpu: 50m
               memory: 64Mi
             limits:
-              cpu: 100m
-              memory: 128Mi
+              cpu: 500m
+              memory: 256Mi
       volumes:
         - name: mps-pipe
           hostPath:

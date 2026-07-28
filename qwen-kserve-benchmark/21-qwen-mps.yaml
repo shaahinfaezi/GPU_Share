@@ -1,3 +1,15 @@
+# MPS-only concurrent execution.
+#
+# Both services keep the same absolute VRAM budget as the sequential baseline
+# (0.30 x 12288 MiB = 3686 MiB each) so only the sharing mechanism differs.
+#
+# MPS gives no VRAM isolation. CUDA_MPS_ACTIVE_THREAD_PERCENTAGE is read from
+# the *client* process environment, so it is set here (not on the daemon) and
+# caps each service at half the SM throughput.
+#
+# The mps-pipe volume uses hostPath type Directory on purpose: if the MPS
+# daemon is not running the Pod fails to start instead of silently running
+# without MPS and producing a measurement that looks valid but is not.
 apiVersion: serving.kserve.io/v1alpha1
 kind: LLMInferenceService
 metadata:
@@ -33,7 +45,7 @@ spec:
             nvidia.com/gpu: "1"
           requests:
             cpu: '100m'
-            memory: 2Gi
+            memory: 1Gi
             nvidia.com/gpu: "1"
         env:
           - name: HF_HOME
@@ -89,7 +101,7 @@ spec:
             nvidia.com/gpu: "1"
           requests:
             cpu: '100m'
-            memory: 2Gi
+            memory: 1Gi
             nvidia.com/gpu: "1"
         env:
           - name: HF_HOME
