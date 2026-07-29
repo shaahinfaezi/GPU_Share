@@ -4,13 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NS="llm-demo"
 
-for file in 40-qwen-hami-mps.yaml \
+for file in 04-image-pinner.yaml \
+            40-qwen-hami-mps.yaml \
             31-qwen-hami-compute-profiles.yaml \
             30-qwen-hami.yaml \
             21-qwen-mps.yaml \
             10-qwen-sequential-01.yaml \
             10-qwen-sequential-02.yaml \
             20-mps-daemon.yaml \
+            06-gpu-reserver.yaml \
             05-gpu-probe.yaml; do
   kubectl delete -f "${ROOT_DIR}/${file}" --ignore-not-found=true || true
 done

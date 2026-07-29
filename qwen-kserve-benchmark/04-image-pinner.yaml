@@ -1,0 +1,61 @@
+# Keeps the 9.5 GB vLLM image resident on the node.
+#
+# Measured on a real run: pods that had the image cached reached Ready in about
+# 2 minutes, pods that had to pull it took 6-7 minutes.
+#
+#   sequential/qwen-bench-01  pulled in 4m9.9s   (9,500,566,574 bytes)
+#   hami-mps/qwen-bench-01    pulled in 4m24.0s
+#   hami-mps/qwen-bench-02    pulled in 3m47.3s
+#   everything else           "already present on machine"
+#
+# The benchmark drains every workload Pod between modes so the outgoing vLLM
+# process releases its CUDA context before the next mode starts. That drain is
+# required for correct GPU measurements, but it also leaves the image
+# unreferenced, which makes it eligible for kubelet image garbage collection
+# (evicts unused images once disk passes --image-gc-high-threshold, 85% by
+# default). The next mode then re-pulls 9.5 GB.
+#
+# This Deployment holds a reference to the image for the whole run without
+# starting the server and without requesting a GPU, so kubelet will not evict
+# it. kubelet never garbage-collects an image that a running container uses.
+#
+# Deliberately NOT deleted by the between-mode teardown - that is the whole
+# point. It is removed by the final teardown and by cleanup-qwen-benchmark.sh.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen-benchmark-image-pinner
+  namespace: llm-demo
+  labels:
+    app: qwen-benchmark-image-pinner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qwen-benchmark-image-pinner
+  template:
+    metadata:
+      labels:
+        app: qwen-benchmark-image-pinner
+    spec:
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: pin
+          image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+          # Override the server entrypoint. This container must hold the image
+          # reference and nothing else: no model load, no CUDA context, no GPU.
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Pinning the vLLM image on this node so it is not garbage collected."
+              sleep infinity
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

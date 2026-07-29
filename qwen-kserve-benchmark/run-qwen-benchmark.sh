@@ -44,6 +44,12 @@ ENDPOINT_2=""
 INSECURE="false"
 RESOURCE_TYPE_OVERRIDE=""
 HOST_MPS_UNIT="nvidia-mps"
+# auto = pin only when there is disk headroom. See check_disk_headroom.
+PIN_IMAGE="auto"
+# kubelet evicts unused images above this; pinning above it is dangerous.
+IMAGE_GC_HIGH_PERCENT=85
+DISK_SAFE_PERCENT=80
+disk_use_percent=0
 host_mps_was_active="false"
 ROUTE_MODE="auto"
 GPU_UUID_OVERRIDE=""
@@ -82,6 +88,9 @@ Options:
                              back to port-forwarding the workload Service.
   --gpu-uuid UUID            pin every mode to this physical GPU
                              (default: the lowest-index GPU)
+  --pin-image MODE           auto (default), yes, or no. Keeps the 9.5 GB vLLM
+                             image resident between modes. auto refuses when
+                             the node has no disk headroom.
   --insecure                 disable TLS verification in the client
 EOF
 }
@@ -123,6 +132,7 @@ while [[ $# -gt 0 ]]; do
     --resource-type)         RESOURCE_TYPE_OVERRIDE="$2"; shift 2 ;;
     --route)                 ROUTE_MODE="$2"; shift 2 ;;
     --gpu-uuid)              GPU_UUID_OVERRIDE="$2"; shift 2 ;;
+    --pin-image)             PIN_IMAGE="$2"; shift 2 ;;
     --max-tokens)            MAX_TOKENS="$2"; shift 2 ;;
     --concurrency)           CONCURRENCY="$2"; shift 2 ;;
     --insecure)              INSECURE="true"; shift ;;
@@ -423,6 +433,66 @@ apply_hami_manifest() {
 # ---------------------------------------------------------------------------
 # Manifest application
 # ---------------------------------------------------------------------------
+# Pin the vLLM image on the node for the whole run. See 04-image-pinner.yaml:
+# the between-mode drain leaves the 9.5 GB image unreferenced and kubelet
+# garbage-collects it, costing ~4 minutes of re-pull on the next mode.
+# Pinning the image is only safe when the node has disk headroom.
+#
+# Measured on this node: kubelet ran image GC every 5 minutes at 88% disk and
+# logged "Attempted to free 14261362688 bytes, but only found 301463 bytes
+# eligible to free". The one large eligible item was the 9.5 GB vLLM image,
+# unreferenced between modes - so kubelet deleted it and the next mode re-pulled
+# it for ~4 minutes.
+#
+# Pinning it removes kubelet's only real GC candidate. Above the high threshold
+# that means GC can free nothing at all, and the node heads for
+# DiskPressure=True, which taints it NoSchedule and evicts running Pods. Losing
+# Pods mid-benchmark is far worse than a slow image pull, so refuse to pin
+# unless there is room.
+check_disk_headroom() {
+  local path="/var/lib/rancher/k3s"
+  [[ -d "${path}" ]] || path="/"
+  disk_use_percent="$(df -P "${path}" 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5+0}')"
+  disk_use_percent="${disk_use_percent:-0}"
+  log "Node disk usage at ${path}: ${disk_use_percent}%"
+
+  if (( disk_use_percent >= IMAGE_GC_HIGH_PERCENT )); then
+    log "WARNING: disk is at or above kubelet's image-gc-high-threshold (${IMAGE_GC_HIGH_PERCENT}%)."
+    log "         kubelet will keep evicting the 9.5 GB vLLM image between modes, so expect"
+    log "         roughly 4 extra minutes of image pull per mode, and a risk of DiskPressure"
+    log "         evicting Pods mid-run. Free disk space before trusting startup timings."
+  fi
+}
+
+apply_image_pinner() {
+  case "${PIN_IMAGE}" in
+    no)
+      log "Image pinning disabled (--pin-image no)"
+      return 0
+      ;;
+    auto)
+      if (( disk_use_percent >= DISK_SAFE_PERCENT )); then
+        log "Not pinning the vLLM image: disk at ${disk_use_percent}% (safe limit ${DISK_SAFE_PERCENT}%)."
+        log "  Pinning here would leave kubelet nothing to garbage collect and risk DiskPressure."
+        log "  Free disk space, or force with --pin-image yes."
+        return 0
+      fi
+      ;;
+  esac
+
+  kubectl apply -f "${ROOT_DIR}/04-image-pinner.yaml" >/dev/null
+  if kubectl rollout status -n "${NS}" deployment/qwen-benchmark-image-pinner --timeout=900s >/dev/null 2>&1; then
+    log "Image pinner Ready; the vLLM image will stay resident between modes"
+  else
+    log "WARNING: image pinner not Ready. Modes may re-pull the 9.5 GB image (~4 min each)."
+  fi
+}
+
+# Removed only at the very end, never by the between-mode teardown.
+delete_image_pinner() {
+  kubectl delete -f "${ROOT_DIR}/04-image-pinner.yaml" --ignore-not-found=true --wait=false >/dev/null 2>&1 || true
+}
+
 apply_gpu_probe() {
   kubectl apply -f "${ROOT_DIR}/05-gpu-probe.yaml" >/dev/null
   kubectl rollout status -n "${NS}" daemonset/qwen-benchmark-gpu-probe --timeout=180s >/dev/null 2>&1 \
@@ -1618,6 +1688,9 @@ log "Resource type: ${resource_type}"
 log "Mode: ${MODE} | HAMi profile: ${HAMI_PROFILE}"
 log "Workload: ${REQUESTS_PER_SERVICE} req/service x ${MAX_TOKENS} tokens, concurrency ${CONCURRENCY}/service, warmup ${WARMUP_REQUESTS}"
 
+check_disk_headroom
+apply_image_pinner
+
 modes_to_run=()
 case "${MODE}" in
   all)
@@ -1641,6 +1714,7 @@ done
 
 log "Tearing down benchmark workloads"
 reset_cluster_state
+delete_image_pinner
 
 log "Benchmark run complete (status ${overall_status})"
 exit "${overall_status}"
