@@ -1,9 +1,21 @@
-# MPS-only concurrent execution.
+# MPS concurrent execution: MPS supplies the COMPUTE split; HAMi supplies only
+# placement and the VRAM quota.
 #
-# Both services keep the same absolute VRAM budget as the sequential baseline
-# (0.30 x 12288 MiB = 3686 MiB each) so only the sharing mechanism differs.
+# A strictly HAMi-free MPS mode is not reachable on this cluster, because HAMi
+# owns the device plugin and is the only thing registering nvidia.com/gpu, so it
+# decides placement for every GPU Pod. What makes this mode distinct from `hami`
+# is the ABSENCE of nvidia.com/gpucores: HAMi's SM throttle is driven by that
+# key alone, so with it unset HAMi applies no compute limiting whatsoever and
+# the entire compute split comes from MPS.
 #
-# MPS gives no VRAM isolation. CUDA_MPS_ACTIVE_THREAD_PERCENTAGE is read from
+# Caveat to state in any writeup: libvgpu.so is still injected to enforce the
+# memory cap, so a small CUDA-call interception overhead is present here that a
+# bare-metal MPS run would not have.
+#
+# Both services keep the same absolute VRAM budget as every other mode
+# (0.90 x 4096 MiB = 3686 MiB each) so only the sharing mechanism differs.
+#
+# MPS itself gives no VRAM isolation. CUDA_MPS_ACTIVE_THREAD_PERCENTAGE is read from
 # the *client* process environment, so it is set here (not on the daemon) and
 # caps each service at half the SM throughput.
 #
@@ -34,7 +46,9 @@ spec:
       - name: main
         image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
         args:
-          - --gpu-memory-utilization=0.30
+          # 0.90 x 4096 MiB gpumem quota = 3686 MiB, the same absolute VRAM
+          # budget as every other mode. See the gpumem note below.
+          - --gpu-memory-utilization=0.90
           - --max-model-len=512
           - --max-num-seqs=1
           - --no-enable-prefix-caching
@@ -43,10 +57,25 @@ spec:
             cpu: '2'
             memory: 6Gi
             nvidia.com/gpu: "1"
+            # gpumem is REQUIRED for two Pods to co-exist on one GPU.
+            #
+            # HAMi owns the device plugin on this cluster, so it decides
+            # placement even for Pods that ask for nothing but nvidia.com/gpu.
+            # With no gpumem set, HAMi treats the request as claiming the WHOLE
+            # device: two such Pods can never share a GPU. That is why the pair
+            # originally landed on two separate GPUs, and why the second Pod went
+            # Pending once the reserver confined the benchmark to one GPU.
+            #
+            # Deliberately NO gpucores here: that is what separates this mode
+            # from `hami`. HAMi supplies placement and the VRAM cap only; the
+            # compute split is left entirely to MPS via
+            # CUDA_MPS_ACTIVE_THREAD_PERCENTAGE below.
+            nvidia.com/gpumem: "4096"
           requests:
             cpu: '100m'
             memory: 1Gi
             nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "4096"
         env:
           - name: HF_HOME
             value: "/mnt/models"
@@ -90,7 +119,9 @@ spec:
       - name: main
         image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
         args:
-          - --gpu-memory-utilization=0.30
+          # 0.90 x 4096 MiB gpumem quota = 3686 MiB, the same absolute VRAM
+          # budget as every other mode. See the gpumem note below.
+          - --gpu-memory-utilization=0.90
           - --max-model-len=512
           - --max-num-seqs=1
           - --no-enable-prefix-caching
@@ -99,10 +130,25 @@ spec:
             cpu: '2'
             memory: 6Gi
             nvidia.com/gpu: "1"
+            # gpumem is REQUIRED for two Pods to co-exist on one GPU.
+            #
+            # HAMi owns the device plugin on this cluster, so it decides
+            # placement even for Pods that ask for nothing but nvidia.com/gpu.
+            # With no gpumem set, HAMi treats the request as claiming the WHOLE
+            # device: two such Pods can never share a GPU. That is why the pair
+            # originally landed on two separate GPUs, and why the second Pod went
+            # Pending once the reserver confined the benchmark to one GPU.
+            #
+            # Deliberately NO gpucores here: that is what separates this mode
+            # from `hami`. HAMi supplies placement and the VRAM cap only; the
+            # compute split is left entirely to MPS via
+            # CUDA_MPS_ACTIVE_THREAD_PERCENTAGE below.
+            nvidia.com/gpumem: "4096"
           requests:
             cpu: '100m'
             memory: 1Gi
             nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "4096"
         env:
           - name: HF_HOME
             value: "/mnt/models"

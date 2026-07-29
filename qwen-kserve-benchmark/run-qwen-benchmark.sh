@@ -822,13 +822,65 @@ collect_service_artifacts() {
   kubectl get events -n "${NS}" --sort-by=.lastTimestamp > "${service_dir}/events.txt" 2>/dev/null || true
 
   SERVICE_DIR="${service_dir}" run_python -c '
-import json, os, pathlib
+import datetime, json, os, pathlib, re
 service_dir = pathlib.Path(os.environ["SERVICE_DIR"])
 pod_path = service_dir / "pod.json"
 summary = {
     "pod_name": "", "node_name": "", "phase": "", "start_time": "",
     "restart_count": 0, "oom_killed": 0, "annotations": {}, "labels": {},
+    "model_init": {},
 }
+
+
+def parse_ts(value):
+    if not value:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+# Model initialization timings, straight out of the vLLM startup log.
+# These separate "how long until this model could serve traffic" from the
+# steady-state request metrics, and they are the numbers that actually differ
+# between sharing modes (contending for the same GPU slows model load).
+def parse_model_init(path):
+    init = {
+        "weights_load_seconds": None,
+        "engine_init_seconds": None,
+        "chat_template_warmup_seconds": None,
+        "cuda_graph_capture_seconds": None,
+        "api_server_started": False,
+        "total_model_init_seconds": None,
+    }
+    if not path.exists() or not path.stat().st_size:
+        return init
+    text = path.read_text(encoding="utf-8", errors="replace")
+
+    match = re.search(r"Model loading took [\d.]+ \w+ and ([\d.]+) seconds", text)
+    if match:
+        init["weights_load_seconds"] = float(match.group(1))
+    match = re.search(r"init engine \([^)]*\) took ([\d.]+) seconds", text)
+    if match:
+        init["engine_init_seconds"] = float(match.group(1))
+    match = re.search(r"Chat template warmup completed in ([\d.]+)\s*ms", text)
+    if match:
+        init["chat_template_warmup_seconds"] = round(float(match.group(1)) / 1000.0, 3)
+    match = re.search(r"Graph capturing finished in ([\d.]+) secs", text)
+    if match:
+        init["cuda_graph_capture_seconds"] = float(match.group(1))
+    init["api_server_started"] = "Starting vLLM API server" in text
+
+    parts = [
+        init["weights_load_seconds"],
+        init["engine_init_seconds"],
+        init["chat_template_warmup_seconds"],
+    ]
+    if any(part is not None for part in parts):
+        init["total_model_init_seconds"] = round(sum(part for part in parts if part), 3)
+    return init
+
 if pod_path.exists() and pod_path.stat().st_size:
     pod = json.loads(pod_path.read_text(encoding="utf-8"))
     metadata = pod.get("metadata", {})
@@ -848,6 +900,24 @@ if pod_path.exists() and pod_path.stat().st_size:
                 oom_killed += 1
     summary["restart_count"] = restart_count
     summary["oom_killed"] = oom_killed
+
+    # Wall-clock from the container actually starting to the Pod reporting
+    # Ready. This brackets the whole model bring-up including image/PVC work
+    # that the vLLM log itself cannot see.
+    started_at = None
+    for container in status.get("containerStatuses", []):
+        if container.get("name") == "main":
+            started_at = parse_ts(container.get("state", {}).get("running", {}).get("startedAt"))
+    ready_at = None
+    for condition in status.get("conditions", []):
+        if condition.get("type") == "Ready" and str(condition.get("status")).lower() == "true":
+            ready_at = parse_ts(condition.get("lastTransitionTime"))
+    summary["container_started_at"] = started_at.isoformat() if started_at else ""
+    summary["ready_at"] = ready_at.isoformat() if ready_at else ""
+    if started_at and ready_at:
+        summary["container_start_to_ready_seconds"] = round((ready_at - started_at).total_seconds(), 3)
+
+summary["model_init"] = parse_model_init(service_dir / "pod.logs.txt")
 (service_dir / "pod-summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 '
 }
@@ -860,6 +930,17 @@ collect_mode_snapshot() {
   kubectl get "${resource_type}" -n "${NS}" -o wide > "${mode_dir}/services.txt" 2>/dev/null || true
   # Routing artifacts. Without these, a gateway 404 is undiagnosable after the
   # fact - which is exactly what happened on the first full run.
+  # Host-level view of who is actually resident on the GPU. This is the direct
+  # evidence of sharing: both VLLM::EngineCore processes should appear on ONE
+  # GPU, and it also shows how many nvidia-cuda-mps-server processes exist
+  # (one per client UID per GPU, so stale ones from earlier runs stand out).
+  if [[ -n "${gpu_probe_pod}" ]]; then
+    kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- nvidia-smi \
+      --query-compute-apps=gpu_uuid,pid,process_name,used_memory \
+      --format=csv,noheader 2>/dev/null > "${mode_dir}/gpu-compute-apps.csv" || true
+    kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- nvidia-smi \
+      > "${mode_dir}/nvidia-smi.txt" 2>/dev/null || true
+  fi
   kubectl get httproute -n "${NS}" -o yaml > "${mode_dir}/httproutes.yaml" 2>/dev/null || true
   kubectl get gateway -A -o wide > "${mode_dir}/gateways.txt" 2>/dev/null || true
   kubectl get svc -n "${NS}" -o wide > "${mode_dir}/services-k8s.txt" 2>/dev/null || true
@@ -916,6 +997,7 @@ write_mode_summary() {
   POD1="${10}" POD2="${11}" \
   REQ_PER_SVC="${REQUESTS_PER_SERVICE}" WARMUP="${WARMUP_REQUESTS}" \
   SVC1="${SERVICE_1}" SVC2="${SERVICE_2}" HAMI_PROFILE_NAME="${HAMI_PROFILE}" \
+  MODE_DURATION="${MODE_DURATION_SECONDS:-}" \
   run_python -c '
 import json, os, pathlib
 
@@ -959,11 +1041,36 @@ for service, ep, ready, startup, pod in (
     services[service] = {
         "endpoint": os.environ.get(ep, ""),
         "ready": flag(ready),
+        # Deploy -> Ready, i.e. everything including scheduling and image pull.
         "startup_seconds": number(startup),
+        # Container start -> Ready, i.e. model bring-up without scheduling.
+        "container_start_to_ready_seconds": pod_summary.get("container_start_to_ready_seconds"),
+        # Parsed out of the vLLM startup log.
+        "model_init": pod_summary.get("model_init", {}),
         "pod_name": os.environ.get(pod, ""),
         "pod": pod_summary,
         "resource_status": service_status,
     }
+
+# Model initialization rollup: the number to compare across sharing modes.
+model_init_rollup = {}
+for service, entry in services.items():
+    init = entry.get("model_init", {}) or {}
+    model_init_rollup[service] = {
+        "weights_load_seconds": init.get("weights_load_seconds"),
+        "engine_init_seconds": init.get("engine_init_seconds"),
+        "chat_template_warmup_seconds": init.get("chat_template_warmup_seconds"),
+        "cuda_graph_capture_seconds": init.get("cuda_graph_capture_seconds"),
+        "total_model_init_seconds": init.get("total_model_init_seconds"),
+        "container_start_to_ready_seconds": entry.get("container_start_to_ready_seconds"),
+        "deploy_to_ready_seconds": entry.get("startup_seconds"),
+    }
+_init_totals = [
+    value["total_model_init_seconds"]
+    for value in model_init_rollup.values()
+    if value["total_model_init_seconds"] is not None
+]
+model_init_rollup["slowest_total_model_init_seconds"] = max(_init_totals) if _init_totals else None
 
 # Host-level GPU timeline collected during the measured window. Peak memory and
 # mean utilization are the numbers that actually answer the project question:
@@ -1021,8 +1128,15 @@ summary = {
     "requests_per_service": req_per_svc,
     "warmup_requests_per_service": int(os.environ["WARMUP"]),
     "endpoints": {svc1: os.environ.get("EP1", ""), svc2: os.environ.get("EP2", "")},
+    "mode_duration_seconds": number("MODE_DURATION"),
+    "model_init": model_init_rollup,
     "services": services,
     "gpu": gpu,
+    "gpu_placement": (
+        json.loads((mode_dir / "gpu-placement.json").read_text(encoding="utf-8"))
+        if (mode_dir / "gpu-placement.json").exists()
+        else {}
+    ),
     "client": client,
     "acceptance": acceptance,
 }
@@ -1046,6 +1160,9 @@ print(json.dumps({
     "fairness_ratio": client_summary.get("fairness_ratio"),
     "peak_gpu_memory_used_mib": peak,
     "mean_gpu_utilization_percent": gpu["mean_utilization_percent"],
+    "slowest_model_init_seconds": model_init_rollup["slowest_total_model_init_seconds"],
+    "mode_duration_seconds": number("MODE_DURATION"),
+    "same_gpu": summary["gpu_placement"].get("same_gpu"),
     "both_ready": acceptance["both_ready"],
 }, indent=2))
 '
@@ -1066,6 +1183,8 @@ run_mode_sequential() {
   local mode="sequential"
   local mode_dir="${RESULTS_ROOT}/${timestamp}/${mode}"
   mkdir -p "${mode_dir}"
+  local mode_start_epoch
+  mode_start_epoch="$(date +%s)"
 
   log "Preparing ${mode} mode (one service deployed at a time)"
   reset_cluster_state
@@ -1151,6 +1270,7 @@ run_mode_sequential() {
   fi
 
   collect_mode_snapshot "${mode_dir}"
+  MODE_DURATION_SECONDS="$(( $(date +%s) - mode_start_epoch ))"
   write_mode_summary "${mode}" "${mode_dir}" "true" \
     "${endpoint_used_1}" "${endpoint_used_2}" "${ready_1}" "${ready_2}" \
     "${startup_1}" "${startup_2}" "${pod_1}" "${pod_2}"
@@ -1166,6 +1286,8 @@ run_mode_concurrent() {
   local mode="$1"
   local mode_dir="${RESULTS_ROOT}/${timestamp}/${mode}"
   mkdir -p "${mode_dir}"
+  local mode_start_epoch
+  mode_start_epoch="$(date +%s)"
 
   log "Preparing ${mode} mode (both services concurrent)"
   reset_cluster_state
@@ -1218,6 +1340,7 @@ run_mode_concurrent() {
   collect_service_artifacts "${SERVICE_1}" "${mode_dir}"
   collect_service_artifacts "${SERVICE_2}" "${mode_dir}"
   collect_mode_snapshot "${mode_dir}"
+  MODE_DURATION_SECONDS="$(( $(date +%s) - mode_start_epoch ))"
   write_mode_summary "${mode}" "${mode_dir}" "false" \
     "${endpoint_1}" "${endpoint_2}" "${ready_1}" "${ready_2}" \
     "${startup_1}" "${startup_2}" "${pod_1}" "${pod_2}"
