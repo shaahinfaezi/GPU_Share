@@ -119,6 +119,23 @@ the client machine:
   --endpoint-2 http://94.184.177.237/llm-demo/qwen-bench-02
 ```
 
+### If kubectl cannot reach the cluster
+
+If the script works under `sudo` but fails as a normal user with
+`dial tcp 127.0.0.1:8080: connection refused`, that is kubectl's fallback
+address when no kubeconfig is readable — your user has no `~/.kube/config`
+while root does. On k3s:
+
+```bash
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown "$(id -u):$(id -g)" ~/.kube/config
+chmod 600 ~/.kube/config
+```
+
+Running under `sudo` also works, but then everything in `results/` is owned by
+root. The runner checks API access up front and prints this remedy.
+
 ### If CRD detection fails
 
 `kubectl api-resources` exits non-zero and can print nothing at all when any

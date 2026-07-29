@@ -116,6 +116,41 @@ require_cmd python3
 # ---------------------------------------------------------------------------
 # Cluster discovery and validation
 # ---------------------------------------------------------------------------
+# Confirm kubectl can actually reach an API server before anything else.
+#
+# Without this, a missing kubeconfig surfaces much later as a confusing
+# "CRD not found" error. kubectl's built-in default when no kubeconfig is
+# readable is http://localhost:8080, so `dial tcp 127.0.0.1:8080: connection
+# refused` almost always means "this user has no kubeconfig", not "the cluster
+# is down" - which is why the same script works under sudo (root has one) and
+# fails as a normal user.
+validate_cluster_access() {
+  local err
+  if err="$(kubectl get --raw /version 2>&1 >/dev/null)"; then
+    return 0
+  fi
+
+  printf 'ERROR: kubectl cannot reach a Kubernetes API server.\n\n' >&2
+  printf '%s\n\n' "${err}" >&2
+
+  if [[ "${err}" == *"localhost:8080"* || "${err}" == *"127.0.0.1:8080"* ]]; then
+    printf 'That address is kubectl'"'"'s fallback when no kubeconfig is readable,\n' >&2
+    printf 'so this user almost certainly has no ~/.kube/config.\n\n' >&2
+    if [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
+      printf 'This node looks like k3s. Give your user a kubeconfig with:\n\n' >&2
+      printf '  mkdir -p ~/.kube\n' >&2
+      printf '  sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config\n' >&2
+      printf '  sudo chown "$(id -u):$(id -g)" ~/.kube/config\n' >&2
+      printf '  chmod 600 ~/.kube/config\n\n' >&2
+    else
+      printf 'Copy an admin kubeconfig to ~/.kube/config, or set KUBECONFIG.\n\n' >&2
+    fi
+    printf 'Running the benchmark under sudo also works, but then every file in\n' >&2
+    printf 'results/ is owned by root.\n' >&2
+  fi
+  exit 1
+}
+
 # Resolve the resource name to use for every later get/patch/label.
 #
 # `kubectl api-resources` is unreliable as a single source of truth: it exits
@@ -964,6 +999,7 @@ run_mode() {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+validate_cluster_access
 detect_resource_type
 validate_common_cluster_state
 
@@ -976,8 +1012,18 @@ RUN_DIR="${RESULTS_ROOT}/${timestamp}"
 mkdir -p "${RUN_DIR}"
 exec > >(tee -a "${RUN_DIR}/runner.log") 2>&1
 
+# Running under sudo is fine, but root-owned result files cannot then be read,
+# edited or deleted by the invoking user, and a later non-root run fails when it
+# tries to append to a root-owned runner.log. Hand the results back.
+restore_results_ownership() {
+  if [[ -n "${SUDO_UID:-}" && -n "${SUDO_GID:-}" && -d "${RESULTS_ROOT}" ]]; then
+    chown -R "${SUDO_UID}:${SUDO_GID}" "${RESULTS_ROOT}" 2>/dev/null || true
+  fi
+}
+
 cleanup_on_exit() {
   stop_gpu_sampler
+  restore_results_ownership
 }
 trap cleanup_on_exit EXIT INT TERM
 
