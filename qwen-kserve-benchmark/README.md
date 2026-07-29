@@ -61,25 +61,6 @@ issuing its requests back to back. The old client queued all 20 requests into a
 2-worker pool, which let one service's backlog drain into the other's worker and
 made the per-service numbers meaningless.
 
-### Known limitation: the workload is deliberately light
-
-Every request uses one fixed prompt, `"Explain Kubernetes GPU sharing in exactly
-64 words."`, with `max_tokens: 64`, `temperature: 0`, `top_p: 1`. Fixed and
-greedy so token counts are near-identical across modes.
-
-At the current defaults that is ~1280 generated tokens per mode, which a 0.5B
-model finishes in a few seconds on a 12 GiB GPU. Expect
-`mean_gpu_utilization_percent` near 0 and **little or no measurable difference
-between sequential, MPS and HAMi**. That is a property of the workload size, not
-evidence that the sharing modes perform the same.
-
-The current settings are for validating the pipeline end to end. To get numbers
-that actually discriminate between modes, raise the load — `--requests-per-service`
-and `--warmup` are already CLI flags; `max_tokens` is the `REQUEST` constant in
-`client.py`. Roughly 30 requests per service at 256 tokens gives a
-one-to-two-minute window of sustained overlap, which is enough for the GPU
-sampler to resolve a difference.
-
 ## HAMi profiles
 
 `31-qwen-hami-compute-profiles.yaml` holds JSON profiles that the runner
@@ -137,41 +118,6 @@ the client machine:
   --endpoint-1 http://94.184.177.237/llm-demo/qwen-bench-01 \
   --endpoint-2 http://94.184.177.237/llm-demo/qwen-bench-02
 ```
-
-## Confining the benchmark to one GPU
-
-If the node has more than one GPU, HAMi's scheduler **spreads**: it will put
-`qwen-bench-01` on one device and `qwen-bench-02` on another, and then nothing
-is being shared. This is silent — every mode still reports plausible numbers.
-
-`06-gpu-reserver.yaml` reserves every GPU but one (100% cores and memory each),
-so the two services have nowhere to go but a single shared device. The runner
-counts physical GPUs from the probe Pod (`nvidia-smi -L`, **not** allocatable
-`nvidia.com/gpu`, which under HAMi is `devices x deviceSplitCount`) and scales
-the reserver to `count - 1` automatically.
-
-After both services are Ready the runner reads
-`hami.io/vgpu-devices-allocated` from each Pod, asserts they match, writes
-`gpu-placement.json`, and logs a loud warning if they differ.
-
-The clean alternative would be HAMi's `nvidia.com/use-gpuuuid` Pod annotation,
-but `LLMInferenceService.spec.template` is a bare `PodSpec` with no `metadata`,
-so there is nowhere to put a Pod annotation.
-
-## Endpoint routing
-
-`.status.url` advertises `http://<node-ip>/llm-demo/<service>`, but on a k3s
-node **Traefik** owns `:80` on that IP, so requests are answered by the wrong
-ingress and return `404 page not found` — vLLM never sees them.
-
-`--route auto` (the default) probes the advertised URL and, if it does not
-answer, port-forwards the service's own workload Service and drives vLLM
-directly. For a GPU-sharing benchmark that is arguably the better measurement
-anyway: it removes gateway and llm-d scheduler overhead from the latency
-numbers and isolates GPU behaviour.
-
-- `--route gateway` — force the advertised URL (fail rather than fall back).
-- `--route port-forward` — always bypass the gateway.
 
 ### If kubectl cannot reach the cluster
 

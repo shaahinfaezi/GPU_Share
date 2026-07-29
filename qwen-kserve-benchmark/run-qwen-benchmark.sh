@@ -43,6 +43,8 @@ ENDPOINT_1=""
 ENDPOINT_2=""
 INSECURE="false"
 RESOURCE_TYPE_OVERRIDE=""
+HOST_MPS_UNIT="nvidia-mps"
+host_mps_was_active="false"
 ROUTE_MODE="auto"
 GPU_UUID_OVERRIDE=""
 resource_type=""
@@ -345,84 +347,77 @@ reset_cluster_state() {
 # the service and never changed a quota, so `weighted` produced exactly the
 # same 50/50 split as `balanced`. Patch the real resource values instead.
 # ---------------------------------------------------------------------------
-patch_service_profile() {
-  local service="$1" cores="$2" mem="$3" util="$4"
-
-  # Rebuild the container args so --gpu-memory-utilization tracks the quota.
-  # Under HAMi that flag is a fraction of the gpumem quota, not of the physical
-  # device, so the two values must always change together.
-  local args_json
-  args_json="$(UTIL="${util}" SEQS="${MAX_NUM_SEQS}" MODELLEN="${MAX_MODEL_LEN}" run_python -c '
-import json, os
-# Bind these to locals first. Nested double quotes inside an f-string do not
-# survive the surrounding single-quoted shell block.
-util = os.environ["UTIL"]
-model_len = os.environ["MODELLEN"]
-seqs = os.environ["SEQS"]
-print(json.dumps([
-    f"--gpu-memory-utilization={util}",
-    f"--max-model-len={model_len}",
-    f"--max-num-seqs={seqs}",
-    "--no-enable-prefix-caching",
-]))
-')"
-
-  local patch
-  patch="$(CORES="${cores}" MEM="${mem}" ARGS="${args_json}" run_python -c '
-import json, os
-cores = os.environ["CORES"]
-mem = os.environ["MEM"]
-args = json.loads(os.environ["ARGS"])
-operations = [{"op": "replace", "path": "/spec/template/containers/0/args", "value": args}]
-for section in ("limits", "requests"):
-    # ~1 is the JSON Pointer escape for a literal / inside a key, which
-    # resource names such as nvidia.com/gpucores contain.
-    operations.append({
-        "op": "replace",
-        "path": f"/spec/template/containers/0/resources/{section}/nvidia.com~1gpucores",
-        "value": cores,
-    })
-    operations.append({
-        "op": "replace",
-        "path": f"/spec/template/containers/0/resources/{section}/nvidia.com~1gpumem",
-        "value": mem,
-    })
-print(json.dumps(operations))
-')"
-
-  kubectl patch "${resource_type}/${service}" -n "${NS}" --type=json -p "${patch}" >/dev/null
-}
-
-apply_hami_profile() {
-  local profile="$1"
+# Render the profile INTO the manifest and apply once.
+#
+# The previous approach applied the manifest and then kubectl-patched the
+# quotas. That second write changed the Pod template, so KServe rolled the
+# Deployment: a new replica appeared while the old one still held the GPU, the
+# new one sat Pending until the old released it, and the mode stalled. It cost
+# hami-mps 21 minutes of its 25-minute duration and left a Pending Pod that
+# broke GPU-placement detection.
+#
+# Rendering first means one apply, one ReplicaSet, no rollout.
+render_hami_manifest() {
+  local manifest="$1" profile="$2" out="$3"
   local raw
-  raw="$(kubectl get configmap qwen-hami-compute-profiles -n "${NS}" \
-    -o "jsonpath={.data.${profile}}" 2>/dev/null || true)"
+  raw="$(kubectl get configmap qwen-hami-compute-profiles -n "${NS}"     -o "jsonpath={.data.${profile}}" 2>/dev/null || true)"
   if [[ -z "${raw}" ]]; then
     fail "HAMi profile '${profile}' not found in configmap qwen-hami-compute-profiles"
   fi
 
-  local parsed
-  parsed="$(printf '%s' "${raw}" | run_python -c '
-import json, sys
+  printf '%s' "${raw}" |     MANIFEST="${ROOT_DIR}/${manifest}" OUT="${out}" PROFILE_NAME="${profile}"     SEQS="${MAX_NUM_SEQS}" MODELLEN="${MAX_MODEL_LEN}" run_python -c '
+import json, os, pathlib, re, sys
+
 profile = json.load(sys.stdin)
 cores = profile["cores"]
 mem = profile["mem"]
 util = profile.get("util", [0.90, 0.90])
-print(" ".join(str(value) for value in (cores[0], cores[1], mem[0], mem[1], util[0], util[1])))
-')"
+seqs = os.environ["SEQS"]
+model_len = os.environ["MODELLEN"]
+name = os.environ["PROFILE_NAME"]
+
+text = pathlib.Path(os.environ["MANIFEST"]).read_text(encoding="utf-8")
+# Built with chr(10) rather than a backslash escape: this block is embedded in
+# a single-quoted shell string, where a literal backslash-n does not survive.
+separator = chr(10) + "---" + chr(10)
+# Document 0 is qwen-bench-01, document 1 is qwen-bench-02.
+documents = text.split(separator)
+rendered = []
+for position, document in enumerate(documents):
+    which = min(position, 1)
+    # Anchored on "=<number>" and \": <number>\" so prose in the header
+    # comments (which also mentions these flags) is never rewritten.
+    document = re.sub(r"--gpu-memory-utilization=[0-9.]+",
+                      f"--gpu-memory-utilization={util[which]}", document)
+    document = re.sub(r"--max-num-seqs=[0-9]+", f"--max-num-seqs={seqs}", document)
+    document = re.sub(r"--max-model-len=[0-9]+", f"--max-model-len={model_len}", document)
+    document = re.sub(r"(nvidia\.com/gpucores:\s*)\"[0-9]+\"",
+                      lambda m: m.group(1) + chr(34) + str(cores[which]) + chr(34), document)
+    document = re.sub(r"(nvidia\.com/gpumem:\s*)\"[0-9]+\"",
+                      lambda m: m.group(1) + chr(34) + str(mem[which]) + chr(34), document)
+    document = re.sub(r"(qwen-hami-profile:\s*)\S+", lambda m: m.group(1) + name, document)
+    rendered.append(document)
+
+pathlib.Path(os.environ["OUT"]).write_text(separator.join(rendered), encoding="utf-8")
+
+print(" ".join(str(v) for v in (cores[0], cores[1], mem[0], mem[1], util[0], util[1])))
+'
+}
+
+apply_hami_manifest() {
+  local manifest="$1" profile="$2"
+  local rendered="${RUN_DIR}/rendered-${profile}-${manifest}"
+  local parsed
+  parsed="$(render_hami_manifest "${manifest}" "${profile}" "${rendered}")"
+
   local cores_1 cores_2 mem_1 mem_2 util_1 util_2
   read -r cores_1 cores_2 mem_1 mem_2 util_1 util_2 <<< "${parsed}"
 
-  log "HAMi profile '${profile}':"
+  log "HAMi profile '${profile}' (rendered into ${manifest}, single apply):"
   log "  ${SERVICE_1}: gpucores=${cores_1} gpumem=${mem_1}MiB vllm-util=${util_1}"
   log "  ${SERVICE_2}: gpucores=${cores_2} gpumem=${mem_2}MiB vllm-util=${util_2}"
 
-  patch_service_profile "${SERVICE_1}" "${cores_1}" "${mem_1}" "${util_1}"
-  patch_service_profile "${SERVICE_2}" "${cores_2}" "${mem_2}" "${util_2}"
-
-  kubectl label "${resource_type}/${SERVICE_1}" -n "${NS}" qwen-hami-profile="${profile}" --overwrite >/dev/null
-  kubectl label "${resource_type}/${SERVICE_2}" -n "${NS}" qwen-hami-profile="${profile}" --overwrite >/dev/null
+  kubectl apply -f "${rendered}" >/dev/null
 }
 
 # ---------------------------------------------------------------------------
@@ -547,6 +542,37 @@ verify_same_gpu() {
   fi
 }
 
+# A host-level systemd MPS unit defeats every attempt to stop MPS.
+#
+# GPU_Share/configs/nvidia-mps.service declares Restart=always and uses the same
+# /tmp/nvidia-mps pipe directory as this benchmark's DaemonSet. If it is
+# installed, systemd resurrects nvidia-cuda-mps-control seconds after any kill,
+# so MPS servers reappear inside the sequential and HAMi baselines. During the
+# MPS modes it is worse: two control daemons end up sharing one pipe directory,
+# which is why the resident-server count doubled.
+#
+# The runner already runs as root, so stop the unit for the duration of the run
+# and put it back exactly as it was on exit.
+stop_host_mps_service() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  systemctl list-unit-files "${HOST_MPS_UNIT}.service" >/dev/null 2>&1 || return 0
+  if systemctl is-active --quiet "${HOST_MPS_UNIT}" 2>/dev/null; then
+    host_mps_was_active="true"
+    log "Host systemd unit '${HOST_MPS_UNIT}' is active (Restart=always)."
+    log "Stopping it for the duration of the benchmark so MPS state is controlled."
+    systemctl stop "${HOST_MPS_UNIT}" >/dev/null 2>&1 \
+      || log "WARNING: failed to stop ${HOST_MPS_UNIT}; MPS servers will keep respawning"
+    sleep 2
+  fi
+}
+
+restore_host_mps_service() {
+  if [[ "${host_mps_was_active}" == "true" ]]; then
+    systemctl start "${HOST_MPS_UNIT}" >/dev/null 2>&1 || true
+    host_mps_was_active="false"
+  fi
+}
+
 # Guarantee MPS is really gone before a non-MPS mode measures anything.
 #
 # Deleting the DaemonSet is not enough. nvidia-cuda-mps-server processes are
@@ -557,6 +583,7 @@ verify_same_gpu() {
 #
 # The probe Pod is privileged with hostPID, so it can see and signal them.
 ensure_mps_stopped() {
+  stop_host_mps_service
   kubectl delete -f "${ROOT_DIR}/20-mps-daemon.yaml" --ignore-not-found=true --wait=false >/dev/null 2>&1 || true
 
   if [[ -z "${gpu_probe_pod}" ]]; then
@@ -624,14 +651,12 @@ apply_mode_manifests() {
       # HAMi mode must be MPS-free or the gpucores result is unattributable.
       ensure_mps_stopped
       kubectl apply -f "${ROOT_DIR}/31-qwen-hami-compute-profiles.yaml" >/dev/null
-      kubectl apply -f "${ROOT_DIR}/30-qwen-hami.yaml" >/dev/null
-      apply_hami_profile "${HAMI_PROFILE}"
+      apply_hami_manifest "30-qwen-hami.yaml" "${HAMI_PROFILE}"
       ;;
     hami-mps)
       apply_mps_daemon
       kubectl apply -f "${ROOT_DIR}/31-qwen-hami-compute-profiles.yaml" >/dev/null
-      kubectl apply -f "${ROOT_DIR}/40-qwen-hami-mps.yaml" >/dev/null
-      apply_hami_profile "${HAMI_PROFILE}"
+      apply_hami_manifest "40-qwen-hami-mps.yaml" "${HAMI_PROFILE}"
       ;;
     *)
       fail "apply_mode_manifests does not handle mode: ${mode}"
@@ -861,12 +886,25 @@ wait_for_service() {
 # directly: the old label-scoring heuristic also matched the
 # <service>-kserve-router-scheduler Pod, so `nvidia-smi` was exec'd into a
 # container that has no GPU and every GPU reading came back empty.
+#
+# Prefer a Running Pod. During a rolling update KServe briefly has two
+# replicas, and the incoming one can be Pending (it cannot get the GPU until
+# the outgoing one releases it). A Pending Pod carries no HAMi placement
+# annotation and no vLLM log, so picking it made the HAMi mode report
+# same_gpu=false and lose its model-init timings even though the run was fine.
 select_pod_name() {
-  kubectl get pods -n "${NS}" \
-    -o jsonpath="{range .items[*]}{.metadata.name}{'\n'}{end}" 2>/dev/null \
+  local pods chosen
+  pods="$(kubectl get pods -n "${NS}" \
+    -o jsonpath="{range .items[*]}{.metadata.name}{' '}{.status.phase}{'\n'}{end}" 2>/dev/null \
     | grep -E "^$1-kserve-" \
-    | grep -v -- '-router-scheduler-' \
-    | head -n 1 || true
+    | grep -v -- '-router-scheduler-' || true)"
+  [[ -n "${pods}" ]] || return 0
+
+  chosen="$(printf '%s\n' "${pods}" | awk '$2=="Running"{print $1; exit}')"
+  if [[ -z "${chosen}" ]]; then
+    chosen="$(printf '%s\n' "${pods}" | awk 'NF{print $1; exit}')"
+  fi
+  printf '%s' "${chosen}"
 }
 
 # ---------------------------------------------------------------------------
@@ -1567,10 +1605,13 @@ restore_results_ownership() {
 
 cleanup_on_exit() {
   stop_gpu_sampler
+  restore_host_mps_service
   stop_port_forwards
   restore_results_ownership
 }
 trap cleanup_on_exit EXIT INT TERM
+
+stop_host_mps_service
 
 log "Writing benchmark results to ${RUN_DIR}"
 log "Resource type: ${resource_type}"
