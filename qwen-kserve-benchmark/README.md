@@ -119,6 +119,41 @@ the client machine:
   --endpoint-2 http://94.184.177.237/llm-demo/qwen-bench-02
 ```
 
+## Confining the benchmark to one GPU
+
+If the node has more than one GPU, HAMi's scheduler **spreads**: it will put
+`qwen-bench-01` on one device and `qwen-bench-02` on another, and then nothing
+is being shared. This is silent — every mode still reports plausible numbers.
+
+`06-gpu-reserver.yaml` reserves every GPU but one (100% cores and memory each),
+so the two services have nowhere to go but a single shared device. The runner
+counts physical GPUs from the probe Pod (`nvidia-smi -L`, **not** allocatable
+`nvidia.com/gpu`, which under HAMi is `devices x deviceSplitCount`) and scales
+the reserver to `count - 1` automatically.
+
+After both services are Ready the runner reads
+`hami.io/vgpu-devices-allocated` from each Pod, asserts they match, writes
+`gpu-placement.json`, and logs a loud warning if they differ.
+
+The clean alternative would be HAMi's `nvidia.com/use-gpuuuid` Pod annotation,
+but `LLMInferenceService.spec.template` is a bare `PodSpec` with no `metadata`,
+so there is nowhere to put a Pod annotation.
+
+## Endpoint routing
+
+`.status.url` advertises `http://<node-ip>/llm-demo/<service>`, but on a k3s
+node **Traefik** owns `:80` on that IP, so requests are answered by the wrong
+ingress and return `404 page not found` — vLLM never sees them.
+
+`--route auto` (the default) probes the advertised URL and, if it does not
+answer, port-forwards the service's own workload Service and drives vLLM
+directly. For a GPU-sharing benchmark that is arguably the better measurement
+anyway: it removes gateway and llm-d scheduler overhead from the latency
+numbers and isolates GPU behaviour.
+
+- `--route gateway` — force the advertised URL (fail rather than fall back).
+- `--route port-forward` — always bypass the gateway.
+
 ### If kubectl cannot reach the cluster
 
 If the script works under `sudo` but fails as a normal user with

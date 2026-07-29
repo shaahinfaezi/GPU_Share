@@ -1,0 +1,75 @@
+# Forces the whole benchmark onto ONE physical GPU.
+#
+# The node has more than one GPU, and HAMi's scheduler spreads: it put
+# qwen-bench-01 on GPU-fa422f59 and qwen-bench-02 on GPU-bc62f652. Two services
+# on two separate GPUs are not sharing anything, so every "sharing" measurement
+# was meaningless.
+#
+# The clean fix would be the HAMi annotation nvidia.com/use-gpuuuid on the
+# workload Pods, but LLMInferenceService.spec.template is a bare PodSpec with no
+# metadata field, so there is nowhere to put a Pod annotation.
+#
+# Instead, reserve every GPU except one. Each replica takes one whole device
+# (100% of cores and memory), so HAMi cannot place anything else there, and the
+# single remaining GPU is the only place the two benchmarked services can go.
+# This works no matter which devices HAMi hands the reserver.
+#
+# The runner sets replicas to (number of physical GPUs - 1) and deletes this
+# Deployment during teardown.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen-benchmark-gpu-reserver
+  namespace: llm-demo
+  labels:
+    app: qwen-benchmark-gpu-reserver
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: qwen-benchmark-gpu-reserver
+  template:
+    metadata:
+      labels:
+        app: qwen-benchmark-gpu-reserver
+    spec:
+      # Keep replicas on separate GPUs by keeping them from stacking up in ways
+      # HAMi might otherwise permit.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: qwen-benchmark-gpu-reserver
+                topologyKey: kubernetes.io/hostname
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: reserver
+          image: nvidia/cuda:12.4.1-base-ubuntu22.04
+          command: ["/bin/bash", "-c"]
+          # Deliberately never opens a CUDA context. It only needs to hold the
+          # Kubernetes/HAMi allocation, not consume the device.
+          args:
+            - |
+              echo "Reserving one GPU so the benchmark is confined to a single device."
+              nvidia-smi -L || true
+              sleep infinity
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+              nvidia.com/gpu: "1"
+              # Percentage form avoids hardcoding the device size.
+              nvidia.com/gpumem-percentage: "100"
+              nvidia.com/gpucores: "100"
+            requests:
+              cpu: 50m
+              memory: 64Mi
+              nvidia.com/gpu: "1"
+              nvidia.com/gpumem-percentage: "100"
+              nvidia.com/gpucores: "100"

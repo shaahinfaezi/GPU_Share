@@ -34,10 +34,16 @@ ENDPOINT_1=""
 ENDPOINT_2=""
 INSECURE="false"
 RESOURCE_TYPE_OVERRIDE=""
+ROUTE_MODE="auto"
 resource_type=""
 gpu_probe_pod=""
+gpu_count=0
+gpu_uuids=""
 sampler_pid=""
 timestamp=""
+next_local_port=18000
+port_forward_pids=()
+RESOLVED_ENDPOINT=""
 
 usage() {
   cat <<'EOF'
@@ -55,6 +61,9 @@ Options:
   --wait-timeout SECONDS     readiness timeout for each service (default: 1800)
   --resource-type NAME       override CRD detection, e.g.
                              llminferenceservices.serving.kserve.io
+  --route MODE               auto (default), gateway, or port-forward.
+                             auto probes the advertised gateway URL and falls
+                             back to port-forwarding the workload Service.
   --insecure                 disable TLS verification in the client
 EOF
 }
@@ -94,6 +103,7 @@ while [[ $# -gt 0 ]]; do
     --timeout)               TIMEOUT_SECONDS="$2"; shift 2 ;;
     --wait-timeout)          WAIT_TIMEOUT_SECONDS="$2"; shift 2 ;;
     --resource-type)         RESOURCE_TYPE_OVERRIDE="$2"; shift 2 ;;
+    --route)                 ROUTE_MODE="$2"; shift 2 ;;
     --insecure)              INSECURE="true"; shift ;;
     -h|--help)               usage; exit 0 ;;
     *)                       usage >&2; fail "Unknown argument: $1" ;;
@@ -108,6 +118,11 @@ esac
 case "${HAMI_PROFILE}" in
   balanced|conservative|weighted) ;;
   *) fail "Unsupported HAMi profile: ${HAMI_PROFILE}" ;;
+esac
+
+case "${ROUTE_MODE}" in
+  auto|gateway|port-forward) ;;
+  *) fail "Unsupported --route mode: ${ROUTE_MODE} (auto, gateway, port-forward)" ;;
 esac
 
 require_cmd kubectl
@@ -268,7 +283,7 @@ delete_all_resources() {
   local file
   for file in 40-qwen-hami-mps.yaml 31-qwen-hami-compute-profiles.yaml 30-qwen-hami.yaml \
               21-qwen-mps.yaml 10-qwen-sequential-01.yaml 10-qwen-sequential-02.yaml \
-              20-mps-daemon.yaml 05-gpu-probe.yaml; do
+              20-mps-daemon.yaml 06-gpu-reserver.yaml 05-gpu-probe.yaml; do
     kubectl delete -f "${ROOT_DIR}/${file}" --ignore-not-found=true --wait=false >/dev/null 2>&1 || true
   done
 }
@@ -398,6 +413,81 @@ apply_gpu_probe() {
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
 }
 
+# Count physical GPUs from the probe Pod, not from allocatable nvidia.com/gpu.
+# Under HAMi, allocatable is physical_gpus x deviceSplitCount (e.g. 20 for two
+# GPUs at the default split of 10), so it cannot be used as a device count.
+detect_gpu_inventory() {
+  gpu_count=0
+  gpu_uuids=""
+  if [[ -z "${gpu_probe_pod}" ]]; then
+    log "WARNING: no GPU probe Pod; cannot confine the benchmark to one GPU"
+    return 0
+  fi
+  gpu_uuids="$(kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- \
+    nvidia-smi --query-gpu=uuid --format=csv,noheader 2>/dev/null | tr -d ' \r' | grep -c . || true)"
+  gpu_count="${gpu_uuids:-0}"
+  log "Physical GPUs visible on the node: ${gpu_count}"
+}
+
+# Reserve every GPU but one, so all benchmark Pods are forced to share a single
+# device. Without this, HAMi spreads the two services across separate GPUs and
+# nothing is actually shared.
+apply_gpu_reserver() {
+  local to_reserve=0
+  if [[ "${gpu_count}" -gt 1 ]]; then
+    to_reserve=$(( gpu_count - 1 ))
+  fi
+
+  kubectl apply -f "${ROOT_DIR}/06-gpu-reserver.yaml" >/dev/null
+  kubectl scale deployment/qwen-benchmark-gpu-reserver -n "${NS}" --replicas="${to_reserve}" >/dev/null
+
+  if [[ "${to_reserve}" -eq 0 ]]; then
+    log "Single GPU node: no reserver replicas needed"
+    return 0
+  fi
+
+  log "Reserving ${to_reserve} of ${gpu_count} GPUs so the benchmark shares exactly one device"
+  if ! kubectl rollout status -n "${NS}" deployment/qwen-benchmark-gpu-reserver --timeout=180s >/dev/null 2>&1; then
+    log "WARNING: GPU reserver did not become Ready. The benchmark may spread across GPUs."
+    log "         Check: kubectl describe deployment/qwen-benchmark-gpu-reserver -n ${NS}"
+  fi
+}
+
+# Read back which physical GPU each service actually landed on. This is the
+# check that would have caught the split-across-two-GPUs run immediately
+# instead of after a full benchmark of meaningless numbers.
+service_gpu_uuid() {
+  local service="$1" pod_name
+  pod_name="$(select_pod_name "${service}")"
+  [[ -n "${pod_name}" ]] || { printf ''; return 0; }
+  kubectl get pod "${pod_name}" -n "${NS}" \
+    -o jsonpath='{.metadata.annotations.hami\.io/vgpu-devices-allocated}' 2>/dev/null \
+    | sed 's/,.*//' | tr -d ' \r' || true
+}
+
+verify_same_gpu() {
+  local mode_dir="$1"
+  local uuid_1 uuid_2
+  uuid_1="$(service_gpu_uuid "${SERVICE_1}")"
+  uuid_2="$(service_gpu_uuid "${SERVICE_2}")"
+
+  printf '%s\n' "{\"${SERVICE_1}\": \"${uuid_1}\", \"${SERVICE_2}\": \"${uuid_2}\", \"same_gpu\": $( [[ -n "${uuid_1}" && "${uuid_1}" == "${uuid_2}" ]] && echo true || echo false )}" \
+    > "${mode_dir}/gpu-placement.json"
+
+  if [[ -z "${uuid_1}" || -z "${uuid_2}" ]]; then
+    log "NOTE: could not read HAMi GPU placement annotations (not a HAMi-scheduled mode?)"
+    return 0
+  fi
+  if [[ "${uuid_1}" == "${uuid_2}" ]]; then
+    log "GPU placement OK: both services share ${uuid_1}"
+  else
+    log "WARNING: services are on DIFFERENT GPUs - this is not GPU sharing"
+    log "  ${SERVICE_1}: ${uuid_1}"
+    log "  ${SERVICE_2}: ${uuid_2}"
+    log "  Results for this mode do not measure sharing. Check the GPU reserver."
+  fi
+}
+
 apply_mps_daemon() {
   kubectl apply -f "${ROOT_DIR}/20-mps-daemon.yaml" >/dev/null
   # The DaemonSet's readiness probe now checks for the MPS control socket, so a
@@ -438,6 +528,129 @@ apply_mode_manifests() {
 # ---------------------------------------------------------------------------
 service_url() {
   kubectl get "${resource_type}/$1" -n "${NS}" -o jsonpath='{.status.url}' 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# Endpoint resolution.
+#
+# .status.url reported http://<node-ip>/llm-demo/<service>, but every request
+# came back "404 page not found" - the plain-text body k3s's Traefik returns.
+# Traefik owns :80 on the node IP, so the URL KServe advertises was answered by
+# the wrong ingress entirely and never reached the KServe gateway. vLLM itself
+# was healthy and serving /v1/chat/completions the whole time.
+#
+# So: probe the advertised URL, and if it does not answer, port-forward the
+# service's own workload Service and drive vLLM directly. That bypasses the
+# gateway and the llm-d scheduler, which for a GPU-sharing benchmark is a
+# feature - it removes routing overhead from the latency measurement and
+# isolates GPU behaviour, which is what the project is actually about.
+# ---------------------------------------------------------------------------
+probe_http_endpoint() {
+  local base="$1"
+  BASE_URL="${base}" MODEL="${MODEL_NAME}" run_python -c '
+import json, os, sys
+import requests
+
+base = os.environ["BASE_URL"].rstrip("/")
+payload = {
+    "model": os.environ["MODEL"],
+    "messages": [{"role": "user", "content": "ping"}],
+    "max_tokens": 1,
+    "temperature": 0,
+    "stream": False,
+}
+for suffix in ("/v1/chat/completions", "/openai/v1/chat/completions"):
+    try:
+        response = requests.post(base + suffix, json=payload, timeout=15)
+        if response.ok:
+            sys.exit(0)
+    except Exception:
+        pass
+sys.exit(1)
+' >/dev/null 2>&1
+}
+
+start_port_forward() {
+  local service="$1"
+  RESOLVED_ENDPOINT=""
+
+  local svc_name port local_port
+  svc_name="$(kubectl get svc -n "${NS}" -o name 2>/dev/null | sed 's|^service/||' \
+    | grep -E "^${service}-kserve-workload-svc$" | head -n 1 || true)"
+  if [[ -z "${svc_name}" ]]; then
+    svc_name="$(kubectl get svc -n "${NS}" -o name 2>/dev/null | sed 's|^service/||' \
+      | grep -E "^${service}-kserve" | grep -v -- '-epp-' | head -n 1 || true)"
+  fi
+  if [[ -z "${svc_name}" ]]; then
+    log "Could not find a workload Service for ${service}"
+    return 1
+  fi
+
+  port="$(kubectl get svc "${svc_name}" -n "${NS}" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true)"
+  port="${port:-8000}"
+  local_port="${next_local_port}"
+  next_local_port=$(( next_local_port + 1 ))
+
+  kubectl port-forward -n "${NS}" "svc/${svc_name}" "${local_port}:${port}" >/dev/null 2>&1 &
+  port_forward_pids+=("$!")
+  log "Port-forwarding ${svc_name}:${port} -> 127.0.0.1:${local_port} for ${service}"
+
+  local attempt
+  for attempt in $(seq 1 30); do
+    if probe_http_endpoint "http://127.0.0.1:${local_port}"; then
+      RESOLVED_ENDPOINT="http://127.0.0.1:${local_port}"
+      return 0
+    fi
+    sleep 2
+  done
+
+  log "Port-forward for ${service} did not answer after 60s"
+  return 1
+}
+
+stop_port_forwards() {
+  local pid
+  for pid in "${port_forward_pids[@]:-}"; do
+    [[ -n "${pid}" ]] && kill "${pid}" >/dev/null 2>&1 || true
+  done
+  port_forward_pids=()
+}
+
+# Sets RESOLVED_ENDPOINT.
+resolve_endpoint() {
+  local service="$1" explicit="$2"
+  RESOLVED_ENDPOINT=""
+
+  if [[ -n "${explicit}" ]]; then
+    RESOLVED_ENDPOINT="${explicit}"
+    return 0
+  fi
+
+  case "${ROUTE_MODE}" in
+    port-forward)
+      start_port_forward "${service}"
+      return $?
+      ;;
+    gateway)
+      RESOLVED_ENDPOINT="$(service_url "${service}")"
+      [[ -n "${RESOLVED_ENDPOINT}" ]]
+      return $?
+      ;;
+  esac
+
+  # auto
+  local advertised
+  advertised="$(service_url "${service}")"
+  if [[ -n "${advertised}" ]] && probe_http_endpoint "${advertised}"; then
+    log "${service}: using advertised gateway URL ${advertised}"
+    RESOLVED_ENDPOINT="${advertised}"
+    return 0
+  fi
+  if [[ -n "${advertised}" ]]; then
+    log "${service}: advertised URL ${advertised} did not answer; falling back to port-forward"
+  fi
+  start_port_forward "${service}"
+  return $?
 }
 
 service_ready() {
@@ -645,6 +858,11 @@ collect_mode_snapshot() {
   kubectl get pods -n "${NS}" -o wide > "${mode_dir}/pods.txt" 2>/dev/null || true
   kubectl get daemonset -n "${NS}" -o wide > "${mode_dir}/daemonsets.txt" 2>/dev/null || true
   kubectl get "${resource_type}" -n "${NS}" -o wide > "${mode_dir}/services.txt" 2>/dev/null || true
+  # Routing artifacts. Without these, a gateway 404 is undiagnosable after the
+  # fact - which is exactly what happened on the first full run.
+  kubectl get httproute -n "${NS}" -o yaml > "${mode_dir}/httproutes.yaml" 2>/dev/null || true
+  kubectl get gateway -A -o wide > "${mode_dir}/gateways.txt" 2>/dev/null || true
+  kubectl get svc -n "${NS}" -o wide > "${mode_dir}/services-k8s.txt" 2>/dev/null || true
 }
 
 # ---------------------------------------------------------------------------
@@ -852,6 +1070,8 @@ run_mode_sequential() {
   log "Preparing ${mode} mode (one service deployed at a time)"
   reset_cluster_state
   apply_gpu_probe
+  detect_gpu_inventory
+  apply_gpu_reserver
 
   local phase_files=()
   local ready_1="false" ready_2="false"
@@ -881,9 +1101,12 @@ run_mode_sequential() {
       startup="$(( $(date +%s) - phase_started ))"
     fi
 
-    local pod_name endpoint
+    local pod_name endpoint=""
     pod_name="$(select_pod_name "${service}")"
-    endpoint="${explicit_endpoint:-$(service_url "${service}")}"
+    if [[ "${ready}" == "true" ]]; then
+      resolve_endpoint "${service}" "${explicit_endpoint}" || true
+      endpoint="${RESOLVED_ENDPOINT}"
+    fi
 
     if [[ "${ready}" == "true" && -n "${endpoint}" ]]; then
       local phase_json="${mode_dir}/client.phase-${index}.json"
@@ -904,6 +1127,7 @@ run_mode_sequential() {
       ready_2="${ready}"; startup_2="${startup}"; pod_2="${pod_name}"; endpoint_used_2="${endpoint}"
     fi
 
+    stop_port_forwards
     log "Sequential phase ${index}: removing ${service} to free the GPU"
     kubectl delete -f "${ROOT_DIR}/${manifest}" --ignore-not-found=true --wait=false >/dev/null 2>&1 || true
     wait_for_workload_drain || true
@@ -946,6 +1170,8 @@ run_mode_concurrent() {
   log "Preparing ${mode} mode (both services concurrent)"
   reset_cluster_state
   apply_gpu_probe
+  detect_gpu_inventory
+  apply_gpu_reserver
   apply_mode_manifests "${mode}"
 
   local start_epoch
@@ -959,11 +1185,22 @@ run_mode_concurrent() {
     ready_2="true"; startup_2="$(( $(date +%s) - start_epoch ))"
   fi
 
-  local pod_1 pod_2 endpoint_1 endpoint_2
+  local pod_1 pod_2 endpoint_1="" endpoint_2=""
   pod_1="$(select_pod_name "${SERVICE_1}")"
   pod_2="$(select_pod_name "${SERVICE_2}")"
-  endpoint_1="${ENDPOINT_1:-$(service_url "${SERVICE_1}")}"
-  endpoint_2="${ENDPOINT_2:-$(service_url "${SERVICE_2}")}"
+
+  # Confirm both services really landed on the same physical GPU before
+  # measuring anything. If they did not, this mode is not testing sharing.
+  verify_same_gpu "${mode_dir}"
+
+  if [[ "${ready_1}" == "true" ]]; then
+    resolve_endpoint "${SERVICE_1}" "${ENDPOINT_1}" || true
+    endpoint_1="${RESOLVED_ENDPOINT}"
+  fi
+  if [[ "${ready_2}" == "true" ]]; then
+    resolve_endpoint "${SERVICE_2}" "${ENDPOINT_2}" || true
+    endpoint_2="${RESOLVED_ENDPOINT}"
+  fi
 
   local status=0
   if [[ "${ready_1}" == "true" && "${ready_2}" == "true" && -n "${endpoint_1}" && -n "${endpoint_2}" ]]; then
@@ -977,6 +1214,7 @@ run_mode_concurrent() {
     status=1
   fi
 
+  stop_port_forwards
   collect_service_artifacts "${SERVICE_1}" "${mode_dir}"
   collect_service_artifacts "${SERVICE_2}" "${mode_dir}"
   collect_mode_snapshot "${mode_dir}"
@@ -1023,6 +1261,7 @@ restore_results_ownership() {
 
 cleanup_on_exit() {
   stop_gpu_sampler
+  stop_port_forwards
   restore_results_ownership
 }
 trap cleanup_on_exit EXIT INT TERM
