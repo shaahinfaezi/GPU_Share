@@ -44,11 +44,22 @@ ENDPOINT_2=""
 INSECURE="false"
 RESOURCE_TYPE_OVERRIDE=""
 HOST_MPS_UNIT="nvidia-mps"
-# auto = pin only when there is disk headroom. See check_disk_headroom.
-PIN_IMAGE="auto"
+# Image pinning defaults to OFF.
+#
+# It was added to avoid a ~4 minute re-pull per mode, but it pulls the same
+# 9.5 GB image concurrently with the vLLM Pods. Concurrent pulls of one image
+# open separate containerd ingest sessions, so partial blobs pile up before
+# commit, and an interrupted run leaves them behind. Observed on this node:
+# disk went from 65% to 94% across two interrupted runs. Saving four minutes is
+# not worth risking DiskPressure evictions mid-benchmark, so this is opt-in.
+PIN_IMAGE="no"
 # kubelet evicts unused images above this; pinning above it is dangerous.
 IMAGE_GC_HIGH_PERCENT=85
 DISK_SAFE_PERCENT=80
+# Above this a run is likely to be evicted by DiskPressure part-way through,
+# wasting the whole ~25 minutes. Overridable with --allow-full-disk.
+DISK_ABORT_PERCENT=90
+ALLOW_FULL_DISK="false"
 disk_use_percent=0
 host_mps_was_active="false"
 ROUTE_MODE="auto"
@@ -88,9 +99,12 @@ Options:
                              back to port-forwarding the workload Service.
   --gpu-uuid UUID            pin every mode to this physical GPU
                              (default: the lowest-index GPU)
-  --pin-image MODE           auto (default), yes, or no. Keeps the 9.5 GB vLLM
-                             image resident between modes. auto refuses when
-                             the node has no disk headroom.
+  --pin-image MODE           no (default), auto, or yes. Keeps the 9.5 GB vLLM
+                             image resident between modes. Off by default: it
+                             pulls concurrently with the workload Pods and can
+                             fill the disk.
+  --allow-full-disk          run even above 90% disk (DiskPressure may evict
+                             Pods and invalidate the run)
   --insecure                 disable TLS verification in the client
 EOF
 }
@@ -133,6 +147,7 @@ while [[ $# -gt 0 ]]; do
     --route)                 ROUTE_MODE="$2"; shift 2 ;;
     --gpu-uuid)              GPU_UUID_OVERRIDE="$2"; shift 2 ;;
     --pin-image)             PIN_IMAGE="$2"; shift 2 ;;
+    --allow-full-disk)       ALLOW_FULL_DISK="true"; shift ;;
     --max-tokens)            MAX_TOKENS="$2"; shift 2 ;;
     --concurrency)           CONCURRENCY="$2"; shift 2 ;;
     --insecure)              INSECURE="true"; shift ;;
@@ -455,6 +470,45 @@ check_disk_headroom() {
   disk_use_percent="$(df -P "${path}" 2>/dev/null | awk 'NR==2 {gsub("%","",$5); print $5+0}')"
   disk_use_percent="${disk_use_percent:-0}"
   log "Node disk usage at ${path}: ${disk_use_percent}%"
+
+  if (( disk_use_percent >= DISK_ABORT_PERCENT )) && [[ "${ALLOW_FULL_DISK}" != "true" ]]; then
+    printf 'ERROR: node disk is %s%%, at or above the %s%% abort threshold.
+
+'       "${disk_use_percent}" "${DISK_ABORT_PERCENT}" >&2
+    printf 'A run started here is likely to be cut short by DiskPressure evicting Pods,
+' >&2
+    printf 'which wastes ~25 minutes and produces results that cannot be trusted.
+
+' >&2
+    printf 'Reclaim space, largest wins first:
+
+' >&2
+    printf '  # partial blobs left by interrupted image pulls
+' >&2
+    printf '  sudo du -sh /var/lib/rancher/k3s/agent/containerd/io.containerd.content.v1.content/ingest
+' >&2
+    printf '  sudo ctr -a /run/k3s/containerd/containerd.sock -n k8s.io content prune references
+
+' >&2
+    printf '  # unused images
+' >&2
+    printf '  sudo k3s crictl rmi --prune
+
+' >&2
+    printf '  # journal is often several GB
+' >&2
+    printf '  sudo journalctl --vacuum-size=200M
+
+' >&2
+    printf '  # find anything else large
+' >&2
+    printf '  sudo du -xh --max-depth=1 / 2>/dev/null | sort -h | tail -15
+
+' >&2
+    printf 'Then re-run. To proceed anyway: --allow-full-disk
+' >&2
+    exit 1
+  fi
 
   if (( disk_use_percent >= IMAGE_GC_HIGH_PERCENT )); then
     log "WARNING: disk is at or above kubelet's image-gc-high-threshold (${IMAGE_GC_HIGH_PERCENT}%)."
