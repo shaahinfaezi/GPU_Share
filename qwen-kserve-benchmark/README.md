@@ -1,53 +1,95 @@
 # Two-Container Qwen KServe Benchmark
 
-This package compares two identical Qwen services on one approximately 12 GiB NVIDIA GPU:
+Compares two identical Qwen services sharing one ~12 GiB non-MIG NVIDIA GPU,
+across four modes:
 
-1. Sequential execution.
-2. MPS-only concurrent execution.
-3. HAMi concurrent execution without MPS.
-4. HAMi plus MPS concurrent execution.
+1. **sequential** - one service on the GPU at a time. Baseline.
+2. **mps** - both services concurrent, NVIDIA MPS.
+3. **hami** - both services concurrent, HAMi `gpumem`/`gpucores` quotas.
+4. **hami-mps** - HAMi quotas plus MPS.
 
-Only files in this directory are used. Existing files under `GPU_Share/kubernetes/` and `GPU_Share/hami-mps-benchmark/` are not modified.
+Architecture: Knative + KServe `LLMInferenceService` (llm-d router/scheduler)
+with vLLM behind the `huggingfaceserver` image. Only files in this directory are
+used; `GPU_Share/kubernetes/` and `GPU_Share/hami-mps-benchmark/` are untouched.
 
-This folder now includes the missing runner and cleanup scripts for the two-container benchmark flow.
+## What "sequential" means now
+
+The sequential mode used to apply **both** `LLMInferenceServices` at once and
+merely tell the client to send its requests one after the other. Two vLLM
+processes stayed resident on the GPU for the entire run, so the "baseline" was
+actually an unmanaged co-tenancy run — the exact configuration that crashed.
+
+Sequential now deploys `qwen-bench-01` **alone**, drives it, tears it down,
+waits for the Pod to actually terminate and release its CUDA context, and only
+then deploys `qwen-bench-02`. One CUDA context on the device at a time. The two
+phases are merged into one result document, with wall time summed rather than
+maxed, because the phases genuinely ran back to back.
+
+## Keeping the four modes comparable
+
+Every mode gives each service the **same absolute VRAM budget: 3686 MiB**
+(0.30 x 12288 MiB). Only the sharing mechanism changes.
+
+This is why `--gpu-memory-utilization` is not the same number everywhere:
+
+| Mode | What vLLM sees | Flag | Absolute VRAM |
+| --- | --- | --- | --- |
+| sequential | 12288 MiB (whole device) | `0.30` | 3686 MiB |
+| mps | 12288 MiB (MPS does not virtualize memory) | `0.30` | 3686 MiB |
+| hami / hami-mps | 4096 MiB (`nvidia.com/gpumem` quota) | `0.90` | 3686 MiB |
+
+HAMi's vGPU library intercepts the CUDA/NVML memory queries, so under HAMi the
+flag is a fraction of the **quota**, not of the device. Reusing `0.30` there
+gives vLLM 0.30 x 4096 = 1229 MiB, which cannot hold the 0.5B weights plus a
+CUDA context, and the Pod crash-loops. That was a real failure mode in the
+previous manifests.
 
 ## Fixed workload
 
-- Model: `Qwen/Qwen2.5-0.5B-Instruct`
-- Model storage: `pvc://qwen-local-pv-claim/`
-- Namespace: `llm-demo`
-- Services: `qwen-bench-01` and `qwen-bench-02`
-- Requests: 10 per service, 20 per mode
-- Prompt and generation parameters are fixed in `client.py`
-- vLLM: `--gpu-memory-utilization=0.30`, `--max-model-len=512`, `--max-num-seqs=1`
-- Prefix caching: disabled
+- Model: `Qwen/Qwen2.5-0.5B-Instruct`, from `pvc://qwen-local-pv-claim/`
+- Namespace: `llm-demo`; services `qwen-bench-01`, `qwen-bench-02`
+- 10 measured requests per service, plus 1 warm-up per service that is excluded
+  from every metric (it pays for CUDA graph capture and the first KV-cache
+  allocations, which would otherwise land entirely in the first latency sample)
+- vLLM: `--max-model-len=512`, `--max-num-seqs=1`, prefix caching disabled
 
-vLLM's normal KV cache remains enabled. This benchmark controls its maximum size and concurrency; it does not claim to disable the KV cache.
+vLLM's normal KV cache stays enabled. This benchmark bounds its maximum size and
+concurrency; it does not claim to disable it.
 
-## GPU memory calculation
+In concurrent modes the client runs **one worker thread per service**, each
+issuing its requests back to back. The old client queued all 20 requests into a
+2-worker pool, which let one service's backlog drain into the other's worker and
+made the per-service numbers meaningless.
 
-For a 12 GiB GPU:
+## HAMi profiles
 
-```text
-12 GiB = 12,288 MiB
-2 x 0.30 x 12,288 MiB = 7,373 MiB
-```
+`31-qwen-hami-compute-profiles.yaml` holds JSON profiles that the runner
+actually reads and patches onto the services. Previously `--hami-profile` only
+stamped a label, so `weighted` behaved identically to `balanced`.
 
-Each HAMi service requests `3,686` MiB and `50` GPU cores in the balanced profile. The two services therefore request approximately 7.2 GiB and 100% aggregate compute. Actual model weights and CUDA overhead are still measured by the benchmark.
+| Profile | svc01 cores/mem/util | svc02 cores/mem/util | Absolute VRAM |
+| --- | --- | --- | --- |
+| `balanced` | 50 / 4096 / 0.90 | 50 / 4096 / 0.90 | 3686 + 3686 MiB |
+| `conservative` | 25 / 3072 / 0.80 | 25 / 3072 / 0.80 | 2458 + 2458 MiB |
+| `weighted` | 75 / 6144 / 0.90 | 25 / 3072 / 0.80 | 5530 + 2458 MiB |
+
+`weighted` is the QoS case from the project goals: one tenant prioritized on the
+same physical GPU.
 
 ## Prerequisites
 
-- Kubernetes and `kubectl`.
-- KServe with the `LLMInferenceService` CRD and the gateway from the supplied template.
+- Kubernetes and `kubectl` with cluster access.
+- KServe with the `LLMInferenceService` CRD and the `kserve-ingress-gateway`.
 - `llm-demo` namespace and `qwen-local-pv-claim` already created.
-- Local registry image `127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu` available to cluster nodes.
-- HAMi installed for HAMi modes.
-- MPS enabled and Kubernetes GPU sharing configured for MPS modes. A normal exclusive `nvidia.com/gpu: 1` resource will not schedule two Pods onto one physical GPU by itself.
-- Python 3 with `requests` for the client.
+- Local registry image `127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu`
+  reachable from the cluster nodes.
+- HAMi installed. HAMi's scheduler is also what lets two Pods that each request
+  `nvidia.com/gpu: 1` land on one physical GPU; with only the stock NVIDIA
+  device plugin and no time-slicing config, the second Pod stays Pending and the
+  concurrent modes cannot run.
+- Python 3 with `requests` on the client machine.
 
 ## Run
-
-From a Linux shell on a machine with cluster access:
 
 ```bash
 cd GPU_Share/qwen-kserve-benchmark
@@ -56,36 +98,112 @@ chmod +x run-qwen-benchmark.sh cleanup-qwen-benchmark.sh
 ./run-qwen-benchmark.sh
 ```
 
-Run the optional HAMi + MPS mode too:
+Include the HAMi + MPS mode in a full run:
 
 ```bash
 ./run-qwen-benchmark.sh --with-hami-mps
 ```
 
-Run only a HAMi profile:
+One mode, one profile:
 
 ```bash
 ./run-qwen-benchmark.sh --mode hami --hami-profile weighted
+```
 
-Use explicit endpoints if the KServe gateway URL is not reachable from your client machine:
+Explicit endpoints, when the gateway URL in `.status.url` is not reachable from
+the client machine:
 
 ```bash
 ./run-qwen-benchmark.sh \
-  --endpoint-1 https://qwen-bench-01.example.test \
-  --endpoint-2 https://qwen-bench-02.example.test
+  --endpoint-1 http://94.184.177.237/llm-demo/qwen-bench-01 \
+  --endpoint-2 http://94.184.177.237/llm-demo/qwen-bench-02
 ```
 
-Clean up the benchmark resources without deleting the shared namespace or PVC:
+### If CRD detection fails
+
+`kubectl api-resources` exits non-zero and can print nothing at all when any
+single aggregated APIService in the cluster is unavailable, even though the
+KServe CRD is registered and usable. The runner therefore tries four sources in
+order: `api-resources` scoped to the group, `api-resources` unscoped,
+`kubectl get crd`, and finally a direct probe. If all four fail it prints what
+each one actually returned. You can also bypass detection entirely:
+
+```bash
+./run-qwen-benchmark.sh --resource-type llminferenceservices.serving.kserve.io
+```
+
+Clean up without deleting the shared namespace or PVC:
 
 ```bash
 ./cleanup-qwen-benchmark.sh
 ```
-```
 
-Results are written to `results/<UTC timestamp>/<mode>/`.
+Results land in `results/<UTC timestamp>/<mode>/`.
+
+## Endpoint path discovery
+
+The gateway URL is path-based (`http://<gw>/llm-demo/qwen-bench-01`) and which
+OpenAI prefix sits behind it depends on the route template and the server image.
+The client no longer hardcodes one guess: it probes `/v1/chat/completions`,
+`/openai/v1/chat/completions` and `/chat/completions` with a 1-token request and
+locks onto the first that answers. The probe results are recorded under
+`endpoint_probes` in the client JSON, so a 404 storm is diagnosable instead of
+looking like a dead service.
 
 ## Metrics
 
-The client records success/failure, request latency, p50/p95 latency, output tokens, output tokens per second, request rate, and raw responses. The runner also records readiness time, Pod placement, Pod restarts, GPU state, and HAMi-related annotations.
+Per mode, in `summary.json`:
 
-Startup time is reported separately from steady-state request metrics.
+- **client**: success/failure counts, per-request latency, p50/p95/p99, output
+  tokens, tokens/sec, request rate. Per-service rates use that service's own
+  active window, so a service that finishes early is not penalised by the other
+  one still running.
+- **fairness_ratio**: `min(tokens/sec) / max(tokens/sec)` across the two
+  services. `1.0` means the shared GPU treated both tenants identically. This is
+  the number that answers the QoS question in the project goals. It is `null`
+  for sequential, where the services never overlapped.
+- **gpu**: peak/mean VRAM and peak/mean utilization, sampled every 2s during the
+  measured window from a privileged `qwen-benchmark-gpu-probe` DaemonSet. The
+  probe exists because sampling `nvidia-smi` inside a HAMi Pod reports the vGPU
+  quota, not the device — that would make the HAMi modes non-comparable. Raw
+  samples are in `gpu-timeline.csv`. Each service's own (virtualized) view is
+  still captured in `<service>/gpu-smi.txt`, which is how the quota is verified.
+- **acceptance**: readiness, OOM kills, restarts, and whether all requests
+  succeeded. The expected request count scales with `--requests-per-service`
+  instead of being hardcoded to 20.
+- **startup_seconds** per service, reported separately from steady-state metrics.
+
+## Notes on MPS
+
+- The MPS daemon leaves the GPU in `DEFAULT` compute mode. `EXCLUSIVE_PROCESS`
+  is the classic way to force every client through MPS, but it is a persistent
+  node-global driver setting: if a run is interrupted, every later
+  single-process run fails with "all CUDA-capable devices are busy or
+  unavailable". Workload Pods opt in explicitly via `CUDA_MPS_PIPE_DIRECTORY`.
+  If a previous run left the GPU stuck, reset it with `sudo nvidia-smi -c DEFAULT`.
+- The daemon's readiness probe checks for the MPS control socket, and the runner
+  aborts an MPS mode if the DaemonSet does not become Ready. Running an "MPS
+  mode" without MPS produces a plausible number that is indistinguishable from a
+  real result.
+- The `mps-pipe` volume uses `hostPath` type `Directory` (not
+  `DirectoryOrCreate`) for the same reason: a missing pipe directory fails the
+  Pod instead of silently mounting an empty one and running without MPS.
+- `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE` is read from the **client** process
+  environment, so it is set on the workload Pods, not on the daemon.
+
+## Files
+
+| File | Purpose |
+| --- | --- |
+| `00-namespace.yaml` | `llm-demo` namespace |
+| `05-gpu-probe.yaml` | Privileged DaemonSet for host-level GPU sampling |
+| `10-qwen-sequential-01.yaml` | Sequential phase 1: `qwen-bench-01` alone |
+| `10-qwen-sequential-02.yaml` | Sequential phase 2: `qwen-bench-02` alone |
+| `20-mps-daemon.yaml` | NVIDIA MPS control daemon |
+| `21-qwen-mps.yaml` | Both services, MPS |
+| `30-qwen-hami.yaml` | Both services, HAMi quotas |
+| `31-qwen-hami-compute-profiles.yaml` | HAMi capacity profiles (read by the runner) |
+| `40-qwen-hami-mps.yaml` | Both services, HAMi + MPS |
+| `client.py` | Load client, path discovery, metrics, phase merge |
+| `run-qwen-benchmark.sh` | Runner |
+| `cleanup-qwen-benchmark.sh` | Deletes benchmark resources only |

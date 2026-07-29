@@ -33,6 +33,7 @@ WITH_HAMI_MPS="false"
 ENDPOINT_1=""
 ENDPOINT_2=""
 INSECURE="false"
+RESOURCE_TYPE_OVERRIDE=""
 resource_type=""
 gpu_probe_pod=""
 sampler_pid=""
@@ -52,6 +53,8 @@ Options:
   --warmup N                 warm-up requests per service (default: 1)
   --timeout SECONDS          request timeout passed to client.py (default: 180)
   --wait-timeout SECONDS     readiness timeout for each service (default: 1800)
+  --resource-type NAME       override CRD detection, e.g.
+                             llminferenceservices.serving.kserve.io
   --insecure                 disable TLS verification in the client
 EOF
 }
@@ -90,6 +93,7 @@ while [[ $# -gt 0 ]]; do
     --warmup)                WARMUP_REQUESTS="$2"; shift 2 ;;
     --timeout)               TIMEOUT_SECONDS="$2"; shift 2 ;;
     --wait-timeout)          WAIT_TIMEOUT_SECONDS="$2"; shift 2 ;;
+    --resource-type)         RESOURCE_TYPE_OVERRIDE="$2"; shift 2 ;;
     --insecure)              INSECURE="true"; shift ;;
     -h|--help)               usage; exit 0 ;;
     *)                       usage >&2; fail "Unknown argument: $1" ;;
@@ -112,15 +116,73 @@ require_cmd python3
 # ---------------------------------------------------------------------------
 # Cluster discovery and validation
 # ---------------------------------------------------------------------------
+# Resolve the resource name to use for every later get/patch/label.
+#
+# `kubectl api-resources` is unreliable as a single source of truth: it exits
+# non-zero and can print NOTHING to stdout when any single aggregated APIService
+# in the cluster is unavailable ("unable to retrieve the complete list of server
+# APIs"), even though the CRD we want is registered and perfectly usable. So try
+# several independent sources and only give up if all of them fail.
+#
+# The match stays anchored to llminferenceservice: the original loose grep also
+# matched plain `inferenceservices`, and `head -n 1` would then pick the wrong
+# CRD so every later command silently targeted the wrong resource.
 detect_resource_type() {
-  # Match the LLM CRD exactly. The old loose grep also matched plain
-  # `inferenceservices`, and `head -n 1` would then pick the wrong CRD, so
-  # every later kubectl get/label/patch silently targeted the wrong resource.
-  resource_type="$(kubectl api-resources --api-group=serving.kserve.io -o name 2>/dev/null \
-    | grep -E '^llminferenceservices(\.|$)' | head -n 1 || true)"
-  if [[ -z "${resource_type}" ]]; then
-    fail "Could not find the KServe LLMInferenceService CRD (serving.kserve.io)"
+  if [[ -n "${RESOURCE_TYPE_OVERRIDE}" ]]; then
+    resource_type="${RESOURCE_TYPE_OVERRIDE}"
+    log "Using resource type from --resource-type: ${resource_type}"
+    return 0
   fi
+
+  local api_resources_out api_resources_err crd_out
+  api_resources_err="$(mktemp)"
+
+  # Source 1: api-resources scoped to the group.
+  api_resources_out="$(kubectl api-resources --api-group=serving.kserve.io -o name 2>"${api_resources_err}" || true)"
+  resource_type="$(printf '%s\n' "${api_resources_out}" | grep -E '^llminferenceservices?(\.|$)' | head -n 1 || true)"
+
+  # Source 2: api-resources unscoped. The --api-group filter returns nothing on
+  # some versions when the group is served only under a non-preferred version.
+  if [[ -z "${resource_type}" ]]; then
+    resource_type="$(kubectl api-resources -o name 2>/dev/null \
+      | grep -E '^llminferenceservices?\.serving\.kserve\.io$' | head -n 1 || true)"
+  fi
+
+  # Source 3: the CRD object itself. This works even when API discovery is
+  # partially broken, because it is a plain GET against a known resource.
+  if [[ -z "${resource_type}" ]]; then
+    crd_out="$(kubectl get crd -o name 2>/dev/null \
+      | sed 's|^customresourcedefinition\.apiextensions\.k8s\.io/||' \
+      | grep -E '^llminferenceservices?\.serving\.kserve\.io$' | head -n 1 || true)"
+    resource_type="${crd_out}"
+  fi
+
+  # Source 4: last resort, just probe the name and see if the server accepts it.
+  if [[ -z "${resource_type}" ]]; then
+    local candidate
+    for candidate in llminferenceservices.serving.kserve.io llminferenceservices llmisvc; do
+      if kubectl get "${candidate}" -n "${NS}" >/dev/null 2>&1; then
+        resource_type="${candidate}"
+        break
+      fi
+    done
+  fi
+
+  if [[ -z "${resource_type}" ]]; then
+    printf 'ERROR: Could not find the KServe LLMInferenceService CRD (serving.kserve.io).\n' >&2
+    printf '\n--- kubectl api-resources --api-group=serving.kserve.io (stdout) ---\n' >&2
+    printf '%s\n' "${api_resources_out:-<empty>}" >&2
+    printf '\n--- kubectl api-resources --api-group=serving.kserve.io (stderr) ---\n' >&2
+    cat "${api_resources_err}" >&2 || true
+    printf '\n--- CRDs matching kserve ---\n' >&2
+    kubectl get crd -o name 2>&1 | grep -i kserve >&2 || printf '<none>\n' >&2
+    printf '\nIf the CRD is present under another name, re-run with:\n' >&2
+    printf '  ./run-qwen-benchmark.sh --resource-type <name> ...\n' >&2
+    rm -f "${api_resources_err}"
+    exit 1
+  fi
+
+  rm -f "${api_resources_err}"
 }
 
 validate_common_cluster_state() {
