@@ -481,10 +481,26 @@ apply_image_pinner() {
   esac
 
   kubectl apply -f "${ROOT_DIR}/04-image-pinner.yaml" >/dev/null
-  if kubectl rollout status -n "${NS}" deployment/qwen-benchmark-image-pinner --timeout=900s >/dev/null 2>&1; then
-    log "Image pinner Ready; the vLLM image will stay resident between modes"
-  else
-    log "WARNING: image pinner not Ready. Modes may re-pull the 9.5 GB image (~4 min each)."
+  # Do NOT block on this.
+  #
+  # The pinner uses the same 9.5 GB image, so becoming Ready can take minutes on
+  # a cold cache. Waiting for it bought nothing and made the runner look hung:
+  # the first mode's Pod pulls the image regardless, and the pinner only has to
+  # be holding a reference by the time the SECOND mode starts. It pulls in the
+  # background while mode 1 deploys.
+  log "Image pinner applied (pulling in the background; it only needs to be up"
+  log "  before the second mode, so not waiting for it)."
+}
+
+# Reported once per mode so a re-pull is attributable rather than mysterious.
+log_image_pinner_state() {
+  local ready
+  ready="$(kubectl get deployment/qwen-benchmark-image-pinner -n "${NS}" \
+    -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)"
+  if [[ "${ready:-0}" -ge 1 ]]; then
+    log "Image pinner is holding the vLLM image (no re-pull expected)"
+  elif [[ "${PIN_IMAGE}" != "no" ]]; then
+    log "Image pinner not up yet; this mode may re-pull the 9.5 GB image (~4 min)"
   fi
 }
 
@@ -495,6 +511,7 @@ delete_image_pinner() {
 
 apply_gpu_probe() {
   kubectl apply -f "${ROOT_DIR}/05-gpu-probe.yaml" >/dev/null
+  log "Waiting up to 180s for the GPU probe DaemonSet..."
   kubectl rollout status -n "${NS}" daemonset/qwen-benchmark-gpu-probe --timeout=180s >/dev/null 2>&1 \
     || log "WARNING: GPU probe DaemonSet is not Ready; GPU samples may be missing"
   gpu_probe_pod="$(kubectl get pods -n "${NS}" -l app=qwen-benchmark-gpu-probe \
@@ -571,6 +588,7 @@ apply_gpu_reserver() {
   fi
 
   log "Reserving ${to_reserve} of ${gpu_count} GPUs so the benchmark shares exactly one device"
+  log "Waiting up to 180s for the GPU reserver..."
   if ! kubectl rollout status -n "${NS}" deployment/qwen-benchmark-gpu-reserver --timeout=180s >/dev/null 2>&1; then
     log "WARNING: GPU reserver did not become Ready. The benchmark may spread across GPUs."
     log "         Check: kubectl describe deployment/qwen-benchmark-gpu-reserver -n ${NS}"
@@ -701,6 +719,7 @@ ensure_mps_stopped() {
 
 apply_mps_daemon() {
   kubectl apply -f "${ROOT_DIR}/20-mps-daemon.yaml" >/dev/null
+  log "Waiting up to 300s for the MPS daemon (readiness = MPS control socket present)..."
   # The DaemonSet's readiness probe now checks for the MPS control socket, so a
   # successful rollout genuinely means MPS is accepting clients. Fail loudly:
   # running an "MPS mode" without MPS produces a plausible but meaningless
@@ -1477,6 +1496,7 @@ run_mode_sequential() {
   log "Preparing ${mode} mode (one service deployed at a time)"
   reset_cluster_state
   apply_gpu_probe
+  log_image_pinner_state
   detect_gpu_inventory
   apply_gpu_reserver
   # The baseline must have no MPS servers resident, or its VRAM and process
@@ -1583,6 +1603,7 @@ run_mode_concurrent() {
   log "Preparing ${mode} mode (both services concurrent)"
   reset_cluster_state
   apply_gpu_probe
+  log_image_pinner_state
   detect_gpu_inventory
   apply_gpu_reserver
   apply_mode_manifests "${mode}"
