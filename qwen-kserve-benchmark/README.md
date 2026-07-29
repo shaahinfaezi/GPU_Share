@@ -61,6 +61,25 @@ issuing its requests back to back. The old client queued all 20 requests into a
 2-worker pool, which let one service's backlog drain into the other's worker and
 made the per-service numbers meaningless.
 
+### Known limitation: the workload is deliberately light
+
+Every request uses one fixed prompt, `"Explain Kubernetes GPU sharing in exactly
+64 words."`, with `max_tokens: 64`, `temperature: 0`, `top_p: 1`. Fixed and
+greedy so token counts are near-identical across modes.
+
+At the current defaults that is ~1280 generated tokens per mode, which a 0.5B
+model finishes in a few seconds on a 12 GiB GPU. Expect
+`mean_gpu_utilization_percent` near 0 and **little or no measurable difference
+between sequential, MPS and HAMi**. That is a property of the workload size, not
+evidence that the sharing modes perform the same.
+
+The current settings are for validating the pipeline end to end. To get numbers
+that actually discriminate between modes, raise the load — `--requests-per-service`
+and `--warmup` are already CLI flags; `max_tokens` is the `REQUEST` constant in
+`client.py`. Roughly 30 requests per service at 256 tokens gives a
+one-to-two-minute window of sustained overlap, which is enough for the GPU
+sampler to resolve a difference.
+
 ## HAMi profiles
 
 `31-qwen-hami-compute-profiles.yaml` holds JSON profiles that the runner

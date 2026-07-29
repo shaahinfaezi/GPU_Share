@@ -21,12 +21,21 @@ GATEWAY_NAME="kserve-ingress-gateway"
 MODEL_NAME="Qwen/Qwen2.5-0.5B-Instruct"
 SERVICE_1="qwen-bench-01"
 SERVICE_2="qwen-bench-02"
-REQUESTS_PER_SERVICE=10
-WARMUP_REQUESTS=1
+REQUESTS_PER_SERVICE=100
+WARMUP_REQUESTS=4
+# Tokens generated per request. Exact, via ignore_eos + min_tokens.
+MAX_TOKENS=256
+# In-flight requests per service. >1 lets one service saturate the GPU,
+# which is what makes a 50% core cap observable at all.
+CONCURRENCY=4
+# Must match --max-num-seqs in the manifests, or vLLM queues requests
+# internally and the client-side concurrency never reaches the GPU.
+MAX_NUM_SEQS=8
+MAX_MODEL_LEN=512
 TIMEOUT_SECONDS=180
 WAIT_TIMEOUT_SECONDS=1800
 DRAIN_TIMEOUT_SECONDS=300
-GPU_SAMPLE_INTERVAL=2
+GPU_SAMPLE_INTERVAL_MS=250
 MODE="all"
 HAMI_PROFILE="balanced"
 WITH_HAMI_MPS="false"
@@ -35,10 +44,13 @@ ENDPOINT_2=""
 INSECURE="false"
 RESOURCE_TYPE_OVERRIDE=""
 ROUTE_MODE="auto"
+GPU_UUID_OVERRIDE=""
 resource_type=""
 gpu_probe_pod=""
 gpu_count=0
 gpu_uuids=""
+target_gpu_uuid=""
+other_gpu_uuids=""
 sampler_pid=""
 timestamp=""
 next_local_port=18000
@@ -55,8 +67,10 @@ Options:
   --with-hami-mps            include the HAMi + MPS mode when --mode all
   --endpoint-1 URL           explicit service 1 endpoint
   --endpoint-2 URL           explicit service 2 endpoint
-  --requests-per-service N   measured requests per service (default: 10)
-  --warmup N                 warm-up requests per service (default: 1)
+  --requests-per-service N   measured requests per service (default: 100)
+  --warmup N                 warm-up requests per service (default: 4)
+  --max-tokens N             tokens generated per request (default: 256)
+  --concurrency N            in-flight requests per service (default: 4)
   --timeout SECONDS          request timeout passed to client.py (default: 180)
   --wait-timeout SECONDS     readiness timeout for each service (default: 1800)
   --resource-type NAME       override CRD detection, e.g.
@@ -64,6 +78,8 @@ Options:
   --route MODE               auto (default), gateway, or port-forward.
                              auto probes the advertised gateway URL and falls
                              back to port-forwarding the workload Service.
+  --gpu-uuid UUID            pin every mode to this physical GPU
+                             (default: the lowest-index GPU)
   --insecure                 disable TLS verification in the client
 EOF
 }
@@ -104,6 +120,9 @@ while [[ $# -gt 0 ]]; do
     --wait-timeout)          WAIT_TIMEOUT_SECONDS="$2"; shift 2 ;;
     --resource-type)         RESOURCE_TYPE_OVERRIDE="$2"; shift 2 ;;
     --route)                 ROUTE_MODE="$2"; shift 2 ;;
+    --gpu-uuid)              GPU_UUID_OVERRIDE="$2"; shift 2 ;;
+    --max-tokens)            MAX_TOKENS="$2"; shift 2 ;;
+    --concurrency)           CONCURRENCY="$2"; shift 2 ;;
     --insecure)              INSECURE="true"; shift ;;
     -h|--help)               usage; exit 0 ;;
     *)                       usage >&2; fail "Unknown argument: $1" ;;
@@ -333,13 +352,17 @@ patch_service_profile() {
   # Under HAMi that flag is a fraction of the gpumem quota, not of the physical
   # device, so the two values must always change together.
   local args_json
-  args_json="$(UTIL="${util}" run_python -c '
+  args_json="$(UTIL="${util}" SEQS="${MAX_NUM_SEQS}" MODELLEN="${MAX_MODEL_LEN}" run_python -c '
 import json, os
+# Bind these to locals first. Nested double quotes inside an f-string do not
+# survive the surrounding single-quoted shell block.
 util = os.environ["UTIL"]
+model_len = os.environ["MODELLEN"]
+seqs = os.environ["SEQS"]
 print(json.dumps([
     f"--gpu-memory-utilization={util}",
-    "--max-model-len=512",
-    "--max-num-seqs=1",
+    f"--max-model-len={model_len}",
+    f"--max-num-seqs={seqs}",
     "--no-enable-prefix-caching",
 ]))
 ')"
@@ -419,14 +442,40 @@ apply_gpu_probe() {
 detect_gpu_inventory() {
   gpu_count=0
   gpu_uuids=""
+  target_gpu_uuid=""
+  other_gpu_uuids=""
   if [[ -z "${gpu_probe_pod}" ]]; then
     log "WARNING: no GPU probe Pod; cannot confine the benchmark to one GPU"
     return 0
   fi
+
   gpu_uuids="$(kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- \
-    nvidia-smi --query-gpu=uuid --format=csv,noheader 2>/dev/null | tr -d ' \r' | grep -c . || true)"
-  gpu_count="${gpu_uuids:-0}"
+    nvidia-smi --query-gpu=index,uuid --format=csv,noheader 2>/dev/null \
+    | tr -d ' \r' | grep . || true)"
+  gpu_count="$(printf '%s\n' "${gpu_uuids}" | grep -c . || true)"
+  gpu_count="${gpu_count:-0}"
+
+  # Pick ONE target GPU and keep every mode on it.
+  #
+  # Previously the reserver took whichever device HAMi handed it, so the free
+  # GPU differed per mode: MPS measured GPU-fa422f59 while HAMi measured
+  # GPU-bc62f652. Even with identical hardware that is not a controlled
+  # comparison. Index 0 is chosen deterministically unless --gpu-uuid says
+  # otherwise.
+  if [[ -n "${GPU_UUID_OVERRIDE}" ]]; then
+    target_gpu_uuid="${GPU_UUID_OVERRIDE}"
+  else
+    target_gpu_uuid="$(printf '%s\n' "${gpu_uuids}" | sort -t, -k1,1n | head -n 1 | cut -d, -f2)"
+  fi
+
+  other_gpu_uuids="$(printf '%s\n' "${gpu_uuids}" | cut -d, -f2 \
+    | grep -v -x -- "${target_gpu_uuid}" | paste -sd, - || true)"
+
   log "Physical GPUs visible on the node: ${gpu_count}"
+  log "Target GPU for every mode: ${target_gpu_uuid}"
+  if [[ -n "${other_gpu_uuids}" ]]; then
+    log "GPUs to be reserved away: ${other_gpu_uuids}"
+  fi
 }
 
 # Reserve every GPU but one, so all benchmark Pods are forced to share a single
@@ -439,6 +488,16 @@ apply_gpu_reserver() {
   fi
 
   kubectl apply -f "${ROOT_DIR}/06-gpu-reserver.yaml" >/dev/null
+
+  # Pin the reserver to the NON-target GPUs so the same device is left free for
+  # every mode. Unlike LLMInferenceService.spec.template, a Deployment's Pod
+  # template does have metadata, so HAMi's device-selection annotation can be
+  # set here.
+  if [[ -n "${other_gpu_uuids}" ]]; then
+    kubectl patch deployment/qwen-benchmark-gpu-reserver -n "${NS}" --type=merge \
+      -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"nvidia.com/use-gpuuuid\":\"${other_gpu_uuids}\"}}}}}" >/dev/null
+  fi
+
   kubectl scale deployment/qwen-benchmark-gpu-reserver -n "${NS}" --replicas="${to_reserve}" >/dev/null
 
   if [[ "${to_reserve}" -eq 0 ]]; then
@@ -488,6 +547,61 @@ verify_same_gpu() {
   fi
 }
 
+# Guarantee MPS is really gone before a non-MPS mode measures anything.
+#
+# Deleting the DaemonSet is not enough. nvidia-cuda-mps-server processes are
+# spawned on the HOST by the control daemon, so they outlive the Pod whenever
+# preStop does not complete (interrupted run, killed Pod, OOM). Each surviving
+# server holds a CUDA context and ~30 MiB of VRAM and stays visible in
+# nvidia-smi, which silently contaminates the sequential and HAMi baselines.
+#
+# The probe Pod is privileged with hostPID, so it can see and signal them.
+ensure_mps_stopped() {
+  kubectl delete -f "${ROOT_DIR}/20-mps-daemon.yaml" --ignore-not-found=true --wait=false >/dev/null 2>&1 || true
+
+  if [[ -z "${gpu_probe_pod}" ]]; then
+    log "No GPU probe Pod; cannot verify MPS is stopped"
+    return 0
+  fi
+
+  kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- bash -c '
+    export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
+    # Ask politely first so servers drain their clients, then insist.
+    echo quit | timeout 10 nvidia-cuda-mps-control >/dev/null 2>&1 || true
+    sleep 2
+    # Kill by PID from nvidia-smi rather than pkill: procps is not guaranteed to
+    # be present in the CUDA base image, and a silently missing pkill is why MPS
+    # servers survived into the sequential baseline on the last run. hostPID is
+    # set, so these are real host PIDs.
+    for attempt in 1 2; do
+      pids="$(nvidia-smi --query-compute-apps=pid,process_name --format=csv,noheader 2>/dev/null         | grep 'mps-server' | cut -d, -f1 | tr -d ' ')"
+      [ -z "$pids" ] && break
+      for pid in $pids; do
+        kill -TERM "$pid" 2>/dev/null || true
+      done
+      sleep 3
+      for pid in $pids; do
+        kill -KILL "$pid" 2>/dev/null || true
+      done
+      sleep 1
+    done
+    nvidia-smi -c DEFAULT >/dev/null 2>&1 || true
+    exit 0
+  ' >/dev/null 2>&1 || true
+
+  local remaining
+  remaining="$(kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- \
+    nvidia-smi --query-compute-apps=process_name --format=csv,noheader 2>/dev/null \
+    | grep -c 'nvidia-cuda-mps-server' || true)"
+  remaining="${remaining:-0}"
+  if [[ "${remaining}" -gt 0 ]]; then
+    log "WARNING: ${remaining} nvidia-cuda-mps-server process(es) still resident."
+    log "         This mode is NOT MPS-free. Clear manually: sudo pkill -f nvidia-cuda-mps"
+  else
+    log "MPS confirmed stopped; no MPS servers resident on the GPU"
+  fi
+}
+
 apply_mps_daemon() {
   kubectl apply -f "${ROOT_DIR}/20-mps-daemon.yaml" >/dev/null
   # The DaemonSet's readiness probe now checks for the MPS control socket, so a
@@ -507,6 +621,8 @@ apply_mode_manifests() {
       kubectl apply -f "${ROOT_DIR}/21-qwen-mps.yaml" >/dev/null
       ;;
     hami)
+      # HAMi mode must be MPS-free or the gpucores result is unattributable.
+      ensure_mps_stopped
       kubectl apply -f "${ROOT_DIR}/31-qwen-hami-compute-profiles.yaml" >/dev/null
       kubectl apply -f "${ROOT_DIR}/30-qwen-hami.yaml" >/dev/null
       apply_hami_profile "${HAMI_PROFILE}"
@@ -761,6 +877,17 @@ select_pod_name() {
 # report the vGPU quota rather than the device, which would make the HAMi modes
 # non-comparable with the others.
 # ---------------------------------------------------------------------------
+# Two defects in the previous sampler made every GPU number unreliable:
+#
+#  1. It ran `nvidia-smi | head -n 1`, which on a multi-GPU node always reports
+#     GPU 0 regardless of where the workload is. The MPS run landed on GPU
+#     fa422f59 and was scored against the idle GPU: peak memory 74 MiB.
+#  2. One kubectl exec every 2s against a client run lasting under 3s yielded
+#     one or two samples, so peak/mean were meaningless.
+#
+# Now: a single long-lived exec streams every GPU with its UUID at 250 ms via
+# nvidia-smi's own --loop-ms, so there is no per-sample exec overhead, and the
+# summary filters to the GPU the workload actually ran on.
 start_gpu_sampler() {
   local out_file="$1"
   sampler_pid=""
@@ -769,17 +896,12 @@ start_gpu_sampler() {
     return 0
   fi
 
-  printf 'unix_seconds,memory_total_mib,memory_used_mib,utilization_gpu_percent\n' > "${out_file}"
+  printf 'timestamp,index,uuid,memory_total_mib,memory_used_mib,utilization_gpu_percent\n' > "${out_file}"
   (
-    while true; do
-      line="$(kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- \
-        nvidia-smi --query-gpu=memory.total,memory.used,utilization.gpu \
-        --format=csv,noheader,nounits 2>/dev/null | head -n 1 | tr -d ' ' || true)"
-      if [[ -n "${line}" ]]; then
-        printf '%s,%s\n' "$(date -u +%s)" "${line}" >> "${out_file}"
-      fi
-      sleep "${GPU_SAMPLE_INTERVAL}"
-    done
+    kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- \
+      nvidia-smi --query-gpu=timestamp,index,uuid,memory.total,memory.used,utilization.gpu \
+      --format=csv,noheader,nounits --loop-ms="${GPU_SAMPLE_INTERVAL_MS}" 2>/dev/null \
+      >> "${out_file}"
   ) &
   sampler_pid=$!
 }
@@ -965,6 +1087,8 @@ run_client() {
     --requests-per-service "${REQUESTS_PER_SERVICE}"
     --warmup "${WARMUP_REQUESTS}"
     --timeout "${TIMEOUT_SECONDS}"
+    --max-tokens "${MAX_TOKENS}"
+    --concurrency "${CONCURRENCY}"
     --model "${MODEL_NAME}")
   # Note: `[[ cond ]] && cmd` as a standalone statement returns 1 when the
   # condition is false, which under `set -e` terminates the whole script.
@@ -997,7 +1121,7 @@ write_mode_summary() {
   POD1="${10}" POD2="${11}" \
   REQ_PER_SVC="${REQUESTS_PER_SERVICE}" WARMUP="${WARMUP_REQUESTS}" \
   SVC1="${SERVICE_1}" SVC2="${SERVICE_2}" HAMI_PROFILE_NAME="${HAMI_PROFILE}" \
-  MODE_DURATION="${MODE_DURATION_SECONDS:-}" \
+  MODE_DURATION="${MODE_DURATION_SECONDS:-}" TARGET_GPU="${target_gpu_uuid}" \
   run_python -c '
 import json, os, pathlib
 
@@ -1080,28 +1204,76 @@ gpu = {
     "mean_memory_used_mib": None, "peak_utilization_percent": None,
     "mean_utilization_percent": None,
 }
+gpu["target_gpu_uuid"] = os.environ.get("TARGET_GPU", "")
 timeline_path = mode_dir / "gpu-timeline.csv"
 if timeline_path.exists():
-    used, util, total = [], [], None
-    for line in timeline_path.read_text(encoding="utf-8").splitlines()[1:]:
+    # Rows are timestamp,index,uuid,total,used,util - one per GPU per tick.
+    # Keep only the GPU the workload actually ran on, otherwise an idle device
+    # drags peak/mean toward zero (which is how MPS scored 74 MiB).
+    target = os.environ.get("TARGET_GPU", "")
+    per_gpu = {}
+    for line in timeline_path.read_text(encoding="utf-8", errors="replace").splitlines()[1:]:
         parts = [part.strip() for part in line.split(",")]
-        if len(parts) < 4:
+        if len(parts) < 6:
             continue
+        uuid = parts[2]
         try:
-            total = int(float(parts[1]))
-            used.append(int(float(parts[2])))
-            util.append(int(float(parts[3])))
+            entry = per_gpu.setdefault(uuid, {"total": None, "used": [], "util": []})
+            entry["total"] = int(float(parts[3]))
+            entry["used"].append(int(float(parts[4])))
+            entry["util"].append(int(float(parts[5])))
         except ValueError:
             continue
-    if used:
-        gpu = {
-            "samples": len(used),
-            "memory_total_mib": total,
-            "peak_memory_used_mib": max(used),
-            "mean_memory_used_mib": round(sum(used) / len(used), 1),
-            "peak_utilization_percent": max(util) if util else None,
-            "mean_utilization_percent": round(sum(util) / len(util), 1) if util else None,
-        }
+
+    chosen = None
+    if target and target in per_gpu:
+        chosen = target
+    elif per_gpu:
+        # Fall back to the busiest device rather than the first one.
+        chosen = max(per_gpu, key=lambda key: max(per_gpu[key]["used"] or [0]))
+
+    if chosen:
+        entry = per_gpu[chosen]
+        used, util = entry["used"], entry["util"]
+        if used:
+            gpu = {
+                "samples": len(used),
+                "sampled_gpu_uuid": chosen,
+                "target_gpu_uuid": target,
+                "sampled_target_gpu": bool(target) and chosen == target,
+                "memory_total_mib": entry["total"],
+                "peak_memory_used_mib": max(used),
+                "mean_memory_used_mib": round(sum(used) / len(used), 1),
+                "peak_utilization_percent": max(util) if util else None,
+                "mean_utilization_percent": round(sum(util) / len(util), 1) if util else None,
+                "all_gpus_seen": sorted(per_gpu),
+            }
+
+# Who was actually resident on the GPU during the run, from the host-level
+# probe. distinct_gpus_with_vllm is the hard evidence of sharing: it must be 1.
+# mps_servers is how leftover MPS processes contaminating a non-MPS mode show
+# up in the results instead of being noticed by eye in nvidia-smi.
+residency = {
+    "vllm_processes": 0,
+    "mps_servers": 0,
+    "distinct_gpus_with_vllm": 0,
+    "gpus_with_vllm": [],
+}
+apps_path = mode_dir / "gpu-compute-apps.csv"
+if apps_path.exists():
+    vllm_gpus = set()
+    for line in apps_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 3:
+            continue
+        gpu_uuid, name = parts[0], parts[2]
+        if "mps-server" in name:
+            residency["mps_servers"] += 1
+        elif name and name != "process_name":
+            residency["vllm_processes"] += 1
+            vllm_gpus.add(gpu_uuid)
+    residency["gpus_with_vllm"] = sorted(vllm_gpus)
+    residency["distinct_gpus_with_vllm"] = len(vllm_gpus)
 
 client_summary = client.get("summary", {})
 oom_events = sum(int(entry["pod"].get("oom_killed", 0) or 0) for entry in services.values())
@@ -1119,6 +1291,11 @@ acceptance = {
     "peak_gpu_memory_used_mib": peak,
     "gpu_memory_total_mib": capacity,
     "within_gpu_capacity": peak is not None and capacity is not None and peak <= capacity,
+    # A concurrent mode is only valid if every vLLM process sat on one GPU.
+    "all_vllm_on_one_gpu": residency["distinct_gpus_with_vllm"] == 1,
+    # Non-MPS modes must have zero MPS servers resident.
+    "mps_servers_resident": residency["mps_servers"],
+    "mps_expected": mode in ("mps", "hami-mps"),
 }
 
 summary = {
@@ -1130,6 +1307,7 @@ summary = {
     "endpoints": {svc1: os.environ.get("EP1", ""), svc2: os.environ.get("EP2", "")},
     "mode_duration_seconds": number("MODE_DURATION"),
     "model_init": model_init_rollup,
+    "gpu_residency": residency,
     "services": services,
     "gpu": gpu,
     "gpu_placement": (
@@ -1163,6 +1341,8 @@ print(json.dumps({
     "slowest_model_init_seconds": model_init_rollup["slowest_total_model_init_seconds"],
     "mode_duration_seconds": number("MODE_DURATION"),
     "same_gpu": summary["gpu_placement"].get("same_gpu"),
+    "distinct_gpus_with_vllm": residency["distinct_gpus_with_vllm"],
+    "mps_servers_resident": residency["mps_servers"],
     "both_ready": acceptance["both_ready"],
 }, indent=2))
 '
@@ -1191,6 +1371,9 @@ run_mode_sequential() {
   apply_gpu_probe
   detect_gpu_inventory
   apply_gpu_reserver
+  # The baseline must have no MPS servers resident, or its VRAM and process
+  # counts are not comparable with the other modes.
+  ensure_mps_stopped
 
   local phase_files=()
   local ready_1="false" ready_2="false"
@@ -1391,7 +1574,8 @@ trap cleanup_on_exit EXIT INT TERM
 
 log "Writing benchmark results to ${RUN_DIR}"
 log "Resource type: ${resource_type}"
-log "Mode: ${MODE} | HAMi profile: ${HAMI_PROFILE} | requests/service: ${REQUESTS_PER_SERVICE} | warmup/service: ${WARMUP_REQUESTS}"
+log "Mode: ${MODE} | HAMi profile: ${HAMI_PROFILE}"
+log "Workload: ${REQUESTS_PER_SERVICE} req/service x ${MAX_TOKENS} tokens, concurrency ${CONCURRENCY}/service, warmup ${WARMUP_REQUESTS}"
 
 modes_to_run=()
 case "${MODE}" in

@@ -27,7 +27,7 @@ spec:
           # Identical absolute budget is used in every mode so the modes stay comparable.
           - --gpu-memory-utilization=0.30
           - --max-model-len=512
-          - --max-num-seqs=1
+          - --max-num-seqs=8
           - --no-enable-prefix-caching
         resources:
           limits:

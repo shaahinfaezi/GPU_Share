@@ -51,12 +51,28 @@ CANDIDATE_SUFFIXES = (
 
 
 def build_request(model, max_tokens=64):
+    """Every request must produce EXACTLY max_tokens tokens.
+
+    Greedy decoding alone does not guarantee this. A measured run showed MPS
+    emitting 42 tokens per request while sequential and HAMi emitted 64: under
+    concurrency vLLM batches differently, floating-point reduction order
+    changes, and greedy argmax can pick EOS at a different step. The modes were
+    therefore doing different amounts of work, and output_tokens_per_second was
+    comparing unequal workloads.
+
+    ignore_eos + min_tokens pin the generated length so every mode performs
+    identical work. This is the standard way to make LLM serving benchmarks
+    comparable, and it matters more here than the exact wording of the reply.
+    """
     return {
         "model": model,
         "messages": [{"role": "user", "content": PROMPT}],
         "max_tokens": max_tokens,
+        "min_tokens": max_tokens,
+        "ignore_eos": True,
         "temperature": 0,
         "top_p": 1,
+        "seed": 0,
         "stream": False,
     }
 
@@ -100,6 +116,22 @@ def output_tokens(payload):
     return int(usage.get("completion_tokens", 0) or 0)
 
 
+def prompt_tokens(payload):
+    usage = payload.get("usage", {}) if isinstance(payload, dict) else {}
+    return int(usage.get("prompt_tokens", 0) or 0)
+
+
+def response_text(payload):
+    """The model's actual reply, so results are auditable rather than just counts."""
+    if not isinstance(payload, dict):
+        return ""
+    choices = payload.get("choices") or []
+    if not choices:
+        return ""
+    message = choices[0].get("message") or {}
+    return (message.get("content") or "").strip()
+
+
 def request_once(service, url, index, payload, timeout, insecure, origin):
     started = time.perf_counter()
     try:
@@ -117,8 +149,10 @@ def request_once(service, url, index, payload, timeout, insecure, origin):
             "status": response.status_code,
             "start_offset_seconds": started - origin,
             "latency_seconds": elapsed,
+            "prompt_tokens": prompt_tokens(body),
             "output_tokens": tokens,
             "output_tokens_per_second": tokens / elapsed if elapsed and tokens else 0,
+            "response_text": response_text(body) if response.ok else "",
             "error": "" if response.ok else json.dumps(body)[:1000],
         }
     except Exception as exc:
@@ -129,13 +163,16 @@ def request_once(service, url, index, payload, timeout, insecure, origin):
             "status": 0,
             "start_offset_seconds": started - origin,
             "latency_seconds": time.perf_counter() - started,
+            "prompt_tokens": 0,
             "output_tokens": 0,
             "output_tokens_per_second": 0,
+            "response_text": "",
             "error": repr(exc),
         }
 
 
-def run_requests(endpoints, mode, requests_per_service, timeout, sequential, insecure, model, warmup_requests):
+def run_requests(endpoints, mode, requests_per_service, timeout, sequential, insecure, model,
+                 warmup_requests, concurrency=1, max_tokens=64):
     resolved = {}
     probes = {}
     for service, base in endpoints.items():
@@ -143,7 +180,7 @@ def run_requests(endpoints, mode, requests_per_service, timeout, sequential, ins
         resolved[service] = url
         probes[service] = probe_log
 
-    payload = build_request(model)
+    payload = build_request(model, max_tokens=max_tokens)
 
     # Warm-up requests are excluded from every reported metric. They pay for
     # CUDA graph capture, the first KV-cache allocations and any lazy weight
@@ -159,10 +196,27 @@ def run_requests(endpoints, mode, requests_per_service, timeout, sequential, ins
     started = origin
 
     def drive(service):
+        """Issue this service's requests, keeping `concurrency` in flight.
+
+        concurrency=1 is a strictly serial tenant. Higher values let a single
+        service saturate the GPU on its own, which is what makes HAMi's
+        gpucores limit and MPS's thread percentage observable: if one service
+        can only ever use ~30% of the device, a 50% cap never binds and every
+        sharing mode looks identical.
+        """
         url = resolved[service]
         rows = []
-        for index in range(1, requests_per_service + 1):
-            rows.append(request_once(service, url, index, payload, timeout, insecure, origin))
+        if concurrency <= 1:
+            for index in range(1, requests_per_service + 1):
+                rows.append(request_once(service, url, index, payload, timeout, insecure, origin))
+            return rows
+        with ThreadPoolExecutor(max_workers=concurrency) as inner:
+            futures = [
+                inner.submit(request_once, service, url, index, payload, timeout, insecure, origin)
+                for index in range(1, requests_per_service + 1)
+            ]
+            for future in futures:
+                rows.append(future.result())
         return rows
 
     if sequential:
@@ -180,10 +234,14 @@ def run_requests(endpoints, mode, requests_per_service, timeout, sequential, ins
     summary = summarize(results, wall)
     summary["warmup_requests"] = len(warmup)
     summary["warmup_requests_per_service"] = warmup_requests
+    summary["concurrency_per_service"] = concurrency
+    summary["max_tokens"] = max_tokens
     return {
         "mode": mode,
         "model": model,
         "sequential": sequential,
+        "concurrency_per_service": concurrency,
+        "max_tokens": max_tokens,
         "endpoints": endpoints,
         "resolved_urls": resolved,
         "endpoint_probes": probes,
@@ -250,11 +308,19 @@ def summarize(results, wall):
     else:
         fairness = None
 
+    # Equal-work guard. Every request should emit exactly the same number of
+    # tokens (ignore_eos + min_tokens). If it does not, tokens/sec is comparing
+    # different workloads across modes and the comparison is invalid.
+    token_counts = sorted({row["output_tokens"] for row in successful})
+    equal_work = len(token_counts) <= 1
+
     return {
         "total_requests": len(results),
         "successful_requests": len(successful),
         "failed_requests": len(results) - len(successful),
         "wall_seconds": wall,
+        "output_tokens_per_request": token_counts,
+        "equal_work_across_requests": equal_work,
         "requests_per_second": len(successful) / wall if wall else 0,
         "output_tokens": tokens,
         "output_tokens_per_second": tokens / wall if wall else 0,
@@ -329,6 +395,23 @@ def write_output(result, output):
         writer.writeheader()
         writer.writerows(rows)
 
+    # Human-readable transcript of what Qwen actually replied. The JSON/CSV hold
+    # the same text, but this is the file to open when checking that the model
+    # produced sensible output rather than 64 tokens of garbage.
+    lines = [
+        f"mode: {result.get('mode')}",
+        f"model: {result.get('model')}",
+        f"prompt: {PROMPT}",
+        "",
+    ]
+    for row in rows:
+        lines.append(f"--- {row['service']} request {row['request']} "
+                     f"({row['output_tokens']} tokens, {row['latency_seconds']:.3f}s) ---")
+        lines.append(row.get("response_text") or f"[FAILED] {row.get('error', '')}")
+        lines.append("")
+    output.with_name(output.stem + ".responses.txt").write_text(
+        "\n".join(lines), encoding="utf-8")
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -337,6 +420,10 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--requests-per-service", type=int, default=10)
     parser.add_argument("--warmup", type=int, default=1, help="warm-up requests per service, excluded from metrics")
+    parser.add_argument("--concurrency", type=int, default=1,
+                        help="in-flight requests per service (1 = strictly serial tenant)")
+    parser.add_argument("--max-tokens", type=int, default=64,
+                        help="tokens generated per request; exact, via ignore_eos + min_tokens")
     parser.add_argument("--timeout", type=float, default=180)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--sequential", action="store_true")
@@ -367,6 +454,8 @@ def main():
             args.insecure,
             args.model,
             args.warmup,
+            args.concurrency,
+            args.max_tokens,
         )
 
     write_output(result, args.output)

@@ -33,7 +33,7 @@ spec:
         args:
           - --gpu-memory-utilization=0.90
           - --max-model-len=512
-          - --max-num-seqs=1
+          - --max-num-seqs=8
           - --no-enable-prefix-caching
         resources:
           limits:
@@ -93,7 +93,7 @@ spec:
         args:
           - --gpu-memory-utilization=0.90
           - --max-model-len=512
-          - --max-num-seqs=1
+          - --max-num-seqs=8
           - --no-enable-prefix-caching
         resources:
           limits:
