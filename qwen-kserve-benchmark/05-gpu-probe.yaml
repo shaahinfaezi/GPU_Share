@@ -29,7 +29,20 @@ spec:
           effect: NoSchedule
       containers:
         - name: probe
-          image: nvidia/cuda:12.4.1-base-ubuntu22.04
+          # Was nvidia/cuda:12.4.1-base-ubuntu22.04, pulled from Docker Hub.
+          #
+          # This node gets 403 Forbidden from registry-1.docker.io, so that image
+          # cannot be fetched and the probe never started - which left the runner
+          # reporting "Physical GPUs visible on the node: 0" and every downstream
+          # placement guarantee vacuous.
+          #
+          # The base image is interchangeable: nvidia-smi and the driver
+          # libraries are INJECTED by the NVIDIA container runtime (see the env
+          # vars below), not baked into the image. Any image with a shell works.
+          # Using the vLLM image from the local registry removes the external
+          # registry dependency, and it is already resident on the node, so the
+          # probe starts immediately instead of pulling anything.
+          image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
           securityContext:
             privileged: true
           env:
