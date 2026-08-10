@@ -88,6 +88,11 @@ PROBE_TIMEOUT_SECONDS=600
 # Without the probe there is no GPU sampling and no same-GPU verification, so a
 # missing probe aborts the run unless this is set.
 ALLOW_NO_GPU_PROBE="false"
+# Base image for the GPU probe. Interchangeable: nvidia-smi and the driver
+# libraries are injected by the NVIDIA container runtime, not baked in, so any
+# image with a shell works. Defaults to one confirmed present in the local
+# registry, because this node cannot reach Docker Hub (403).
+PROBE_IMAGE="127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu"
 disk_use_percent=0
 host_mps_was_active="false"
 ROUTE_MODE="auto"
@@ -218,6 +223,7 @@ while [[ $# -gt 0 ]]; do
     --pin-image)             PIN_IMAGE="$2"; shift 2 ;;
     --allow-full-disk)       ALLOW_FULL_DISK="true"; shift ;;
     --allow-no-gpu-probe)    ALLOW_NO_GPU_PROBE="true"; shift ;;
+    --probe-image)           PROBE_IMAGE="$2"; shift 2 ;;
     --probe-timeout)         PROBE_TIMEOUT_SECONDS="$2"; shift 2 ;;
     --pin-image-timeout)     PIN_IMAGE_TIMEOUT_SECONDS="$2"; shift 2 ;;
     --max-tokens)            MAX_TOKENS="$2"; shift 2 ;;
@@ -711,7 +717,13 @@ delete_image_pinner() {
 }
 
 apply_gpu_probe() {
-  kubectl apply -f "${ROOT_DIR}/05-gpu-probe.yaml" >/dev/null
+  # Render the probe image so it can be pointed at whatever this node can
+  # actually pull, without editing the manifest.
+  local rendered="${RUN_DIR}/rendered-05-gpu-probe.yaml"
+  sed "s|127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu|${PROBE_IMAGE}|" \
+    "${ROOT_DIR}/05-gpu-probe.yaml" > "${rendered}"
+  log "GPU probe image: ${PROBE_IMAGE}"
+  kubectl apply -f "${rendered}" >/dev/null
   log "Waiting up to ${PROBE_TIMEOUT_SECONDS}s for the GPU probe DaemonSet..."
   if ! kubectl rollout status -n "${NS}" daemonset/qwen-benchmark-gpu-probe \
         --timeout="${PROBE_TIMEOUT_SECONDS}s" >/dev/null 2>&1; then
