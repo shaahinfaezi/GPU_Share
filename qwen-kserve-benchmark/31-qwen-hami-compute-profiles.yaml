@@ -30,5 +30,23 @@ data:
     {"cores": [25, 25], "mem": [3072, 3072], "util": [0.80, 0.80]}
   # Asymmetric split: the QoS case from the project goals, where one tenant is
   # prioritized. 6144 x 0.90 = 5530 MiB for svc01, 3072 x 0.80 = 2458 for svc02.
+  #
+  # WARNING - do not use this profile to test whether gpucores is enforced. It
+  # varies cores AND mem AND util at once, so any throughput difference between
+  # the tenants is unattributable: it could be the compute cap or simply the
+  # smaller KV cache. Use compute-skew below for that question.
   weighted: |
     {"cores": [75, 25], "mem": [6144, 3072], "util": [0.90, 0.80]}
+  # Single-variable asymmetric profile: cores differ 75/25, EVERYTHING else is
+  # held identical to `balanced` (same gpumem, same vLLM utilization, therefore
+  # the same KV cache on both tenants). This is the profile that answers
+  # "does nvidia.com/gpucores actually bind?", because compute is the only
+  # difference between the two tenants.
+  #
+  # Expected, if the limiter enforces its quota: throughput splits near 75/25
+  # (fairness_ratio near 0.33). If it splits near 50/50, the limiter is not
+  # binding - and when run WITH MPS underneath, that is the signature of HAMi
+  # being unable to attribute per-process utilization, because NVML reports at
+  # device level once MPS owns the context.
+  compute-skew: |
+    {"cores": [75, 25], "mem": [4096, 4096], "util": [0.90, 0.90]}

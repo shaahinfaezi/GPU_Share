@@ -39,6 +39,26 @@ GPU_SAMPLE_INTERVAL_MS=250
 MODE="all"
 HAMI_PROFILE="balanced"
 WITH_HAMI_MPS="false"
+# Measured client passes per deployment. Repeats run IN PLACE against the same
+# Pods. Measured on this node, 91% of a mode's wall time is Pod churn and only
+# 9% is measurement (4 modes = 26 min total, 143 s of it measuring), so
+# redeploying per repeat would triple the run to measure the same thing.
+#
+# What this gives: run-to-run variance of the MEASUREMENT under a fixed
+# deployment, which is what "the effect is outside noise" requires.
+# What it does NOT give: deploy-to-deploy variance (scheduling, init, placement).
+REPEATS=1
+# Idle seconds between repeat passes so a GPU heated by the previous pass does
+# not clock-throttle the next one. Sampled clocks/temperature make this checkable.
+COOLDOWN_SECONDS=20
+# Value stamped into CUDA_MPS_ACTIVE_THREAD_PERCENTAGE in the MPS manifests.
+# 100 makes MPS work-conserving (any client may use every SM) and leaves HAMi's
+# gpucores as the only compute control, which is what the asym-mps mode needs.
+MPS_THREAD_PERCENT=50
+# varied (default) gives every request a unique deterministic prompt; fixed
+# reproduces the earlier published run, which repeated one identical prompt and
+# so let cached prefill work leak into the measurement.
+PROMPT_MODE="varied"
 ENDPOINT_1=""
 ENDPOINT_2=""
 INSECURE="false"
@@ -71,18 +91,55 @@ gpu_uuids=""
 target_gpu_uuid=""
 other_gpu_uuids=""
 sampler_pid=""
+pmon_pid=""
+cpu_sampler_pid=""
 timestamp=""
 next_local_port=18000
 port_forward_pids=()
 RESOLVED_ENDPOINT=""
+CURRENT_REPEAT=0
 
 usage() {
   cat <<'EOF'
 Usage: ./run-qwen-benchmark.sh [options]
 
 Options:
-  --mode MODE                all, sequential, mps, hami, hami-mps
-  --hami-profile PROFILE     balanced, conservative, weighted
+  --mode MODES               comma-separated list, or one of the presets.
+                             Presets:  all       sequential,mps,hami
+                                       published sequential,mps,hami,hami-mps
+                                       new       mem-only,mps-100,hami-mps-100,
+                                                 asym-hami,asym-mps
+                                       every     all nine modes
+                             Modes:
+                               sequential    one tenant at a time (baseline)
+                               mem-only      2 tenants, gpumem only, NO MPS.
+                                             Control that separates "the driver
+                                             time-slices contexts" from "HAMi's
+                                             launch gate forces the switches".
+                               mps           2 tenants, MPS at 50% threads,
+                                             no gpucores
+                               mps-100       as mps but 100% threads
+                                             (work-conserving)
+                               hami          2 tenants, gpucores 50/50, no MPS
+                               hami-mps      gpucores 50/50 + MPS at 50%
+                               hami-mps-100  gpucores 50/50 + MPS at 100%
+                               asym-hami     gpucores 75/25, no MPS. Control:
+                                             does the limiter bind at all?
+                               asym-mps      gpucores 75/25 + MPS at 100%.
+                                             Decides whether gpucores binds
+                                             UNDER MPS, or is blind because NVML
+                                             reports at device level.
+  --hami-profile PROFILE     balanced, conservative, weighted, compute-skew.
+                             Ignored by the asym-* modes, which force
+                             compute-skew.
+  --repeats N                measured client passes per deployment (default: 1).
+                             Repeats reuse the same Pods and are separated by
+                             --cooldown-seconds.
+  --cooldown-seconds N       idle time between repeat passes (default: 20)
+  --mps-thread-percent N     CUDA_MPS_ACTIVE_THREAD_PERCENTAGE (default: 50).
+                             Overridden per mode by the mps-100/*-100 modes.
+  --prompt-mode MODE         varied (default) or fixed. fixed repeats one
+                             identical prompt, reproducing the earlier run.
   --with-hami-mps            include the HAMi + MPS mode when --mode all
   --endpoint-1 URL           explicit service 1 endpoint
   --endpoint-2 URL           explicit service 2 endpoint
@@ -134,8 +191,12 @@ run_python() {
 # ---------------------------------------------------------------------------
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --mode)                  MODE="$2"; shift 2 ;;
+    --mode|--modes)          MODE="$2"; shift 2 ;;
     --hami-profile)          HAMI_PROFILE="$2"; shift 2 ;;
+    --repeats)               REPEATS="$2"; shift 2 ;;
+    --cooldown-seconds)      COOLDOWN_SECONDS="$2"; shift 2 ;;
+    --mps-thread-percent)    MPS_THREAD_PERCENT="$2"; shift 2 ;;
+    --prompt-mode)           PROMPT_MODE="$2"; shift 2 ;;
     --with-hami-mps)         WITH_HAMI_MPS="true"; shift ;;
     --endpoint-1)            ENDPOINT_1="$2"; shift 2 ;;
     --endpoint-2)            ENDPOINT_2="$2"; shift 2 ;;
@@ -156,15 +217,53 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-case "${MODE}" in
-  all|sequential|mps|hami|hami-mps) ;;
-  *) fail "Unsupported mode: ${MODE}" ;;
-esac
+ALL_MODES="sequential mem-only mps mps-100 hami hami-mps hami-mps-100 asym-hami asym-mps"
+
+# Expand presets, then validate every requested mode BEFORE touching the
+# cluster. A typo in a nine-mode list must not be discovered 40 minutes in.
+expand_modes() {
+  local raw="$1"
+  case "${raw}" in
+    all)       printf 'sequential mps hami' ;;
+    published) printf 'sequential mps hami hami-mps' ;;
+    new)       printf 'mem-only mps-100 hami-mps-100 asym-hami asym-mps' ;;
+    every)     printf '%s' "${ALL_MODES}" ;;
+    *)         printf '%s' "${raw//,/ }" ;;
+  esac
+}
+
+modes_to_run=()
+read -r -a modes_to_run <<< "$(expand_modes "${MODE}")"
+if [[ "${MODE}" == "all" && "${WITH_HAMI_MPS}" == "true" ]]; then
+  modes_to_run+=(hami-mps)
+fi
+if [[ ${#modes_to_run[@]} -eq 0 ]]; then
+  fail "No modes selected"
+fi
+for _mode in "${modes_to_run[@]}"; do
+  case " ${ALL_MODES} " in
+    *" ${_mode} "*) ;;
+    *) fail "Unsupported mode: ${_mode} (valid: ${ALL_MODES// /, })" ;;
+  esac
+done
 
 case "${HAMI_PROFILE}" in
-  balanced|conservative|weighted) ;;
+  balanced|conservative|weighted|compute-skew) ;;
   *) fail "Unsupported HAMi profile: ${HAMI_PROFILE}" ;;
 esac
+
+case "${PROMPT_MODE}" in
+  varied|fixed) ;;
+  *) fail "Unsupported --prompt-mode: ${PROMPT_MODE} (varied, fixed)" ;;
+esac
+
+if ! [[ "${REPEATS}" =~ ^[1-9][0-9]*$ ]]; then
+  fail "--repeats must be a positive integer, got: ${REPEATS}"
+fi
+if ! [[ "${MPS_THREAD_PERCENT}" =~ ^[0-9]+$ ]] \
+   || (( MPS_THREAD_PERCENT < 1 || MPS_THREAD_PERCENT > 100 )); then
+  fail "--mps-thread-percent must be 1-100, got: ${MPS_THREAD_PERCENT}"
+fi
 
 case "${ROUTE_MODE}" in
   auto|gateway|port-forward) ;;
@@ -390,7 +489,7 @@ render_hami_manifest() {
     fail "HAMi profile '${profile}' not found in configmap qwen-hami-compute-profiles"
   fi
 
-  printf '%s' "${raw}" |     MANIFEST="${ROOT_DIR}/${manifest}" OUT="${out}" PROFILE_NAME="${profile}"     SEQS="${MAX_NUM_SEQS}" MODELLEN="${MAX_MODEL_LEN}" run_python -c '
+  printf '%s' "${raw}" |     MANIFEST="${ROOT_DIR}/${manifest}" OUT="${out}" PROFILE_NAME="${profile}"     SEQS="${MAX_NUM_SEQS}" MODELLEN="${MAX_MODEL_LEN}" MPSPCT="${MPS_THREAD_PERCENT}" run_python -c '
 import json, os, pathlib, re, sys
 
 profile = json.load(sys.stdin)
@@ -400,6 +499,7 @@ util = profile.get("util", [0.90, 0.90])
 seqs = os.environ["SEQS"]
 model_len = os.environ["MODELLEN"]
 name = os.environ["PROFILE_NAME"]
+mps_pct = os.environ.get("MPSPCT", "50")
 
 text = pathlib.Path(os.environ["MANIFEST"]).read_text(encoding="utf-8")
 # Built with chr(10) rather than a backslash escape: this block is embedded in
@@ -421,6 +521,11 @@ for position, document in enumerate(documents):
     document = re.sub(r"(nvidia\.com/gpumem:\s*)\"[0-9]+\"",
                       lambda m: m.group(1) + chr(34) + str(mem[which]) + chr(34), document)
     document = re.sub(r"(qwen-hami-profile:\s*)\S+", lambda m: m.group(1) + name, document)
+    # MPS thread percentage. Matches the two-line env entry so only the value
+    # belonging to this key is touched, never a number in a nearby comment.
+    document = re.sub(
+        r"(name:\s*CUDA_MPS_ACTIVE_THREAD_PERCENTAGE\s*\n\s*value:\s*)" + chr(34) + r"[0-9]+" + chr(34),
+        lambda m: m.group(1) + chr(34) + str(mps_pct) + chr(34), document)
     rendered.append(document)
 
 pathlib.Path(os.environ["OUT"]).write_text(separator.join(rendered), encoding="utf-8")
@@ -438,9 +543,22 @@ apply_hami_manifest() {
   local cores_1 cores_2 mem_1 mem_2 util_1 util_2
   read -r cores_1 cores_2 mem_1 mem_2 util_1 util_2 <<< "${parsed}"
 
+  # Only claim a gpucores value if the manifest actually carries the key. The
+  # MPS-only manifests deliberately omit it, and logging "gpucores=50" for a
+  # mode that sets no compute limit at all would misreport the experiment.
+  local cores_note_1="${cores_1}" cores_note_2="${cores_2}"
+  if ! grep -q 'nvidia\.com/gpucores' "${rendered}"; then
+    cores_note_1="(unset - no HAMi compute limit)"
+    cores_note_2="(unset - no HAMi compute limit)"
+  fi
+  local mps_note=""
+  if grep -q 'CUDA_MPS_ACTIVE_THREAD_PERCENTAGE' "${rendered}"; then
+    mps_note=" mps-threads=${MPS_THREAD_PERCENT}%"
+  fi
+
   log "HAMi profile '${profile}' (rendered into ${manifest}, single apply):"
-  log "  ${SERVICE_1}: gpucores=${cores_1} gpumem=${mem_1}MiB vllm-util=${util_1}"
-  log "  ${SERVICE_2}: gpucores=${cores_2} gpumem=${mem_2}MiB vllm-util=${util_2}"
+  log "  ${SERVICE_1}: gpucores=${cores_note_1} gpumem=${mem_1}MiB vllm-util=${util_1}${mps_note}"
+  log "  ${SERVICE_2}: gpucores=${cores_note_2} gpumem=${mem_2}MiB vllm-util=${util_2}${mps_note}"
 
   kubectl apply -f "${rendered}" >/dev/null
 }
@@ -784,27 +902,64 @@ apply_mps_daemon() {
 
 apply_mode_manifests() {
   local mode="$1"
+  local saved_pct="${MPS_THREAD_PERCENT}"
+  local profiles="${ROOT_DIR}/31-qwen-hami-compute-profiles.yaml"
 
   case "${mode}" in
-    mps)
+    mem-only)
+      # The control that separates driver-level context switching from HAMi's
+      # launch gate. A stray MPS server would silently turn this into `mps`.
+      ensure_mps_stopped
+      kubectl apply -f "${ROOT_DIR}/22-qwen-mem-only.yaml" >/dev/null
+      ;;
+    mps|mps-100)
+      if [[ "${mode}" == "mps-100" ]]; then MPS_THREAD_PERCENT=100; fi
       apply_mps_daemon
-      kubectl apply -f "${ROOT_DIR}/21-qwen-mps.yaml" >/dev/null
+      kubectl apply -f "${profiles}" >/dev/null
+      # Rendered through the profile machinery only to stamp the MPS thread
+      # percentage and keep gpumem/util centralized. 21-qwen-mps.yaml carries no
+      # gpucores key, so the profile's cores value has nothing to substitute
+      # into and HAMi applies no compute limit - which is the point of the mode.
+      apply_hami_manifest "21-qwen-mps.yaml" "balanced"
       ;;
     hami)
       # HAMi mode must be MPS-free or the gpucores result is unattributable.
       ensure_mps_stopped
-      kubectl apply -f "${ROOT_DIR}/31-qwen-hami-compute-profiles.yaml" >/dev/null
+      kubectl apply -f "${profiles}" >/dev/null
       apply_hami_manifest "30-qwen-hami.yaml" "${HAMI_PROFILE}"
       ;;
-    hami-mps)
+    asym-hami)
+      # Does nvidia.com/gpucores bind AT ALL on this cluster, with no MPS in the
+      # picture? compute-skew varies cores 75/25 and holds memory identical, so
+      # a throughput split can only be the compute cap.
+      ensure_mps_stopped
+      kubectl apply -f "${profiles}" >/dev/null
+      apply_hami_manifest "30-qwen-hami.yaml" "compute-skew"
+      ;;
+    hami-mps|hami-mps-100)
+      if [[ "${mode}" == "hami-mps-100" ]]; then MPS_THREAD_PERCENT=100; fi
       apply_mps_daemon
-      kubectl apply -f "${ROOT_DIR}/31-qwen-hami-compute-profiles.yaml" >/dev/null
+      kubectl apply -f "${profiles}" >/dev/null
       apply_hami_manifest "40-qwen-hami-mps.yaml" "${HAMI_PROFILE}"
+      ;;
+    asym-mps)
+      # The decisive experiment. MPS threads at 100% so MPS imposes NO split of
+      # its own, leaving nvidia.com/gpucores 75/25 as the only asymmetry.
+      #   throughput splits ~75/25 -> HAMi's limiter binds under MPS
+      #   throughput splits ~50/50 -> the limiter is blind under MPS, because
+      #                               NVML reports utilization at device level
+      #                               once the MPS server owns the context
+      MPS_THREAD_PERCENT=100
+      apply_mps_daemon
+      kubectl apply -f "${profiles}" >/dev/null
+      apply_hami_manifest "40-qwen-hami-mps.yaml" "compute-skew"
       ;;
     *)
       fail "apply_mode_manifests does not handle mode: ${mode}"
       ;;
   esac
+
+  MPS_THREAD_PERCENT="${saved_pct}"
 }
 
 # ---------------------------------------------------------------------------
@@ -1077,22 +1232,122 @@ start_gpu_sampler() {
     return 0
   fi
 
-  printf 'timestamp,index,uuid,memory_total_mib,memory_used_mib,utilization_gpu_percent\n' > "${out_file}"
+  # Extra columns beyond memory/util:
+  #   clocks.sm + temperature     - modes run back to back and the GPU heats up.
+  #                                 Without these, a later mode that was clock
+  #                                 throttled looks like a worse sharing mode.
+  #   clocks_throttle_reasons     - says so explicitly rather than by inference.
+  #   utilization.memory          - memory-controller busy, which separates
+  #                                 "SMs are stalled on memory" from "SMs idle".
+  printf 'timestamp,index,uuid,memory_total_mib,memory_used_mib,utilization_gpu_percent,utilization_memory_percent,clocks_sm_mhz,temperature_c,power_w,throttle_reasons\n' > "${out_file}"
   (
     kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- \
-      nvidia-smi --query-gpu=timestamp,index,uuid,memory.total,memory.used,utilization.gpu \
+      nvidia-smi --query-gpu=timestamp,index,uuid,memory.total,memory.used,utilization.gpu,utilization.memory,clocks.sm,temperature.gpu,power.draw,clocks_throttle_reasons.active \
       --format=csv,noheader,nounits --loop-ms="${GPU_SAMPLE_INTERVAL_MS}" 2>/dev/null \
       >> "${out_file}"
   ) &
   sampler_pid=$!
 }
 
-stop_gpu_sampler() {
-  if [[ -n "${sampler_pid}" ]]; then
-    kill "${sampler_pid}" >/dev/null 2>&1 || true
-    wait "${sampler_pid}" 2>/dev/null || true
-    sampler_pid=""
+# Per-process SM utilization.
+#
+# DCGM is not installed on this node and its profiling fields (SM_ACTIVE,
+# SM_OCCUPANCY) are in any case generally unavailable on GeForce parts, so true
+# SM occupancy cannot be measured here. `nvidia-smi pmon` does work on consumer
+# cards and gives the next best thing: per-PROCESS sm%, which is what the
+# asymmetric experiment actually needs.
+#
+# Two things to expect when reading the output:
+#   * without MPS, each vLLM process appears separately, so a 75/25 gpucores
+#     split should be visible directly as a per-process sm% split;
+#   * with MPS, the work is attributed to nvidia-cuda-mps-server rather than to
+#     the tenants. That is not a limitation of the tool - it is direct evidence
+#     for the claim that NVML cannot attribute per process once MPS owns the
+#     context, which is exactly why HAMi's limiter may be blind under MPS.
+start_pmon_sampler() {
+  local out_file="$1"
+  pmon_pid=""
+  if [[ -z "${gpu_probe_pod}" ]]; then
+    return 0
   fi
+  : > "${out_file}"
+  (
+    kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- \
+      nvidia-smi pmon -s um -d 1 2>/dev/null >> "${out_file}"
+  ) &
+  pmon_pid=$!
+}
+
+# Node CPU. The user observed ~100% CPU during the HAMi mode, and HAMi-core's
+# limiter is documented as a token-bucket rate limiter driven by an NVML-polling
+# watcher thread. If that polling saturates the node, vLLM's Python scheduling
+# loop is starved and throughput falls for reasons that have nothing to do with
+# GPU context switching. Without this series that alternative explanation cannot
+# be ruled out, and it predicts the same throughput drop.
+start_cpu_sampler() {
+  local out_file="$1"
+  cpu_sampler_pid=""
+  printf 'epoch,cpu_busy_percent,load1,procs_running\n' > "${out_file}"
+  (
+    OUT="${out_file}" run_python -c '
+import os, time
+
+out = open(os.environ["OUT"], "a", buffering=1)
+
+
+def snapshot():
+    with open("/proc/stat") as handle:
+        fields = [int(value) for value in handle.readline().split()[1:]]
+    idle = fields[3] + (fields[4] if len(fields) > 4 else 0)
+    return sum(fields), idle
+
+
+previous_total, previous_idle = snapshot()
+while True:
+    time.sleep(1.0)
+    total, idle = snapshot()
+    delta_total = total - previous_total
+    delta_idle = idle - previous_idle
+    previous_total, previous_idle = total, idle
+    busy = 100.0 * (delta_total - delta_idle) / delta_total if delta_total else 0.0
+    with open("/proc/loadavg") as handle:
+        load = handle.read().split()
+    print("%.3f,%.2f,%s,%s" % (time.time(), busy, load[0], load[3].split("/")[0]),
+          file=out, flush=True)
+' 2>/dev/null
+  ) &
+  cpu_sampler_pid=$!
+}
+
+# Per-container CPU accounting, including CFS throttling. cgroup v2 on this node
+# (confirmed by preflight), so inside the container /sys/fs/cgroup/cpu.stat is
+# that container own cgroup and carries nr_throttled and throttled_usec.
+#
+# Each Pod is limited to cpu: "2". If HAMi's polling thread competes with vLLM
+# inside that 2-core budget, the container is CFS throttled and decode slows -
+# again with no GPU-side cause. A non-zero throttled_usec delta in a HAMi mode
+# and a zero one in the MPS mode would settle it.
+snapshot_pod_cpu() {
+  local pod="$1" out_file="$2"
+  if [[ -z "${pod}" ]]; then
+    return 0
+  fi
+  {
+    printf 'epoch %s\n' "$(date +%s.%N)"
+    kubectl exec -n "${NS}" "${pod}" -c main -- cat /sys/fs/cgroup/cpu.stat 2>/dev/null \
+      || printf 'unavailable 1\n'
+  } > "${out_file}" 2>/dev/null || true
+}
+
+stop_gpu_sampler() {
+  local pid
+  for pid in "${sampler_pid}" "${pmon_pid}" "${cpu_sampler_pid}"; do
+    if [[ -n "${pid}" ]]; then
+      kill "${pid}" >/dev/null 2>&1 || true
+      wait "${pid}" 2>/dev/null || true
+    fi
+  done
+  sampler_pid=""; pmon_pid=""; cpu_sampler_pid=""
 }
 
 # ---------------------------------------------------------------------------
@@ -1270,6 +1525,10 @@ run_client() {
     --timeout "${TIMEOUT_SECONDS}"
     --max-tokens "${MAX_TOKENS}"
     --concurrency "${CONCURRENCY}"
+    --prompt-mode "${PROMPT_MODE}"
+    # Repeat passes reuse the same Pods, so shift the prompt sequence per pass:
+    # otherwise pass 2 replays pass 1's prompts against an already-warm server.
+    --prompt-offset "$(( ${CURRENT_REPEAT:-0} * 100000 ))"
     --model "${MODEL_NAME}")
   # Note: `[[ cond ]] && cmd` as a standalone statement returns 1 when the
   # condition is false, which under `set -e` terminates the whole script.
@@ -1296,6 +1555,104 @@ run_client() {
 # "10" and "1", and the acceptance block hardcoded 20 successful requests
 # regardless of --requests-per-service.
 # ---------------------------------------------------------------------------
+# Pick the pass that gets published, and record the spread across passes.
+#
+# The published number is a REAL measured pass, never an average: averaging
+# throughput, utilization and latency across passes produces a composite that
+# never occurred, and its internal relationships (tok/s vs util vs p95) no
+# longer reconcile. The median pass is a genuine observation; the spread beside
+# it is what tells the reader whether a difference between modes is meaningful.
+select_representative_pass() {
+  local mode_dir="$1"
+  MODE_DIR="${mode_dir}" run_python -c '
+import json, os, pathlib, shutil, statistics
+
+mode_dir = pathlib.Path(os.environ["MODE_DIR"])
+scored = []
+for pass_dir in sorted(mode_dir.glob("pass-*")):
+    result = pass_dir / "client.result.json"
+    if not result.exists() or not result.stat().st_size:
+        continue
+    try:
+        summary = json.loads(result.read_text(encoding="utf-8"))["summary"]
+    except (ValueError, KeyError):
+        continue
+    scored.append((summary.get("output_tokens_per_second", 0.0), pass_dir))
+
+if not scored:
+    print("no usable passes")
+    raise SystemExit(0)
+
+scored.sort(key=lambda item: item[0])
+chosen = scored[(len(scored) - 1) // 2][1]
+for name in ("client.result.json", "client.result.csv", "client.result.responses.txt",
+             "client.result.stdout.txt", "gpu-timeline.csv", "gpu-pmon.txt",
+             "node-cpu.csv"):
+    source = chosen / name
+    if source.exists():
+        shutil.copy2(source, mode_dir / name)
+# Per-Pod cgroup snapshots carry the service name, so copy them by pattern.
+for source in chosen.glob("cpu-*.txt"):
+    shutil.copy2(source, mode_dir / source.name)
+
+values = [value for value, _ in scored]
+median = statistics.median(values)
+report = {
+    "passes": len(scored),
+    "representative_pass": chosen.name,
+    "aggregate_tokens_per_second": {
+        "values": values,
+        "median": median,
+        "min": min(values),
+        "max": max(values),
+        "stdev": statistics.stdev(values) if len(values) > 1 else 0.0,
+        "spread_percent": ((max(values) - min(values)) / median * 100) if median else 0.0,
+    },
+}
+(mode_dir / "repeats.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+print("%d pass(es), published %s, spread %.2f%% (%.1f-%.1f tok/s)" % (
+    len(scored), chosen.name, report["aggregate_tokens_per_second"]["spread_percent"],
+    min(values), max(values)))
+'
+}
+
+# Sequential equivalent of select_representative_pass: promote the median pass
+# of one phase, plus its matching GPU timeline, to the canonical phase file.
+promote_median_phase() {
+  local mode_dir="$1" index="$2" out_json="$3"
+  MODE_DIR="${mode_dir}" IDX="${index}" OUT="${out_json}" run_python -c '
+import json, os, pathlib, shutil, statistics
+
+mode_dir = pathlib.Path(os.environ["MODE_DIR"])
+index = os.environ["IDX"]
+scored = []
+for path in sorted(mode_dir.glob("client.phase-" + index + ".pass-*.json")):
+    try:
+        summary = json.loads(path.read_text(encoding="utf-8"))["summary"]
+    except (ValueError, KeyError):
+        continue
+    scored.append((summary.get("output_tokens_per_second", 0.0), path))
+
+if not scored:
+    print("phase " + index + ": no usable passes")
+    raise SystemExit(0)
+
+scored.sort(key=lambda item: item[0])
+chosen = scored[(len(scored) - 1) // 2][1]
+shutil.copy2(chosen, os.environ["OUT"])
+suffix = chosen.name.split(".pass-")[1].split(".json")[0]
+timeline = mode_dir / ("gpu-timeline.phase-" + index + ".pass-" + suffix + ".csv")
+if timeline.exists():
+    shutil.copy2(timeline, mode_dir / ("gpu-timeline.phase-" + index + ".csv"))
+
+values = [value for value, _ in scored]
+median = statistics.median(values)
+print("phase %s: %d pass(es), published pass-%s, spread %.2f%%" % (
+    index, len(scored), suffix,
+    ((max(values) - min(values)) / median * 100) if median else 0.0))
+'
+}
+
 write_mode_summary() {
   MODE_NAME="$1" MODE_DIR="$2" SEQUENTIAL="$3" \
   EP1="$4" EP2="$5" READY1="$6" READY2="$7" STARTUP1="$8" STARTUP2="$9" \
@@ -1386,25 +1743,71 @@ gpu = {
     "mean_utilization_percent": None,
 }
 gpu["target_gpu_uuid"] = os.environ.get("TARGET_GPU", "")
+def parse_smi_timestamp(text):
+    """nvidia-smi stamps local time as YYYY/MM/DD HH:MM:SS.mmm."""
+    import datetime
+    try:
+        return datetime.datetime.strptime(text.strip(), "%Y/%m/%d %H:%M:%S.%f").timestamp()
+    except ValueError:
+        return None
+
+
+# Restrict every host-level series to the window the client was actually
+# measuring in. The samplers start before the client, which then spends time on
+# URL probing and warm-up; averaging those in dilutes utilization by a different
+# amount in every mode, because warm-up length is not constant across modes.
+client_summary = client.get("summary", {}) if isinstance(client, dict) else {}
+window_start = client_summary.get("measure_start_epoch")
+window_end = client_summary.get("measure_end_epoch")
+
+
+def in_window(epoch):
+    if epoch is None or window_start is None or window_end is None:
+        return True
+    return window_start <= epoch <= window_end
+
+
 timeline_path = mode_dir / "gpu-timeline.csv"
 if timeline_path.exists():
-    # Rows are timestamp,index,uuid,total,used,util - one per GPU per tick.
-    # Keep only the GPU the workload actually ran on, otherwise an idle device
-    # drags peak/mean toward zero (which is how MPS scored 74 MiB).
+    # Rows are timestamp,index,uuid,total,used,util,util_mem,clocks,temp,power,
+    # throttle - one per GPU per tick. Keep only the GPU the workload actually
+    # ran on, otherwise an idle device drags peak/mean toward zero (which is how
+    # MPS once scored 74 MiB).
     target = os.environ.get("TARGET_GPU", "")
     per_gpu = {}
+    clipped = 0
+    total_rows = 0
     for line in timeline_path.read_text(encoding="utf-8", errors="replace").splitlines()[1:]:
         parts = [part.strip() for part in line.split(",")]
         if len(parts) < 6:
             continue
+        total_rows += 1
+        stamp = parse_smi_timestamp(parts[0])
+        if not in_window(stamp):
+            clipped += 1
+            continue
         uuid = parts[2]
         try:
-            entry = per_gpu.setdefault(uuid, {"total": None, "used": [], "util": []})
+            entry = per_gpu.setdefault(uuid, {
+                "total": None, "used": [], "util": [], "util_mem": [],
+                "clocks": [], "temp": [], "power": [], "throttle": set(),
+            })
             entry["total"] = int(float(parts[3]))
             entry["used"].append(int(float(parts[4])))
             entry["util"].append(int(float(parts[5])))
         except ValueError:
             continue
+        # Extended columns are best effort: an older driver may not report all
+        # of them, and a missing clock must not discard an otherwise good row.
+        for position, key, cast in ((6, "util_mem", float), (7, "clocks", float),
+                                    (8, "temp", float), (9, "power", float)):
+            if len(parts) > position:
+                try:
+                    entry[key].append(cast(parts[position]))
+                except ValueError:
+                    pass
+        if len(parts) > 10 and parts[10] not in ("", "[N/A]"):
+            entry["throttle"].add(parts[10])
 
     chosen = None
     if target and target in per_gpu:
@@ -1417,6 +1820,9 @@ if timeline_path.exists():
         entry = per_gpu[chosen]
         used, util = entry["used"], entry["util"]
         if used:
+            def average(values):
+                return round(sum(values) / len(values), 1) if values else None
+
             gpu = {
                 "samples": len(used),
                 "sampled_gpu_uuid": chosen,
@@ -1426,8 +1832,39 @@ if timeline_path.exists():
                 "peak_memory_used_mib": max(used),
                 "mean_memory_used_mib": round(sum(used) / len(used), 1),
                 "peak_utilization_percent": max(util) if util else None,
-                "mean_utilization_percent": round(sum(util) / len(util), 1) if util else None,
+                "mean_utilization_percent": average(util),
                 "all_gpus_seen": sorted(per_gpu),
+                # Clipping bookkeeping, so a reader can tell whether the window
+                # actually applied or the whole timeline was used.
+                "samples_before_window_clip": total_rows,
+                "samples_clipped_outside_window": clipped,
+                "window_start_epoch": window_start,
+                "window_end_epoch": window_end,
+                # SATURATION: what fraction of the measured window was the GPU
+                # pinned? mean utilization alone cannot distinguish "busy the
+                # whole time at 90%" from "at 100% half the time and idle the
+                # rest", and those are different sharing outcomes.
+                "saturation_fraction_ge_95": (
+                    round(sum(1 for value in util if value >= 95) / len(util), 4)
+                    if util else None),
+                "saturation_fraction_ge_99": (
+                    round(sum(1 for value in util if value >= 99) / len(util), 4)
+                    if util else None),
+                "idle_fraction_le_5": (
+                    round(sum(1 for value in util if value <= 5) / len(util), 4)
+                    if util else None),
+                # Memory-controller busy. High util.gpu with high util.memory is
+                # a memory-bound kernel; high util.gpu with LOW util.memory and
+                # low throughput is the signature of time lost between kernels.
+                "mean_memory_utilization_percent": average(entry["util_mem"]),
+                # Thermals and clocks. Modes run back to back, so without these
+                # a later mode that was clock throttled is indistinguishable
+                # from a genuinely worse sharing mechanism.
+                "mean_sm_clock_mhz": average(entry["clocks"]),
+                "min_sm_clock_mhz": min(entry["clocks"]) if entry["clocks"] else None,
+                "max_temperature_c": max(entry["temp"]) if entry["temp"] else None,
+                "mean_power_w": average(entry["power"]),
+                "throttle_reasons_seen": sorted(entry["throttle"]),
             }
 
 # Who was actually resident on the GPU during the run, from the host-level
@@ -1462,6 +1899,149 @@ restart_count = sum(int(entry["pod"].get("restart_count", 0) or 0) for entry in 
 peak = gpu["peak_memory_used_mib"]
 capacity = gpu["memory_total_mib"]
 
+# ---------------------------------------------------------------------------
+# Per-process SM utilization (nvidia-smi pmon).
+#
+# Columns: gpu pid type sm mem enc dec command; header lines start with "#".
+# Without MPS this attributes SM time per vLLM process, so an asymmetric
+# gpucores split shows up directly as a per-process split. With MPS the work is
+# attributed to nvidia-cuda-mps-server instead - which is not a shortcoming of
+# the tool but direct evidence that NVML cannot see per-tenant usage once MPS
+# owns the context, the reason the HAMi limiter may be blind under MPS.
+# ---------------------------------------------------------------------------
+pmon = {"samples": 0, "per_process": {}, "attributed_to_mps_server": False}
+pmon_path = mode_dir / "gpu-pmon.txt"
+if pmon_path.exists():
+    observed = {}
+    sample_count = 0
+    for line in pmon_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 8:
+            continue
+        try:
+            sm_percent = float(parts[3])
+        except ValueError:
+            continue  # "-" whenever the process was not resident on that tick
+        observed.setdefault(parts[-1] + ":" + parts[1], []).append(sm_percent)
+        sample_count += 1
+    for key, values in observed.items():
+        pmon["per_process"][key] = {
+            "samples": len(values),
+            "mean_sm_percent": round(sum(values) / len(values), 1),
+            "peak_sm_percent": max(values),
+        }
+    pmon["samples"] = sample_count
+    pmon["attributed_to_mps_server"] = any("mps-server" in key for key in pmon["per_process"])
+    tenant_means = sorted(
+        (entry["mean_sm_percent"] for key, entry in pmon["per_process"].items()
+         if "mps-server" not in key), reverse=True)
+    if len(tenant_means) >= 2 and sum(tenant_means):
+        # The number that answers the asymmetric experiment: with gpucores
+        # 75/25 this should read near [0.75, 0.25] if the limiter binds, and
+        # near [0.5, 0.5] if it does not.
+        pmon["tenant_sm_share_split"] = [
+            round(value / sum(tenant_means), 3) for value in tenant_means]
+
+# ---------------------------------------------------------------------------
+# CPU. The alternative explanation for the HAMi throughput loss that has
+# nothing to do with the GPU: the HAMi-core limiter runs an NVML-polling watcher
+# thread, each Pod is capped at cpu: "2", and a CPU-starved vLLM decodes slower.
+# ---------------------------------------------------------------------------
+cpu = {"samples": 0}
+cpu_path = mode_dir / "node-cpu.csv"
+if cpu_path.exists():
+    busy_values, load_values = [], []
+    for line in cpu_path.read_text(encoding="utf-8", errors="replace").splitlines()[1:]:
+        parts = line.split(",")
+        if len(parts) < 4:
+            continue
+        try:
+            epoch, busy, load1 = float(parts[0]), float(parts[1]), float(parts[2])
+        except ValueError:
+            continue
+        if not in_window(epoch):
+            continue
+        busy_values.append(busy)
+        load_values.append(load1)
+    if busy_values:
+        cpu = {
+            "samples": len(busy_values),
+            "mean_busy_percent": round(sum(busy_values) / len(busy_values), 1),
+            "peak_busy_percent": round(max(busy_values), 1),
+            "saturation_fraction_ge_90": round(
+                sum(1 for value in busy_values if value >= 90) / len(busy_values), 4),
+            "mean_load1": round(sum(load_values) / len(load_values), 2),
+        }
+
+
+def read_cpu_stat(path):
+    values = {}
+    if path is None or not path.exists():
+        return values
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split()
+        if len(parts) == 2:
+            try:
+                values[parts[0]] = float(parts[1])
+            except ValueError:
+                pass
+    return values
+
+
+def first_match(pattern):
+    matches = sorted(mode_dir.glob(pattern))
+    return matches[0] if matches else None
+
+
+# cgroup v2: throttled_usec accumulating across the run means the container hit
+# its CPU quota, and decode slowed for a reason that is not GPU contention.
+pod_cpu = {}
+for service in (svc1, svc2):
+    before = read_cpu_stat(first_match("cpu-" + service + "*before*.txt"))
+    after = read_cpu_stat(first_match("cpu-" + service + "*after*.txt"))
+    if not before or not after:
+        continue
+    entry = {}
+    for key in ("usage_usec", "user_usec", "system_usec", "nr_periods",
+                "nr_throttled", "throttled_usec"):
+        if key in before and key in after:
+            entry[key + "_delta"] = after[key] - before[key]
+    periods = entry.get("nr_periods_delta") or 0
+    entry["throttled_period_fraction"] = (
+        round(entry.get("nr_throttled_delta", 0) / periods, 4) if periods else None)
+    entry["cpu_seconds_used"] = round(entry.get("usage_usec_delta", 0) / 1e6, 2)
+    entry["was_cpu_throttled"] = bool(entry.get("nr_throttled_delta", 0) > 0)
+    pod_cpu[service] = entry
+
+# ---------------------------------------------------------------------------
+# SM occupancy proxy.
+#
+# True occupancy needs DCGM profiling fields (DCGM_FI_PROF_SM_ACTIVE /
+# SM_OCCUPANCY), which NVIDIA does not expose on this GeForce part. What is
+# available is the ratio of useful work to busy time: utilization.gpu marks a
+# sample busy when ANY kernel is resident, so it measures TIME, not WIDTH. Two
+# modes with equal utilization but different token rates differ in how much of
+# the SM array did useful work - the quantity occupancy would have reported.
+# ---------------------------------------------------------------------------
+occupancy_proxy = None
+_mean_util = gpu.get("mean_utilization_percent")
+_tokens_per_second = client_summary.get("output_tokens_per_second")
+if _mean_util and _tokens_per_second:
+    occupancy_proxy = {
+        "tokens_per_second_per_utilization_point": round(_tokens_per_second / _mean_util, 3),
+        "is_proxy": True,
+        "note": ("proxy only; true SM occupancy requires DCGM "
+                 "DCGM_FI_PROF_SM_ACTIVE / DCGM_FI_PROF_SM_OCCUPANCY, "
+                 "unavailable on this GPU"),
+    }
+
+repeats = {}
+if (mode_dir / "repeats.json").exists():
+    repeats = json.loads((mode_dir / "repeats.json").read_text(encoding="utf-8"))
+
 acceptance = {
     "both_ready": flag("READY1") and flag("READY2"),
     "expected_successful_requests": expected_total,
@@ -1476,7 +2056,31 @@ acceptance = {
     "all_vllm_on_one_gpu": residency["distinct_gpus_with_vllm"] == 1,
     # Non-MPS modes must have zero MPS servers resident.
     "mps_servers_resident": residency["mps_servers"],
-    "mps_expected": mode in ("mps", "hami-mps"),
+    "mps_expected": mode in ("mps", "mps-100", "hami-mps", "hami-mps-100", "asym-mps"),
+    # ERROR RATE as an acceptance criterion, not a footnote: a mode that wins on
+    # throughput while dropping requests has not won.
+    "error_rate": client_summary.get("error_rate", 0),
+    "error_breakdown": client_summary.get("errors", {}),
+    "error_free": client_summary.get("failed_requests", 0) == 0,
+    # If the client burned about one core per in-flight thread, the measurement
+    # is of the client, not the GPU, and the mode comparison is void.
+    "client_bound_suspected": client_summary.get("client_bound_suspected", False),
+    "client_saturation_ratio": client_summary.get("client_saturation_ratio"),
+    # Prompts must be unique per request, or cached prefill leaks into results.
+    "distinct_prompts": client_summary.get("distinct_prompts"),
+    "prompt_mode": client_summary.get("prompt_mode"),
+    # Contended-window coverage. If this is far below 1.0 the tenants spent much
+    # of the run NOT overlapping, and whole-run throughput overstates sharing.
+    "contended_fraction_of_wall": (
+        (client_summary.get("contended") or {}).get("fraction_of_wall")),
+    # A GPU clock well below its ceiling means a later mode was penalized by
+    # heat rather than by its sharing mechanism.
+    "min_sm_clock_mhz": gpu.get("min_sm_clock_mhz"),
+    "gpu_throttle_reasons_seen": gpu.get("throttle_reasons_seen", []),
+    # Either Pod hitting its cgroup CPU quota is an alternative explanation for
+    # a throughput difference that has nothing to do with GPU sharing.
+    "any_pod_cpu_throttled": any(
+        entry.get("was_cpu_throttled") for entry in pod_cpu.values()),
 }
 
 summary = {
@@ -1491,6 +2095,11 @@ summary = {
     "gpu_residency": residency,
     "services": services,
     "gpu": gpu,
+    "gpu_per_process": pmon,
+    "sm_occupancy_proxy": occupancy_proxy,
+    "node_cpu": cpu,
+    "pod_cpu": pod_cpu,
+    "repeats": repeats,
     "gpu_placement": (
         json.loads((mode_dir / "gpu-placement.json").read_text(encoding="utf-8"))
         if (mode_dir / "gpu-placement.json").exists()
@@ -1594,9 +2203,27 @@ run_mode_sequential() {
 
     if [[ "${ready}" == "true" && -n "${endpoint}" ]]; then
       local phase_json="${mode_dir}/client.phase-${index}.json"
-      start_gpu_sampler "${mode_dir}/gpu-timeline.phase-${index}.csv"
-      run_client "${mode}" "${phase_json}" true "--endpoint=${service}=${endpoint}" || status=$?
-      stop_gpu_sampler
+      local repeat pass_json
+      for (( repeat = 1; repeat <= REPEATS; repeat++ )); do
+        CURRENT_REPEAT=$(( repeat - 1 ))
+        pass_json="${mode_dir}/client.phase-${index}.pass-${repeat}.json"
+        log "Sequential phase ${index}: pass ${repeat}/${REPEATS}"
+        snapshot_pod_cpu "${pod_name}" \
+          "${mode_dir}/cpu-${service}-phase${index}-pass${repeat}-before.txt"
+        start_gpu_sampler "${mode_dir}/gpu-timeline.phase-${index}.pass-${repeat}.csv"
+        start_pmon_sampler "${mode_dir}/gpu-pmon.phase-${index}.pass-${repeat}.txt"
+        start_cpu_sampler "${mode_dir}/node-cpu.phase-${index}.pass-${repeat}.csv"
+        run_client "${mode}" "${pass_json}" true "--endpoint=${service}=${endpoint}" || status=$?
+        stop_gpu_sampler
+        snapshot_pod_cpu "${pod_name}" \
+          "${mode_dir}/cpu-${service}-phase${index}-pass${repeat}-after.txt"
+        if (( repeat < REPEATS )); then
+          log "Cooling down ${COOLDOWN_SECONDS}s before the next pass"
+          sleep "${COOLDOWN_SECONDS}"
+        fi
+      done
+      CURRENT_REPEAT=0
+      log "$(promote_median_phase "${mode_dir}" "${index}" "${phase_json}")"
       phase_files+=("${phase_json}")
     else
       log "Sequential phase ${index}: ${service} not usable (ready=${ready} endpoint='${endpoint}')"
@@ -1692,11 +2319,29 @@ run_mode_concurrent() {
 
   local status=0
   if [[ "${ready_1}" == "true" && "${ready_2}" == "true" && -n "${endpoint_1}" && -n "${endpoint_2}" ]]; then
-    log "Running concurrent client workload for ${mode}"
-    start_gpu_sampler "${mode_dir}/gpu-timeline.csv"
-    run_client "${mode}" "${mode_dir}/client.result.json" false \
-      "--endpoint=${SERVICE_1}=${endpoint_1}" "--endpoint=${SERVICE_2}=${endpoint_2}" || status=$?
-    stop_gpu_sampler
+    local repeat pass_dir
+    for (( repeat = 1; repeat <= REPEATS; repeat++ )); do
+      CURRENT_REPEAT=$(( repeat - 1 ))
+      pass_dir="${mode_dir}/pass-${repeat}"
+      mkdir -p "${pass_dir}"
+      log "Running concurrent client workload for ${mode} (pass ${repeat}/${REPEATS})"
+      snapshot_pod_cpu "${pod_1}" "${pass_dir}/cpu-${SERVICE_1}-before.txt"
+      snapshot_pod_cpu "${pod_2}" "${pass_dir}/cpu-${SERVICE_2}-before.txt"
+      start_gpu_sampler "${pass_dir}/gpu-timeline.csv"
+      start_pmon_sampler "${pass_dir}/gpu-pmon.txt"
+      start_cpu_sampler "${pass_dir}/node-cpu.csv"
+      run_client "${mode}" "${pass_dir}/client.result.json" false \
+        "--endpoint=${SERVICE_1}=${endpoint_1}" "--endpoint=${SERVICE_2}=${endpoint_2}" || status=$?
+      stop_gpu_sampler
+      snapshot_pod_cpu "${pod_1}" "${pass_dir}/cpu-${SERVICE_1}-after.txt"
+      snapshot_pod_cpu "${pod_2}" "${pass_dir}/cpu-${SERVICE_2}-after.txt"
+      if (( repeat < REPEATS )); then
+        log "Cooling down ${COOLDOWN_SECONDS}s before the next pass"
+        sleep "${COOLDOWN_SECONDS}"
+      fi
+    done
+    CURRENT_REPEAT=0
+    log "Repeats: $(select_representative_pass "${mode_dir}")"
   else
     log "Skipping client workload: ready_1=${ready_1} ready_2=${ready_2} endpoint_1='${endpoint_1}' endpoint_2='${endpoint_2}'"
     status=1
@@ -1730,9 +2375,10 @@ validate_cluster_access
 detect_resource_type
 validate_common_cluster_state
 
-if [[ "${MODE}" == hami || "${MODE}" == hami-mps || "${MODE}" == all ]]; then
-  validate_hami_components
-fi
+# Every mode now runs through HAMi's device plugin (it owns nvidia.com/gpu on
+# this cluster), and every mode's manifests carry nvidia.com/gpumem, so validate
+# the HAMi components for all of them rather than only the gpucores modes.
+validate_hami_components
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_DIR="${RESULTS_ROOT}/${timestamp}"
@@ -1760,27 +2406,22 @@ stop_host_mps_service
 
 log "Writing benchmark results to ${RUN_DIR}"
 log "Resource type: ${resource_type}"
-log "Mode: ${MODE} | HAMi profile: ${HAMI_PROFILE}"
+log "Modes: ${modes_to_run[*]}"
+log "HAMi profile: ${HAMI_PROFILE} | MPS threads: ${MPS_THREAD_PERCENT}% | prompts: ${PROMPT_MODE}"
+log "Repeats: ${REPEATS} in-place pass(es) per deployment, ${COOLDOWN_SECONDS}s cooldown between passes"
 log "Workload: ${REQUESTS_PER_SERVICE} req/service x ${MAX_TOKENS} tokens, concurrency ${CONCURRENCY}/service, warmup ${WARMUP_REQUESTS}"
 
 check_disk_headroom
 apply_image_pinner
 
-modes_to_run=()
-case "${MODE}" in
-  all)
-    modes_to_run=(sequential mps hami)
-    if [[ "${WITH_HAMI_MPS}" == "true" ]]; then
-      modes_to_run+=(hami-mps)
-    fi
-    ;;
-  *)
-    modes_to_run=("${MODE}")
-    ;;
-esac
-
+# modes_to_run was resolved and validated during argument parsing, before the
+# cluster was touched, so a typo in a nine-mode list fails immediately rather
+# than forty minutes into a run.
 overall_status=0
+mode_index=0
 for mode in "${modes_to_run[@]}"; do
+  mode_index=$(( mode_index + 1 ))
+  log "=== Mode ${mode_index}/${#modes_to_run[@]}: ${mode} ==="
   if ! run_mode "${mode}"; then
     log "Mode ${mode} reported a failure"
     overall_status=1

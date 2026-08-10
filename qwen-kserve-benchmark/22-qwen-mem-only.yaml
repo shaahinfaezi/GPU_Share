@@ -1,0 +1,138 @@
+# mem-only: the missing control in the original matrix.
+#
+# WHY THIS MODE EXISTS
+#
+# The published run measured HAMi alone at -19.7% against MPS and attributed the
+# loss to context switching between two CUDA contexts. Two mechanisms predict
+# that result identically, and the original four modes cannot tell them apart:
+#
+#   (a) The driver time-slices two CUDA contexts, and switching is expensive.
+#       Any two-tenant setup without MPS pays this, HAMi or not.
+#
+#   (b) HAMi's launch gate FORCES the alternation. Every time libvgpu.so holds
+#       tenant A back, tenant B fills in, and that handoff is a context switch
+#       the driver would not otherwise have made.
+#
+# Both keep GPU utilization high while producing fewer tokens, which is exactly
+# what was observed (util 89.3% vs 90.9%, throughput -19.7%). So the observation
+# does not discriminate.
+#
+# This mode is two tenants with NO MPS and NO gpucores: the driver still has two
+# contexts to schedule, but HAMi's compute limiter is switched off entirely
+# (HAMi's nvidia.defaultCores is 0, so an unset gpucores means no SM limiting
+# and no entry in HAMi's core ledger).
+#
+#   result near the `mps` number   -> the driver's own switching is cheap;
+#                                     the 19.7% is HAMi's limiter forcing
+#                                     switches, and the conclusion changes.
+#   result near the `hami` number  -> the 19.7% is inherent to two contexts
+#                                     without MPS, and the report stands.
+#
+# It is otherwise byte-for-byte the `mps` mode: same gpumem quota, same absolute
+# VRAM budget (0.90 x 4096 MiB = 3686 MiB), same vLLM flags. The ONLY differences
+# are the absent CUDA_MPS_* environment and the absent MPS pipe mount, so nothing
+# but the presence of MPS separates this from `mps`.
+#
+# The runner calls ensure_mps_stopped() before applying this, because a stray MPS
+# server would silently turn this into the `mps` mode.
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: qwen-bench-01
+  namespace: llm-demo
+  labels:
+    qwen-benchmark-mode: mem-only
+spec:
+  model:
+    name: Qwen/Qwen2.5-0.5B-Instruct
+    uri: pvc://qwen-local-pv-claim/
+  replicas: 1
+  router:
+    scheduler: {}
+    route: {}
+    gateway:
+      refs:
+        - name: kserve-ingress-gateway
+          namespace: kserve
+  template:
+    containers:
+      - name: main
+        image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+        args:
+          # 0.90 x 4096 MiB gpumem quota = 3686 MiB, the same absolute VRAM
+          # budget as every other mode.
+          - --gpu-memory-utilization=0.90
+          - --max-model-len=512
+          - --max-num-seqs=8
+          - --no-enable-prefix-caching
+        resources:
+          limits:
+            cpu: '2'
+            memory: 6Gi
+            nvidia.com/gpu: "1"
+            # gpumem is REQUIRED for two Pods to co-exist on one GPU: with it
+            # unset HAMi treats the request as claiming the whole device.
+            #
+            # Deliberately NO gpucores, exactly as in the `mps` mode, so HAMi
+            # applies no compute limiting at all. Unlike `mps`, there is also no
+            # MPS underneath - which is the whole point of this control.
+            nvidia.com/gpumem: "4096"
+          requests:
+            cpu: '100m'
+            memory: 1Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "4096"
+        env:
+          - name: HF_HOME
+            value: "/mnt/models"
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: qwen-bench-02
+  namespace: llm-demo
+  labels:
+    qwen-benchmark-mode: mem-only
+spec:
+  model:
+    name: Qwen/Qwen2.5-0.5B-Instruct
+    uri: pvc://qwen-local-pv-claim/
+  replicas: 1
+  router:
+    scheduler: {}
+    route: {}
+    gateway:
+      refs:
+        - name: kserve-ingress-gateway
+          namespace: kserve
+  template:
+    containers:
+      - name: main
+        image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+        args:
+          # 0.90 x 4096 MiB gpumem quota = 3686 MiB, the same absolute VRAM
+          # budget as every other mode.
+          - --gpu-memory-utilization=0.90
+          - --max-model-len=512
+          - --max-num-seqs=8
+          - --no-enable-prefix-caching
+        resources:
+          limits:
+            cpu: '2'
+            memory: 6Gi
+            nvidia.com/gpu: "1"
+            # gpumem is REQUIRED for two Pods to co-exist on one GPU: with it
+            # unset HAMi treats the request as claiming the whole device.
+            #
+            # Deliberately NO gpucores, exactly as in the `mps` mode, so HAMi
+            # applies no compute limiting at all. Unlike `mps`, there is also no
+            # MPS underneath - which is the whole point of this control.
+            nvidia.com/gpumem: "4096"
+          requests:
+            cpu: '100m'
+            memory: 1Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "4096"
+        env:
+          - name: HF_HOME
+            value: "/mnt/models"

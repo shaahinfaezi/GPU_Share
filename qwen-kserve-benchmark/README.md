@@ -110,6 +110,98 @@ One mode, one profile:
 ./run-qwen-benchmark.sh --mode hami --hami-profile weighted
 ```
 
+### The nine modes and what each one decides
+
+`--mode` takes a comma-separated list or a preset (`all`, `published`, `new`,
+`every`).
+
+| Mode | gpucores | MPS | Question it answers |
+|---|---|---|---|
+| `sequential` | — (whole card) | off | Baseline: one tenant alone. |
+| `mem-only` | none | **off** | Is the loss inherent to two CUDA contexts, or does the HAMi launch gate *cause* the switches? |
+| `mps` | none | 50% | Compute split from MPS alone. |
+| `mps-100` | none | 100% | Does removing the SM ceiling help, or is MPS already work-conserving here? |
+| `hami` | 50/50 | off | Compute split from HAMi alone. |
+| `hami-mps` | 50/50 | 50% | Both limiters at once. |
+| `hami-mps-100` | 50/50 | 100% | Work-conserving MPS with HAMi as a time-averaged backstop. |
+| `asym-hami` | **75/25** | off | Control: does `gpucores` bind *at all* here? |
+| `asym-mps` | **75/25** | 100% | **The decisive one.** Does `gpucores` bind *under MPS*, or is it blind because NVML reports at device level? |
+
+`asym-*` force the `compute-skew` profile, which varies cores **only** — same
+`gpumem`, same vLLM utilization, therefore the same KV cache on both tenants.
+Do not use `weighted` for this: it varies cores, memory and utilization at once,
+so any split it produces is unattributable.
+
+Read `gpu_per_process.tenant_sm_share_split` in `summary.json`: near
+`[0.75, 0.25]` means the limiter binds; near `[0.5, 0.5]` means it does not.
+
+### Repeats
+
+```bash
+./run-qwen-benchmark.sh --mode every --repeats 3
+```
+
+Repeats run **in place** against the same Pods. Measured on this node, 91% of a
+mode's wall time is Pod churn and only 9% is measurement (4 modes = 26 min, of
+which 143 s measured), so redeploying per repeat would triple the run to measure
+the same thing.
+
+Each pass writes to `pass-N/`. The **median** pass by aggregate throughput is
+promoted to the mode directory and published; `repeats.json` records the spread.
+The published number is always a real measured pass, never an average — averaging
+throughput, utilization and latency across passes produces a composite that never
+occurred and whose internal relationships no longer reconcile.
+
+This measures variance of the *measurement* under a fixed deployment. It does
+not capture deploy-to-deploy variance.
+
+### Fairness and measurement fixes
+
+Problems that were present and are now handled:
+
+- **Uncontended tail.** Whole-run throughput counted tokens produced after the
+  faster tenant had finished and the slower one had the GPU to itself. Metrics
+  are now also computed over the **contended window** where both tenants had
+  work in flight, with straddling requests prorated by time. Measured impact:
+  0.23% on the symmetric published run, but **73% on an asymmetric one** — so
+  this mattered only once the `asym-*` modes existed.
+- **Staggered start.** Both tenants now release from a `threading.Barrier`, and
+  the measurement origin is stamped inside the barrier action. Previously
+  whichever driver thread was scheduled first got uncontended GPU.
+- **Serial warm-up.** Warm-up ran service 1 to completion first, so it captured
+  CUDA graphs on an idle GPU and, under MPS, paid the server start-up alone.
+  Warm-up is now concurrent.
+- **Identical prompts.** Every request sent the same string. Prompts are now
+  unique per request index, deterministic, and identical across modes and
+  tenants; repeat passes are offset so pass 2 never replays pass 1 against a
+  warm server. `--prompt-mode fixed` restores the old behaviour.
+- **Unclipped sampling.** Samplers start before the client, so mean utilization
+  averaged in probing, warm-up and idle time — by a different amount per mode.
+  All host series are now clipped to the client's measured window.
+- **Unmeasured confounds.** Now recorded: node CPU and per-Pod cgroup v2 CFS
+  throttling (each Pod is capped at `cpu: "2"`, and a CPU-starved vLLM decodes
+  slower for reasons unrelated to GPU sharing); SM clock, temperature and
+  throttle reasons (modes run back to back and the GPU heats up); client CPU
+  saturation (if the client burns ~1 core per in-flight thread it is the
+  bottleneck, not the GPU).
+
+### SM occupancy vs utilization
+
+`utilization.gpu` marks a sample busy when *any* kernel is resident: it measures
+**time**, not **width**. Two modes with equal utilization but different token
+rates differ in how much of the SM array did useful work.
+
+True occupancy needs DCGM `DCGM_FI_PROF_SM_ACTIVE` / `SM_OCCUPANCY`, which
+NVIDIA does not expose on this GeForce part. Two stand-ins are recorded instead:
+
+- `sm_occupancy_proxy.tokens_per_second_per_utilization_point` — useful work per
+  unit of busy time. Explicitly flagged `is_proxy: true`.
+- `gpu_per_process` from `nvidia-smi pmon` — per-process SM%, which *does* work
+  on consumer cards. Without MPS it attributes SM time per tenant. With MPS it
+  attributes everything to `nvidia-cuda-mps-server`, which is not a tooling
+  limitation but direct evidence that NVML cannot see per-tenant usage once MPS
+  owns the context — the reason the HAMi limiter may be blind under MPS.
+
 Explicit endpoints, when the gateway URL in `.status.url` is not reachable from
 the client machine:
 
