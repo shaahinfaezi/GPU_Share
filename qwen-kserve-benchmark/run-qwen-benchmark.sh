@@ -80,6 +80,14 @@ DISK_SAFE_PERCENT=80
 # wasting the whole ~25 minutes. Overridable with --allow-full-disk.
 DISK_ABORT_PERCENT=90
 ALLOW_FULL_DISK="false"
+# A cold 9.5 GB pull from the local registry takes minutes; the runner now waits
+# for it so the pull happens once rather than racing the workload Pods.
+PIN_IMAGE_TIMEOUT_SECONDS=900
+# The probe image comes from Docker Hub, so a cold pull can exceed the old 180s.
+PROBE_TIMEOUT_SECONDS=600
+# Without the probe there is no GPU sampling and no same-GPU verification, so a
+# missing probe aborts the run unless this is set.
+ALLOW_NO_GPU_PROBE="false"
 disk_use_percent=0
 host_mps_was_active="false"
 ROUTE_MODE="auto"
@@ -209,6 +217,9 @@ while [[ $# -gt 0 ]]; do
     --gpu-uuid)              GPU_UUID_OVERRIDE="$2"; shift 2 ;;
     --pin-image)             PIN_IMAGE="$2"; shift 2 ;;
     --allow-full-disk)       ALLOW_FULL_DISK="true"; shift ;;
+    --allow-no-gpu-probe)    ALLOW_NO_GPU_PROBE="true"; shift ;;
+    --probe-timeout)         PROBE_TIMEOUT_SECONDS="$2"; shift 2 ;;
+    --pin-image-timeout)     PIN_IMAGE_TIMEOUT_SECONDS="$2"; shift 2 ;;
     --max-tokens)            MAX_TOKENS="$2"; shift 2 ;;
     --concurrency)           CONCURRENCY="$2"; shift 2 ;;
     --insecure)              INSECURE="true"; shift ;;
@@ -653,15 +664,33 @@ apply_image_pinner() {
   esac
 
   kubectl apply -f "${ROOT_DIR}/04-image-pinner.yaml" >/dev/null
-  # Do NOT block on this.
+
+  # BLOCK until the pinner holds the image.
   #
-  # The pinner uses the same 9.5 GB image, so becoming Ready can take minutes on
-  # a cold cache. Waiting for it bought nothing and made the runner look hung:
-  # the first mode's Pod pulls the image regardless, and the pinner only has to
-  # be holding a reference by the time the SECOND mode starts. It pulls in the
-  # background while mode 1 deploys.
-  log "Image pinner applied (pulling in the background; it only needs to be up"
-  log "  before the second mode, so not waiting for it)."
+  # An earlier version deliberately did not wait, reasoning that mode 1 pulls the
+  # image anyway so waiting bought nothing. That reasoning is wrong on a COLD
+  # cache: not waiting means the pinner and mode 1 pull the SAME 9.5 GB image
+  # simultaneously, opening separate containerd ingest sessions, while the GPU
+  # probe pulls its own base image from Docker Hub at the same moment.
+  #
+  # Observed on this node with an empty image cache: the probe missed its
+  # readiness window (so the runner reported "Physical GPUs visible: 0") and the
+  # workload Pod sat in ContainerCreating for 26 minutes before the run was
+  # abandoned.
+  #
+  # Waiting makes the pull SERIAL. It costs a few seconds when the image is
+  # already resident, and it is the difference between a working run and a
+  # stalled one when it is not.
+  log "Waiting up to ${PIN_IMAGE_TIMEOUT_SECONDS}s for the image pinner to hold the vLLM image."
+  log "  This serializes the 9.5 GB pull instead of racing the workload Pods for it."
+  if kubectl rollout status -n "${NS}" deployment/qwen-benchmark-image-pinner \
+       --timeout="${PIN_IMAGE_TIMEOUT_SECONDS}s" >/dev/null 2>&1; then
+    log "Image pinner is holding the vLLM image; no mode should need to re-pull it"
+  else
+    log "WARNING: image pinner did not become Ready in ${PIN_IMAGE_TIMEOUT_SECONDS}s."
+    log "  Continuing, but mode 1 will now compete with it for the same pull."
+    kubectl get pods -n "${NS}" -l app=qwen-benchmark-image-pinner -o wide 2>/dev/null || true
+  fi
 }
 
 # Reported once per mode so a re-pull is attributable rather than mysterious.
@@ -683,9 +712,28 @@ delete_image_pinner() {
 
 apply_gpu_probe() {
   kubectl apply -f "${ROOT_DIR}/05-gpu-probe.yaml" >/dev/null
-  log "Waiting up to 180s for the GPU probe DaemonSet..."
-  kubectl rollout status -n "${NS}" daemonset/qwen-benchmark-gpu-probe --timeout=180s >/dev/null 2>&1 \
-    || log "WARNING: GPU probe DaemonSet is not Ready; GPU samples may be missing"
+  log "Waiting up to ${PROBE_TIMEOUT_SECONDS}s for the GPU probe DaemonSet..."
+  if ! kubectl rollout status -n "${NS}" daemonset/qwen-benchmark-gpu-probe \
+        --timeout="${PROBE_TIMEOUT_SECONDS}s" >/dev/null 2>&1; then
+    kubectl get pods -n "${NS}" -l app=qwen-benchmark-gpu-probe -o wide 2>/dev/null || true
+    kubectl describe pods -n "${NS}" -l app=qwen-benchmark-gpu-probe 2>/dev/null \
+      | sed -n '/Events:/,$p' | tail -15 || true
+    # Previously this only warned. Continuing without the probe is worse than
+    # stopping: GPU sampling, the GPU inventory and the same-GPU verification
+    # all depend on it, so the run proceeds to produce numbers that cannot be
+    # shown to describe two tenants on one device. The last run logged
+    # "Physical GPUs visible on the node: 0" and kept going.
+    if [[ "${ALLOW_NO_GPU_PROBE}" == "true" ]]; then
+      log "WARNING: GPU probe not Ready; continuing without GPU sampling (--allow-no-gpu-probe)"
+    else
+      fail "GPU probe DaemonSet did not become Ready in ${PROBE_TIMEOUT_SECONDS}s.
+  Without it there is no GPU sampling, no GPU inventory, and no same-GPU
+  verification, so the run cannot demonstrate that the tenants shared one device.
+  Its image (nvidia/cuda:12.4.1-base-ubuntu22.04) comes from Docker Hub: check
+  connectivity, and check that a large concurrent image pull is not starving it.
+  Re-run with --allow-no-gpu-probe to measure anyway."
+    fi
+  fi
   gpu_probe_pod="$(kubectl get pods -n "${NS}" -l app=qwen-benchmark-gpu-probe \
     -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
 }
@@ -699,6 +747,9 @@ detect_gpu_inventory() {
   target_gpu_uuid=""
   other_gpu_uuids=""
   if [[ -z "${gpu_probe_pod}" ]]; then
+    if [[ "${ALLOW_NO_GPU_PROBE}" != "true" ]]; then
+      fail "No GPU probe Pod, so the benchmark cannot be confined to one GPU."
+    fi
     log "WARNING: no GPU probe Pod; cannot confine the benchmark to one GPU"
     return 0
   fi
@@ -708,6 +759,15 @@ detect_gpu_inventory() {
     | tr -d ' \r' | grep . || true)"
   gpu_count="$(printf '%s\n' "${gpu_uuids}" | grep -c . || true)"
   gpu_count="${gpu_count:-0}"
+
+  # Zero GPUs means nvidia-smi inside the probe returned nothing. Every
+  # placement guarantee downstream is then vacuous, so stop rather than log
+  # "Physical GPUs visible on the node: 0" and carry on measuring.
+  if (( gpu_count == 0 )) && [[ "${ALLOW_NO_GPU_PROBE}" != "true" ]]; then
+    fail "The GPU probe reported 0 GPUs. Check 'nvidia-smi -L' on the node and
+  that the NVIDIA container runtime is injecting the driver into the probe Pod.
+  Every same-GPU guarantee depends on this, so the run would be unverifiable."
+  fi
 
   # Pick ONE target GPU and keep every mode on it.
   #
