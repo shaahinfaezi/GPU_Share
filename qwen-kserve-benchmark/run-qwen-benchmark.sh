@@ -148,9 +148,16 @@ Options:
                                              Decides whether gpucores binds
                                              UNDER MPS, or is blind because NVML
                                              reports at device level.
-  --hami-profile PROFILE     balanced, conservative, weighted, compute-skew.
-                             Ignored by the asym-* modes, which force
-                             compute-skew.
+                               asym-both     gpucores 75/25 AND MPS threads
+                                             75/25. The deployable asymmetric
+                                             QoS config: does the stack deliver
+                                             a 75/25 split?
+                               asym-mpsonly  MPS threads 75/25, NO gpucores.
+                                             Can MPS alone enforce priority if
+                                             gpucores turns out to be blind?
+  --hami-profile PROFILE     balanced, conservative, weighted, compute-skew,
+                             qos-skew, mps-skew. Ignored by the asym-* modes,
+                             which force their own profile.
   --repeats N                measured client passes per deployment (default: 1).
                              Repeats reuse the same Pods and are separated by
                              --cooldown-seconds.
@@ -250,7 +257,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ALL_MODES="sequential mem-only mps mps-100 hami hami-mps hami-mps-100 asym-hami asym-mps"
+ALL_MODES="sequential mem-only mps mps-100 hami hami-mps hami-mps-100 asym-hami asym-mps asym-both asym-mpsonly"
 
 # Expand presets, then validate every requested mode BEFORE touching the
 # cluster. A typo in a nine-mode list must not be discovered 40 minutes in.
@@ -260,6 +267,7 @@ expand_modes() {
     all)       printf 'sequential mps hami' ;;
     published) printf 'sequential mps hami hami-mps' ;;
     new)       printf 'mem-only mps-100 hami-mps-100 asym-hami asym-mps' ;;
+    asym)      printf 'asym-hami asym-mps asym-both asym-mpsonly' ;;
     every)     printf '%s' "${ALL_MODES}" ;;
     *)         printf '%s' "${raw//,/ }" ;;
   esac
@@ -281,7 +289,7 @@ for _mode in "${modes_to_run[@]}"; do
 done
 
 case "${HAMI_PROFILE}" in
-  balanced|conservative|weighted|compute-skew) ;;
+  balanced|conservative|weighted|compute-skew|qos-skew|mps-skew) ;;
   *) fail "Unsupported HAMi profile: ${HAMI_PROFILE}" ;;
 esac
 
@@ -576,6 +584,9 @@ model_len = os.environ["MODELLEN"]
 name = os.environ["PROFILE_NAME"]
 mps_pct = os.environ.get("MPSPCT", "50")
 pod_cpu = os.environ.get("PODCPU", "").strip()
+# Per-tenant MPS thread percentage. A profile may set "mps": [a, b]; otherwise
+# both tenants take the single --mps-thread-percent value.
+mps_list = profile.get("mps") or [mps_pct, mps_pct]
 
 text = pathlib.Path(os.environ["MANIFEST"]).read_text(encoding="utf-8")
 # Built with chr(10) rather than a backslash escape: this block is embedded in
@@ -607,12 +618,13 @@ for position, document in enumerate(documents):
     # belonging to this key is touched, never a number in a nearby comment.
     document = re.sub(
         r"(name:\s*CUDA_MPS_ACTIVE_THREAD_PERCENTAGE\s*\n\s*value:\s*)" + chr(34) + r"[0-9]+" + chr(34),
-        lambda m: m.group(1) + chr(34) + str(mps_pct) + chr(34), document)
+        lambda m: m.group(1) + chr(34) + str(mps_list[which]) + chr(34), document)
     rendered.append(document)
 
 pathlib.Path(os.environ["OUT"]).write_text(separator.join(rendered), encoding="utf-8")
 
-print(" ".join(str(v) for v in (cores[0], cores[1], mem[0], mem[1], util[0], util[1])))
+print(" ".join(str(v) for v in (cores[0], cores[1], mem[0], mem[1], util[0], util[1],
+                               mps_list[0], mps_list[1])))
 '
 }
 
@@ -622,8 +634,8 @@ apply_hami_manifest() {
   local parsed
   parsed="$(render_hami_manifest "${manifest}" "${profile}" "${rendered}")"
 
-  local cores_1 cores_2 mem_1 mem_2 util_1 util_2
-  read -r cores_1 cores_2 mem_1 mem_2 util_1 util_2 <<< "${parsed}"
+  local cores_1 cores_2 mem_1 mem_2 util_1 util_2 mps_1 mps_2
+  read -r cores_1 cores_2 mem_1 mem_2 util_1 util_2 mps_1 mps_2 <<< "${parsed}"
 
   # Only claim a gpucores value if the manifest actually carries the key. The
   # MPS-only manifests deliberately omit it, and logging "gpucores=50" for a
@@ -633,14 +645,16 @@ apply_hami_manifest() {
     cores_note_1="(unset - no HAMi compute limit)"
     cores_note_2="(unset - no HAMi compute limit)"
   fi
-  local mps_note=""
+  # Report each tenant's own MPS thread percentage: a profile may skew them.
+  local mps_note_1="" mps_note_2=""
   if grep -q 'CUDA_MPS_ACTIVE_THREAD_PERCENTAGE' "${rendered}"; then
-    mps_note=" mps-threads=${MPS_THREAD_PERCENT}%"
+    mps_note_1=" mps-threads=${mps_1}%"
+    mps_note_2=" mps-threads=${mps_2}%"
   fi
 
   log "HAMi profile '${profile}' (rendered into ${manifest}, single apply):"
-  log "  ${SERVICE_1}: gpucores=${cores_note_1} gpumem=${mem_1}MiB vllm-util=${util_1}${mps_note}"
-  log "  ${SERVICE_2}: gpucores=${cores_note_2} gpumem=${mem_2}MiB vllm-util=${util_2}${mps_note}"
+  log "  ${SERVICE_1}: gpucores=${cores_note_1} gpumem=${mem_1}MiB vllm-util=${util_1}${mps_note_1}"
+  log "  ${SERVICE_2}: gpucores=${cores_note_2} gpumem=${mem_2}MiB vllm-util=${util_2}${mps_note_2}"
 
   kubectl apply -f "${rendered}" >/dev/null
 }
@@ -1091,6 +1105,23 @@ apply_mode_manifests() {
       kubectl apply -f "${profiles}" >/dev/null
       apply_hami_manifest "40-qwen-hami-mps.yaml" "compute-skew"
       ;;
+    asym-both)
+      # BOTH controls skewed 75/25 - the configuration you would actually deploy
+      # for asymmetric QoS. asym-mps isolates gpucores by pinning MPS threads to
+      # 100; this one asks whether the stack as a whole delivers 75/25.
+      apply_mps_daemon
+      kubectl apply -f "${profiles}" >/dev/null
+      apply_hami_manifest "40-qwen-hami-mps.yaml" "qos-skew"
+      ;;
+    asym-mpsonly)
+      # MPS threads skewed 75/25 with NO gpucores at all (21-qwen-mps.yaml carries
+      # no gpucores key). The fallback question: if gpucores is blind under MPS,
+      # can CUDA_MPS_ACTIVE_THREAD_PERCENTAGE deliver priority by itself? Without
+      # this, a null result from asym-mps leaves no working QoS mechanism.
+      apply_mps_daemon
+      kubectl apply -f "${profiles}" >/dev/null
+      apply_hami_manifest "21-qwen-mps.yaml" "mps-skew"
+      ;;
     *)
       fail "apply_mode_manifests does not handle mode: ${mode}"
       ;;
@@ -1528,8 +1559,20 @@ collect_service_artifacts() {
     kubectl exec -n "${NS}" "${pod_name}" -c main -- \
       sh -c "tr '\0' '\n' < /proc/1/environ | sort" \
       > "${service_dir}/container-environ.txt" 2>/dev/null || true
-    if grep -qE 'CUDA_DEVICE_SM_LIMIT|libvgpu' "${service_dir}/container-environ.txt" 2>/dev/null; then
-      log "  ${service}: HAMi in-container limiter confirmed ($(grep -cE 'CUDA_DEVICE|LD_PRELOAD' "${service_dir}/container-environ.txt") matching vars)"
+
+    # Report the outcome BOTH ways.
+    #
+    # An earlier version only logged on success, so a failed exec produced an
+    # empty file, no log line, and a question that stayed open until someone
+    # read the results hours later. Silent absence is precisely the failure mode
+    # this capture exists to eliminate, so it must never itself fail silently.
+    if [[ ! -s "${service_dir}/container-environ.txt" ]]; then
+      log "  WARNING ${service}: could not read /proc/1/environ; in-container limiter UNVERIFIED"
+    else
+      local sm_limit preload
+      sm_limit="$(grep -m1 '^CUDA_DEVICE_SM_LIMIT=' "${service_dir}/container-environ.txt" | cut -d= -f2-)"
+      preload="$(grep -m1 '^LD_PRELOAD=' "${service_dir}/container-environ.txt" | cut -d= -f2-)"
+      log "  ${service}: CUDA_DEVICE_SM_LIMIT=${sm_limit:-<unset>} LD_PRELOAD=${preload:-<unset>}"
     fi
   fi
 
@@ -2108,6 +2151,28 @@ if pmon_path.exists():
         # near [0.5, 0.5] if it does not.
         pmon["tenant_sm_share_split"] = [
             round(value / sum(tenant_means), 3) for value in tenant_means]
+
+        # TIME-DIVISION OR CO-RESIDENCY?
+        #
+        # pmon reports, per process, the share of TIME during which that process
+        # had at least one kernel executing. So comparing the sum of the tenants
+        # against the device total separates two models that a split ratio alone
+        # cannot:
+        #
+        #   sum / device ~= 1.0  the tenants were busy in DISJOINT intervals.
+        #                        Only one context on the SMs at a time - the
+        #                        driver is time-slicing them.
+        #   sum / device >> 1.0  the tenants were busy in the SAME intervals,
+        #                        i.e. genuinely co-resident on the SM array.
+        #
+        # This is the discriminator for the claim that HAMi shapes the mix of
+        # in-flight work so that both tenants sit on the SMs together in
+        # proportion, rather than taking turns.
+        device_utilization = gpu.get("mean_utilization_percent")
+        pmon["tenant_sm_time_sum_percent"] = round(sum(tenant_means), 1)
+        pmon["device_utilization_percent"] = device_utilization
+        if device_utilization:
+            pmon["sm_concurrency_ratio"] = round(sum(tenant_means) / device_utilization, 3)
 
 # ---------------------------------------------------------------------------
 # CPU. The alternative explanation for the HAMi throughput loss that has

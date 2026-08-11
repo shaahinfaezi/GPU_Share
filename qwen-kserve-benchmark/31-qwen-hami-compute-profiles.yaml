@@ -50,3 +50,20 @@ data:
   # device level once MPS owns the context.
   compute-skew: |
     {"cores": [75, 25], "mem": [4096, 4096], "util": [0.90, 0.90]}
+  # ---------------------------------------------------------------------------
+  # The optional "mps" field sets CUDA_MPS_ACTIVE_THREAD_PERCENTAGE PER TENANT.
+  # Without it, both tenants get the single --mps-thread-percent value, which
+  # cannot express an asymmetric QoS target at all.
+  # ---------------------------------------------------------------------------
+  # Both controls skewed the same way: the configuration you would actually
+  # deploy to give one tenant 75% of the GPU. Answers "does the stack as a whole
+  # deliver a 75/25 split?", which is the question the project goals ask.
+  qos-skew: |
+    {"cores": [75, 25], "mem": [4096, 4096], "util": [0.90, 0.90], "mps": [75, 25]}
+  # MPS skewed, gpucores deliberately absent (paired with 21-qwen-mps.yaml, which
+  # carries no gpucores key). This is the fallback question: if gpucores turns out
+  # to be blind under MPS, can CUDA_MPS_ACTIVE_THREAD_PERCENTAGE deliver
+  # asymmetric QoS on its own? Without this run, a null result from asym-mps
+  # leaves the project with no working priority mechanism at all.
+  mps-skew: |
+    {"cores": [50, 50], "mem": [4096, 4096], "util": [0.90, 0.90], "mps": [75, 25]}
