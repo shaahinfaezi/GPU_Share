@@ -2006,10 +2006,17 @@ if pmon_path.exists():
             "peak_sm_percent": max(values),
         }
     pmon["samples"] = sample_count
-    pmon["attributed_to_mps_server"] = any("mps-server" in key for key in pmon["per_process"])
+    # pmon truncates the command column, so the MPS server appears as
+    # "nvidia-cuda-mps", not "nvidia-cuda-mps-server". Matching the long form
+    # made attributed_to_mps_server read False on runs where MPS plainly owned
+    # every sample. Match the stem instead.
+    def is_mps_server(key):
+        return "nvidia-cuda-mps" in key or "mps-server" in key
+
+    pmon["attributed_to_mps_server"] = any(is_mps_server(key) for key in pmon["per_process"])
     tenant_means = sorted(
         (entry["mean_sm_percent"] for key, entry in pmon["per_process"].items()
-         if "mps-server" not in key), reverse=True)
+         if not is_mps_server(key)), reverse=True)
     if len(tenant_means) >= 2 and sum(tenant_means):
         # The number that answers the asymmetric experiment: with gpucores
         # 75/25 this should read near [0.75, 0.25] if the limiter binds, and
