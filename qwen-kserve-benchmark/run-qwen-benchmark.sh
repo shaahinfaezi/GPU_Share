@@ -640,8 +640,12 @@ apply_hami_manifest() {
   # Only claim a gpucores value if the manifest actually carries the key. The
   # MPS-only manifests deliberately omit it, and logging "gpucores=50" for a
   # mode that sets no compute limit at all would misreport the experiment.
+  # Anchor on the YAML KEY, not the bare string. 21-qwen-mps.yaml explains in a
+  # comment that it deliberately omits "nvidia.com/gpucores", and an unanchored
+  # grep matched that prose - so asym-mpsonly logged "gpucores=50" for a mode
+  # that sets no gpucores at all. The experiment was correct; the log lied.
   local cores_note_1="${cores_1}" cores_note_2="${cores_2}"
-  if ! grep -q 'nvidia\.com/gpucores' "${rendered}"; then
+  if ! grep -qE '^[[:space:]]*nvidia\.com/gpucores:' "${rendered}"; then
     cores_note_1="(unset - no HAMi compute limit)"
     cores_note_2="(unset - no HAMi compute limit)"
   fi
