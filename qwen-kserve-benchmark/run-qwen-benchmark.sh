@@ -59,6 +59,12 @@ MPS_THREAD_PERCENT=50
 # reproduces the earlier published run, which repeated one identical prompt and
 # so let cached prefill work leak into the measurement.
 PROMPT_MODE="varied"
+# Override the per-Pod CPU limit in every manifest. Empty leaves them at the
+# manifests' cpu: '2'. Run 2 measured every Pod at 2.01-2.12 cores against that
+# ceiling, throttled in 11-32% of CFS periods, so the ceiling was binding in
+# every sharing mode - which makes "is the gap GPU-side or CPU-side?" untestable
+# until it is raised.
+POD_CPU_LIMIT=""
 ENDPOINT_1=""
 ENDPOINT_2=""
 INSECURE="false"
@@ -153,6 +159,13 @@ Options:
                              Overridden per mode by the mps-100/*-100 modes.
   --prompt-mode MODE         varied (default) or fixed. fixed repeats one
                              identical prompt, reproducing the earlier run.
+  --pod-cpu-limit N          override the per-Pod CPU limit (manifests use 2).
+                             Run 2 found every Pod pinned at that ceiling, so
+                             raising it is how you test whether the throughput
+                             gap is GPU-side or CPU-side.
+  --max-num-seqs N           vLLM --max-num-seqs (default: 8). Applied to EVERY
+                             mode including sequential and mem-only.
+  --max-model-len N          vLLM --max-model-len (default: 512)
   --with-hami-mps            include the HAMi + MPS mode when --mode all
   --endpoint-1 URL           explicit service 1 endpoint
   --endpoint-2 URL           explicit service 2 endpoint
@@ -210,6 +223,9 @@ while [[ $# -gt 0 ]]; do
     --cooldown-seconds)      COOLDOWN_SECONDS="$2"; shift 2 ;;
     --mps-thread-percent)    MPS_THREAD_PERCENT="$2"; shift 2 ;;
     --prompt-mode)           PROMPT_MODE="$2"; shift 2 ;;
+    --pod-cpu-limit)         POD_CPU_LIMIT="$2"; shift 2 ;;
+    --max-num-seqs)          MAX_NUM_SEQS="$2"; shift 2 ;;
+    --max-model-len)         MAX_MODEL_LEN="$2"; shift 2 ;;
     --with-hami-mps)         WITH_HAMI_MPS="true"; shift ;;
     --endpoint-1)            ENDPOINT_1="$2"; shift 2 ;;
     --endpoint-2)            ENDPOINT_2="$2"; shift 2 ;;
@@ -498,6 +514,48 @@ reset_cluster_state() {
 # broke GPU-placement detection.
 #
 # Rendering first means one apply, one ReplicaSet, no rollout.
+# Substitutions every mode needs, whether or not it uses a HAMi profile.
+#
+# Only the HAMi/MPS manifests were rendered before, so --max-num-seqs and
+# --max-model-len silently never reached the `sequential` or `mem-only` modes. A
+# batch-size sweep would then have compared a swept sharing mode against an
+# unswept baseline and called the difference a sharing effect.
+#
+# POD_CPU_LIMIT exists because run 2 found every Pod pinned at its cpu: '2'
+# ceiling (2.01-2.12 cores used, throttled in 11-32% of CFS periods). Raising the
+# ceiling is the only way to show whether that ceiling was shaping the result.
+render_common() {
+  local manifest="$1" out="$2"
+  MANIFEST="${ROOT_DIR}/${manifest}" OUT="${out}" SEQS="${MAX_NUM_SEQS}" \
+  MODELLEN="${MAX_MODEL_LEN}" PODCPU="${POD_CPU_LIMIT}" run_python -c '
+import os, pathlib, re
+
+text = pathlib.Path(os.environ["MANIFEST"]).read_text(encoding="utf-8")
+text = re.sub(r"--max-num-seqs=[0-9]+", "--max-num-seqs=" + os.environ["SEQS"], text)
+text = re.sub(r"--max-model-len=[0-9]+", "--max-model-len=" + os.environ["MODELLEN"], text)
+
+cpu = os.environ.get("PODCPU", "").strip()
+if cpu:
+    # Only the limits block carries a bare core count; requests are written
+    # "100m", which this pattern deliberately does not match.
+    quote = chr(39)
+    text = re.sub(r"(cpu:\s*)" + quote + r"[0-9]+" + quote,
+                  lambda match: match.group(1) + quote + cpu + quote, text)
+
+pathlib.Path(os.environ["OUT"]).write_text(text, encoding="utf-8")
+'
+}
+
+apply_common_manifest() {
+  local manifest="$1"
+  local rendered="${RUN_DIR}/rendered-${manifest}"
+  render_common "${manifest}" "${rendered}"
+  if [[ -n "${POD_CPU_LIMIT}" ]]; then
+    log "  pod CPU limit overridden to ${POD_CPU_LIMIT} cores"
+  fi
+  kubectl apply -f "${rendered}" >/dev/null
+}
+
 render_hami_manifest() {
   local manifest="$1" profile="$2" out="$3"
   local raw
@@ -506,7 +564,7 @@ render_hami_manifest() {
     fail "HAMi profile '${profile}' not found in configmap qwen-hami-compute-profiles"
   fi
 
-  printf '%s' "${raw}" |     MANIFEST="${ROOT_DIR}/${manifest}" OUT="${out}" PROFILE_NAME="${profile}"     SEQS="${MAX_NUM_SEQS}" MODELLEN="${MAX_MODEL_LEN}" MPSPCT="${MPS_THREAD_PERCENT}" run_python -c '
+  printf '%s' "${raw}" |     MANIFEST="${ROOT_DIR}/${manifest}" OUT="${out}" PROFILE_NAME="${profile}"     SEQS="${MAX_NUM_SEQS}" MODELLEN="${MAX_MODEL_LEN}" MPSPCT="${MPS_THREAD_PERCENT}" PODCPU="${POD_CPU_LIMIT}" run_python -c '
 import json, os, pathlib, re, sys
 
 profile = json.load(sys.stdin)
@@ -517,6 +575,7 @@ seqs = os.environ["SEQS"]
 model_len = os.environ["MODELLEN"]
 name = os.environ["PROFILE_NAME"]
 mps_pct = os.environ.get("MPSPCT", "50")
+pod_cpu = os.environ.get("PODCPU", "").strip()
 
 text = pathlib.Path(os.environ["MANIFEST"]).read_text(encoding="utf-8")
 # Built with chr(10) rather than a backslash escape: this block is embedded in
@@ -538,6 +597,12 @@ for position, document in enumerate(documents):
     document = re.sub(r"(nvidia\.com/gpumem:\s*)\"[0-9]+\"",
                       lambda m: m.group(1) + chr(34) + str(mem[which]) + chr(34), document)
     document = re.sub(r"(qwen-hami-profile:\s*)\S+", lambda m: m.group(1) + name, document)
+    # Pod CPU ceiling. Only the limits block uses a bare core count; requests
+    # are written "100m" and are deliberately not matched.
+    if pod_cpu:
+        quote = chr(39)
+        document = re.sub(r"(cpu:\s*)" + quote + r"[0-9]+" + quote,
+                          lambda m: m.group(1) + quote + pod_cpu + quote, document)
     # MPS thread percentage. Matches the two-line env entry so only the value
     # belonging to this key is touched, never a number in a nearby comment.
     document = re.sub(
@@ -982,7 +1047,7 @@ apply_mode_manifests() {
       # The control that separates driver-level context switching from HAMi's
       # launch gate. A stray MPS server would silently turn this into `mps`.
       ensure_mps_stopped
-      kubectl apply -f "${ROOT_DIR}/22-qwen-mem-only.yaml" >/dev/null
+      apply_common_manifest "22-qwen-mem-only.yaml"
       ;;
     mps|mps-100)
       if [[ "${mode}" == "mps-100" ]]; then MPS_THREAD_PERCENT=100; fi
@@ -1447,6 +1512,25 @@ collect_service_artifacts() {
     kubectl exec -n "${NS}" "${pod_name}" -c main -- nvidia-smi \
       --query-gpu=memory.total,memory.used,utilization.gpu --format=csv,noheader,nounits \
       > "${service_dir}/gpu-smi.txt" 2>"${service_dir}/gpu-smi.err" || true
+
+    # The container's real environment, read from PID 1.
+    #
+    # This closes an evidence gap the report otherwise has to hand-wave. HAMi's
+    # device plugin injects CUDA_DEVICE_SM_LIMIT / CUDA_DEVICE_MEMORY_LIMIT_n and
+    # preloads libvgpu.so through the kubelet's ContainerAllocateResponse, which
+    # is NEVER written back into the Pod spec - so pod.json cannot show it and
+    # its absence there proves nothing either way. Reading /proc/1/environ is the
+    # only way to demonstrate that the limiter the whole gpucores argument rests
+    # on was actually present in the container.
+    #
+    # Captured automatically because relying on someone remembering to run a
+    # kubectl exec at the right moment during a 45-minute run does not scale.
+    kubectl exec -n "${NS}" "${pod_name}" -c main -- \
+      sh -c "tr '\0' '\n' < /proc/1/environ | sort" \
+      > "${service_dir}/container-environ.txt" 2>/dev/null || true
+    if grep -qE 'CUDA_DEVICE_SM_LIMIT|libvgpu' "${service_dir}/container-environ.txt" 2>/dev/null; then
+      log "  ${service}: HAMi in-container limiter confirmed ($(grep -cE 'CUDA_DEVICE|LD_PRELOAD' "${service_dir}/container-environ.txt") matching vars)"
+    fi
   fi
 
   kubectl get events -n "${NS}" --sort-by=.lastTimestamp > "${service_dir}/events.txt" 2>/dev/null || true
@@ -1732,6 +1816,7 @@ write_mode_summary() {
   REQ_PER_SVC="${REQUESTS_PER_SERVICE}" WARMUP="${WARMUP_REQUESTS}" \
   SVC1="${SERVICE_1}" SVC2="${SERVICE_2}" HAMI_PROFILE_NAME="${HAMI_PROFILE}" \
   MODE_DURATION="${MODE_DURATION_SECONDS:-}" TARGET_GPU="${target_gpu_uuid}" \
+  POD_CPU_LIMIT="${POD_CPU_LIMIT}" \
   run_python -c '
 import json, os, pathlib
 
@@ -2117,6 +2202,31 @@ if _mean_util and _tokens_per_second:
                  "unavailable on this GPU"),
     }
 
+# ---------------------------------------------------------------------------
+# In-container proof that the limiter under discussion was actually loaded.
+# CUDA_DEVICE_SM_LIMIT is what libvgpu.so reads to enforce nvidia.com/gpucores;
+# it arrives via the kubelet, never through the Pod spec, so this is the only
+# place it can be observed.
+# ---------------------------------------------------------------------------
+limiter = {}
+for service in (svc1, svc2):
+    environ_path = mode_dir / service / "container-environ.txt"
+    if not environ_path.exists() or not environ_path.stat().st_size:
+        continue
+    values = {}
+    for line in environ_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        if key.startswith("CUDA_DEVICE") or key.startswith("CUDA_MPS") or key == "LD_PRELOAD":
+            values[key] = value
+    limiter[service] = {
+        "observed_vars": values,
+        "sm_limit": values.get("CUDA_DEVICE_SM_LIMIT"),
+        "libvgpu_preloaded": "libvgpu" in values.get("LD_PRELOAD", ""),
+        "mps_thread_percent": values.get("CUDA_MPS_ACTIVE_THREAD_PERCENTAGE"),
+    }
+
 repeats = {}
 if (mode_dir / "repeats.json").exists():
     repeats = json.loads((mode_dir / "repeats.json").read_text(encoding="utf-8"))
@@ -2160,6 +2270,15 @@ acceptance = {
     # a throughput difference that has nothing to do with GPU sharing.
     "any_pod_cpu_throttled": any(
         entry.get("was_cpu_throttled") for entry in pod_cpu.values()),
+    "pod_cpu_limit_override": os.environ.get("POD_CPU_LIMIT", "") or "manifest default",
+    # Observed inside the container, not assumed from the Pod spec.
+    "sm_limit_observed": sorted({
+        entry.get("sm_limit") for entry in limiter.values() if entry.get("sm_limit")}),
+    "libvgpu_preloaded": all(
+        entry.get("libvgpu_preloaded") for entry in limiter.values()) if limiter else None,
+    "mps_thread_percent_observed": sorted({
+        entry.get("mps_thread_percent") for entry in limiter.values()
+        if entry.get("mps_thread_percent")}),
 }
 
 summary = {
@@ -2175,6 +2294,7 @@ summary = {
     "services": services,
     "gpu": gpu,
     "gpu_per_process": pmon,
+    "in_container_limiter": limiter,
     "sm_occupancy_proxy": occupancy_proxy,
     "node_cpu": cpu,
     "pod_cpu": pod_cpu,
@@ -2262,7 +2382,7 @@ run_mode_sequential() {
     fi
 
     log "Sequential phase ${index}: deploying ${service} alone"
-    kubectl apply -f "${ROOT_DIR}/${manifest}" >/dev/null
+    apply_common_manifest "${manifest}"
 
     local phase_started
     phase_started="$(date +%s)"
