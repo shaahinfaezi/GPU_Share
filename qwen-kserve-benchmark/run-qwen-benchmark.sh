@@ -1696,11 +1696,33 @@ collect_mode_snapshot() {
   # GPU, and it also shows how many nvidia-cuda-mps-server processes exist
   # (one per client UID per GPU, so stale ones from earlier runs stand out).
   if [[ -n "${gpu_probe_pod}" ]]; then
+    # Retry once and KEEP stderr.
+    #
+    # In the two runs that raised --pod-cpu-limit, this query came back empty
+    # while the plain nvidia-smi below succeeded moments later - and in one mode
+    # even that output was truncated mid-table. Discarding stderr left no way to
+    # tell a genuine "no processes" from a failed exec, so the summary reported
+    # zero resident processes for a mode where MPS was demonstrably running.
+    local attempt
+    for attempt in 1 2; do
+      kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- nvidia-smi \
+        --query-compute-apps=gpu_uuid,pid,process_name,used_memory \
+        --format=csv,noheader > "${mode_dir}/gpu-compute-apps.csv" \
+        2>"${mode_dir}/gpu-compute-apps.err" || true
+      if [[ -s "${mode_dir}/gpu-compute-apps.csv" ]]; then
+        break
+      fi
+      if (( attempt == 1 )); then
+        sleep 2
+      fi
+    done
+    if [[ ! -s "${mode_dir}/gpu-compute-apps.csv" ]]; then
+      log "  WARNING: GPU process table came back empty after 2 attempts"
+      log "    stderr: $(head -c 200 "${mode_dir}/gpu-compute-apps.err" 2>/dev/null)"
+      log "    placement is still verified independently in gpu-placement.json"
+    fi
     kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- nvidia-smi \
-      --query-compute-apps=gpu_uuid,pid,process_name,used_memory \
-      --format=csv,noheader 2>/dev/null > "${mode_dir}/gpu-compute-apps.csv" || true
-    kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- nvidia-smi \
-      > "${mode_dir}/nvidia-smi.txt" 2>/dev/null || true
+      > "${mode_dir}/nvidia-smi.txt" 2>"${mode_dir}/nvidia-smi.err" || true
   fi
   kubectl get httproute -n "${NS}" -o yaml > "${mode_dir}/httproutes.yaml" 2>/dev/null || true
   kubectl get gateway -A -o wide > "${mode_dir}/gateways.txt" 2>/dev/null || true
@@ -2082,7 +2104,20 @@ residency = {
     "gpus_with_vllm": [],
 }
 apps_path = mode_dir / "gpu-compute-apps.csv"
-if apps_path.exists():
+# Distinguish "collected and found nothing" from "never collected".
+#
+# In the cpu-limit run this file came back EMPTY, so residency read 0 vllm
+# processes and 0 MPS servers - which made the acceptance block report
+# all_vllm_on_one_gpu=false and mps_servers_resident=0 for a mode where MPS was
+# demonstrably running. A failed collection must not masquerade as a failed
+# validity check; that is the same silent-absence trap as the environ capture.
+residency["collected"] = apps_path.exists() and apps_path.stat().st_size > 0
+if not residency["collected"]:
+    residency["vllm_processes"] = None
+    residency["mps_servers"] = None
+    residency["distinct_gpus_with_vllm"] = None
+
+if apps_path.exists() and apps_path.stat().st_size:
     vllm_gpus = set()
     for line in apps_path.read_text(encoding="utf-8", errors="replace").splitlines():
         parts = [part.strip() for part in line.split(",")]
@@ -2311,7 +2346,13 @@ acceptance = {
     "gpu_memory_total_mib": capacity,
     "within_gpu_capacity": peak is not None and capacity is not None and peak <= capacity,
     # A concurrent mode is only valid if every vLLM process sat on one GPU.
-    "all_vllm_on_one_gpu": residency["distinct_gpus_with_vllm"] == 1,
+    # None means the process table was never collected, NOT that the check
+    # failed - placement is independently verified by verify_same_gpu, which
+    # writes gpu-placement.json before the workload runs.
+    "all_vllm_on_one_gpu": (
+        (residency["distinct_gpus_with_vllm"] == 1)
+        if residency.get("collected") else None),
+    "gpu_process_table_collected": residency.get("collected"),
     # Non-MPS modes must have zero MPS servers resident.
     "mps_servers_resident": residency["mps_servers"],
     "mps_expected": mode in ("mps", "mps-100", "hami-mps", "hami-mps-100", "asym-mps"),
