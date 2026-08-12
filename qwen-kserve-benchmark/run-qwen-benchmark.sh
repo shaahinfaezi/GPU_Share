@@ -1695,7 +1695,25 @@ collect_mode_snapshot() {
   # evidence of sharing: both VLLM::EngineCore processes should appear on ONE
   # GPU, and it also shows how many nvidia-cuda-mps-server processes exist
   # (one per client UID per GPU, so stale ones from earlier runs stand out).
-  if [[ -n "${gpu_probe_pod}" ]]; then
+  # Re-resolve the probe Pod instead of trusting the name captured at mode start.
+  #
+  # The stderr capture added after the last run produced the answer immediately:
+  #   error: unable to upgrade connection: container not found ("probe")
+  # The Pod had been replaced during the mode, so the stored name was stale. It
+  # was never CPU starvation, which was my guess. Re-resolving costs one API call
+  # and removes the whole class of failure.
+  local probe_pod=""
+  probe_pod="$(kubectl get pods -n "${NS}" -l app=qwen-benchmark-gpu-probe \
+    --field-selector=status.phase=Running \
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+  if [[ -z "${probe_pod}" ]]; then
+    probe_pod="${gpu_probe_pod}"
+  elif [[ "${probe_pod}" != "${gpu_probe_pod}" ]]; then
+    log "  GPU probe Pod changed during this mode: ${gpu_probe_pod} -> ${probe_pod}"
+    gpu_probe_pod="${probe_pod}"
+  fi
+
+  if [[ -n "${probe_pod}" ]]; then
     # Retry once and KEEP stderr.
     #
     # In the two runs that raised --pod-cpu-limit, this query came back empty
@@ -1705,7 +1723,7 @@ collect_mode_snapshot() {
     # zero resident processes for a mode where MPS was demonstrably running.
     local attempt
     for attempt in 1 2; do
-      kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- nvidia-smi \
+      kubectl exec -n "${NS}" "${probe_pod}" -c probe -- nvidia-smi \
         --query-compute-apps=gpu_uuid,pid,process_name,used_memory \
         --format=csv,noheader > "${mode_dir}/gpu-compute-apps.csv" \
         2>"${mode_dir}/gpu-compute-apps.err" || true
@@ -1721,7 +1739,7 @@ collect_mode_snapshot() {
       log "    stderr: $(head -c 200 "${mode_dir}/gpu-compute-apps.err" 2>/dev/null)"
       log "    placement is still verified independently in gpu-placement.json"
     fi
-    kubectl exec -n "${NS}" "${gpu_probe_pod}" -c probe -- nvidia-smi \
+    kubectl exec -n "${NS}" "${probe_pod}" -c probe -- nvidia-smi \
       > "${mode_dir}/nvidia-smi.txt" 2>"${mode_dir}/nvidia-smi.err" || true
   fi
   kubectl get httproute -n "${NS}" -o yaml > "${mode_dir}/httproutes.yaml" 2>/dev/null || true
