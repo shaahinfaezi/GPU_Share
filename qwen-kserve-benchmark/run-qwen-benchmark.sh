@@ -65,6 +65,23 @@ PROMPT_MODE="varied"
 # every sharing mode - which makes "is the gap GPU-side or CPU-side?" untestable
 # until it is raised.
 POD_CPU_LIMIT=""
+# GPU_CORE_UTILIZATION_POLICY, injected directly into the workload containers.
+#
+# This is the switch that turns HAMi's compute limiter ON. In HAMi-core,
+# rate_limiter() opens with:
+#
+#     if (cached_util_switch == 0) { return; }
+#
+# and cached_util_switch is set from get_utilization_switch(), which is driven by
+# GPU_CORE_UTILIZATION_POLICY. With the variable absent the limiter returns
+# immediately on every kernel launch, so nvidia.com/gpucores has no effect at all
+# no matter what value it carries. That is exactly what runs 1-8 measured.
+#
+# Setting it here rather than through HAMi's Helm values is deliberate:
+# libvgpu.so reads it from the process environment and does not care who put it
+# there, so this needs no cluster change and is verifiable in
+# container-environ.txt afterwards.
+CORE_POLICY=""
 ENDPOINT_1=""
 ENDPOINT_2=""
 INSECURE="false"
@@ -166,6 +183,11 @@ Options:
                              Overridden per mode by the mps-100/*-100 modes.
   --prompt-mode MODE         varied (default) or fixed. fixed repeats one
                              identical prompt, reproducing the earlier run.
+  --core-policy VALUE        inject GPU_CORE_UTILIZATION_POLICY into the workload
+                             containers (force | default | disable). THIS IS THE
+                             SWITCH THAT ENABLES HAMi COMPUTE LIMITING: with it
+                             unset, HAMi-core's rate_limiter() returns
+                             immediately and nvidia.com/gpucores has no effect.
   --pod-cpu-limit N          override the per-Pod CPU limit (manifests use 2).
                              Run 2 found every Pod pinned at that ceiling, so
                              raising it is how you test whether the throughput
@@ -231,6 +253,7 @@ while [[ $# -gt 0 ]]; do
     --mps-thread-percent)    MPS_THREAD_PERCENT="$2"; shift 2 ;;
     --prompt-mode)           PROMPT_MODE="$2"; shift 2 ;;
     --pod-cpu-limit)         POD_CPU_LIMIT="$2"; shift 2 ;;
+    --core-policy)           CORE_POLICY="$2"; shift 2 ;;
     --max-num-seqs)          MAX_NUM_SEQS="$2"; shift 2 ;;
     --max-model-len)         MAX_MODEL_LEN="$2"; shift 2 ;;
     --with-hami-mps)         WITH_HAMI_MPS="true"; shift ;;
@@ -535,7 +558,7 @@ reset_cluster_state() {
 render_common() {
   local manifest="$1" out="$2"
   MANIFEST="${ROOT_DIR}/${manifest}" OUT="${out}" SEQS="${MAX_NUM_SEQS}" \
-  MODELLEN="${MAX_MODEL_LEN}" PODCPU="${POD_CPU_LIMIT}" run_python -c '
+  MODELLEN="${MAX_MODEL_LEN}" PODCPU="${POD_CPU_LIMIT}" COREPOLICY="${CORE_POLICY}" run_python -c '
 import os, pathlib, re
 
 text = pathlib.Path(os.environ["MANIFEST"]).read_text(encoding="utf-8")
@@ -549,6 +572,20 @@ if cpu:
     quote = chr(39)
     text = re.sub(r"(cpu:\s*)" + quote + r"[0-9]+" + quote,
                   lambda match: match.group(1) + quote + cpu + quote, text)
+
+cpolicy = os.environ.get("COREPOLICY", "").strip()
+if cpolicy:
+    # Insert GPU_CORE_UTILIZATION_POLICY as the first entry of every env: block.
+    # Indentation is taken from the matched "env:" line so the YAML stays valid
+    # whatever the manifest nesting is.
+    def add_policy(match):
+        indent = match.group(1)
+        return (match.group(0) + chr(10)
+                + indent + "  - name: GPU_CORE_UTILIZATION_POLICY" + chr(10)
+                + indent + "    value: " + chr(34) + cpolicy + chr(34))
+
+    if "GPU_CORE_UTILIZATION_POLICY" not in text:
+        text = re.sub(r"^([ ]+)env:[ ]*$", add_policy, text, flags=re.M)
 
 pathlib.Path(os.environ["OUT"]).write_text(text, encoding="utf-8")
 '
@@ -572,7 +609,7 @@ render_hami_manifest() {
     fail "HAMi profile '${profile}' not found in configmap qwen-hami-compute-profiles"
   fi
 
-  printf '%s' "${raw}" |     MANIFEST="${ROOT_DIR}/${manifest}" OUT="${out}" PROFILE_NAME="${profile}"     SEQS="${MAX_NUM_SEQS}" MODELLEN="${MAX_MODEL_LEN}" MPSPCT="${MPS_THREAD_PERCENT}" PODCPU="${POD_CPU_LIMIT}" run_python -c '
+  printf '%s' "${raw}" |     MANIFEST="${ROOT_DIR}/${manifest}" OUT="${out}" PROFILE_NAME="${profile}"     SEQS="${MAX_NUM_SEQS}" MODELLEN="${MAX_MODEL_LEN}" MPSPCT="${MPS_THREAD_PERCENT}" PODCPU="${POD_CPU_LIMIT}" COREPOLICY="${CORE_POLICY}" run_python -c '
 import json, os, pathlib, re, sys
 
 profile = json.load(sys.stdin)
@@ -619,6 +656,15 @@ for position, document in enumerate(documents):
     document = re.sub(
         r"(name:\s*CUDA_MPS_ACTIVE_THREAD_PERCENTAGE\s*\n\s*value:\s*)" + chr(34) + r"[0-9]+" + chr(34),
         lambda m: m.group(1) + chr(34) + str(mps_list[which]) + chr(34), document)
+    cpolicy = os.environ.get("COREPOLICY", "").strip()
+    if cpolicy and "GPU_CORE_UTILIZATION_POLICY" not in document:
+        # See render_common: this is the switch that enables HAMi compute limiting.
+        def add_policy(match):
+            indent = match.group(1)
+            return (match.group(0) + chr(10)
+                    + indent + "  - name: GPU_CORE_UTILIZATION_POLICY" + chr(10)
+                    + indent + "    value: " + chr(34) + cpolicy + chr(34))
+        document = re.sub(r"^([ ]+)env:[ ]*$", add_policy, document, flags=re.M)
     rendered.append(document)
 
 pathlib.Path(os.environ["OUT"]).write_text(separator.join(rendered), encoding="utf-8")
@@ -2735,6 +2781,7 @@ log "Writing benchmark results to ${RUN_DIR}"
 log "Resource type: ${resource_type}"
 log "Modes: ${modes_to_run[*]}"
 log "HAMi profile: ${HAMI_PROFILE} | MPS threads: ${MPS_THREAD_PERCENT}% | prompts: ${PROMPT_MODE}"
+log "HAMi core policy: ${CORE_POLICY:-<unset - compute limiter DISABLED>}"
 log "Repeats: ${REPEATS} in-place pass(es) per deployment, ${COOLDOWN_SECONDS}s cooldown between passes"
 log "Workload: ${REQUESTS_PER_SERVICE} req/service x ${MAX_TOKENS} tokens, concurrency ${CONCURRENCY}/service, warmup ${WARMUP_REQUESTS}"
 
