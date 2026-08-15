@@ -82,6 +82,19 @@ POD_CPU_LIMIT=""
 # there, so this needs no cluster change and is verifiable in
 # container-environ.txt afterwards.
 CORE_POLICY=""
+# What "ready" means before the client starts.
+#
+#   crd       the LLMInferenceService's aggregate Ready condition (default)
+#   workload  the vLLM Pod itself is Ready
+#
+# The aggregate condition also covers the llm-d router-scheduler Deployment,
+# which this benchmark never uses: every request goes over a port-forward
+# straight to the workload Service, because the advertised gateway URL has never
+# answered on this cluster. Observed repeatedly: the workload Pod reaches Ready
+# in 2-3 minutes while the router-scheduler sits in ContainerCreating for 9-17
+# minutes, and a run then stalls waiting for a component that contributes
+# nothing to the measurement.
+READY_MODE="crd"
 ENDPOINT_1=""
 ENDPOINT_2=""
 INSECURE="false"
@@ -188,6 +201,12 @@ Options:
                              SWITCH THAT ENABLES HAMi COMPUTE LIMITING: with it
                              unset, HAMi-core's rate_limiter() returns
                              immediately and nvidia.com/gpucores has no effect.
+  --ready-mode MODE          crd (default) waits for the LLMInferenceService Ready
+                             condition, which also covers the llm-d
+                             router-scheduler. workload waits only for the vLLM
+                             Pod - the benchmark reaches it by port-forward and
+                             never uses the router, so a router stuck in
+                             ContainerCreating need not block a run.
   --pod-cpu-limit N          override the per-Pod CPU limit (manifests use 2).
                              Run 2 found every Pod pinned at that ceiling, so
                              raising it is how you test whether the throughput
@@ -254,6 +273,7 @@ while [[ $# -gt 0 ]]; do
     --prompt-mode)           PROMPT_MODE="$2"; shift 2 ;;
     --pod-cpu-limit)         POD_CPU_LIMIT="$2"; shift 2 ;;
     --core-policy)           CORE_POLICY="$2"; shift 2 ;;
+    --ready-mode)            READY_MODE="$2"; shift 2 ;;
     --max-num-seqs)          MAX_NUM_SEQS="$2"; shift 2 ;;
     --max-model-len)         MAX_MODEL_LEN="$2"; shift 2 ;;
     --with-hami-mps)         WITH_HAMI_MPS="true"; shift ;;
@@ -314,6 +334,11 @@ done
 case "${HAMI_PROFILE}" in
   balanced|conservative|weighted|compute-skew|qos-skew|mps-skew) ;;
   *) fail "Unsupported HAMi profile: ${HAMI_PROFILE}" ;;
+esac
+
+case "${READY_MODE}" in
+  crd|workload) ;;
+  *) fail "Unsupported --ready-mode: ${READY_MODE} (crd, workload)" ;;
 esac
 
 case "${PROMPT_MODE}" in
@@ -1311,6 +1336,19 @@ resolve_endpoint() {
 }
 
 service_ready() {
+  # workload mode: the vLLM Pod alone decides readiness. select_pod_name already
+  # excludes the router-scheduler, so this waits on the container that actually
+  # serves the requests we measure.
+  if [[ "${READY_MODE}" == "workload" ]]; then
+    local pod ready
+    pod="$(select_pod_name "$1")"
+    [[ -n "${pod}" ]] || return 1
+    ready="$(kubectl get pod "${pod}" -n "${NS}" \
+      -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
+    [[ "${ready}" == "True" ]] || return 1
+    return 0
+  fi
+
   local payload
   payload="$(kubectl get "${resource_type}/$1" -n "${NS}" -o json 2>/dev/null || true)"
   [[ -n "${payload}" ]] || return 1
@@ -2782,6 +2820,7 @@ log "Resource type: ${resource_type}"
 log "Modes: ${modes_to_run[*]}"
 log "HAMi profile: ${HAMI_PROFILE} | MPS threads: ${MPS_THREAD_PERCENT}% | prompts: ${PROMPT_MODE}"
 log "HAMi core policy: ${CORE_POLICY:-<unset - compute limiter DISABLED>}"
+log "Readiness gate: ${READY_MODE}"
 log "Repeats: ${REPEATS} in-place pass(es) per deployment, ${COOLDOWN_SECONDS}s cooldown between passes"
 log "Workload: ${REQUESTS_PER_SERVICE} req/service x ${MAX_TOKENS} tokens, concurrency ${CONCURRENCY}/service, warmup ${WARMUP_REQUESTS}"
 
