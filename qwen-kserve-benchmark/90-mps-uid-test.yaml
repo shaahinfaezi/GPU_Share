@@ -1,0 +1,131 @@
+# MPS UID test
+#
+# Question: what happens when two CUDA clients running as DIFFERENT UIDs
+# connect to the same MPS control daemon?
+#
+# NVIDIA's man page says the daemon asks the running server to shut down
+# "as soon as all its clients are done", then starts a new server for the
+# new UID. Our clients are long-lived, so they are never done. This test
+# establishes what actually happens: does the second client block, fall
+# back to non-MPS, or error?
+#
+# It matters because every MPS number in the benchmark was measured with
+# both tenants on the SAME uid (same image, no runAsUser), and a
+# multi-tenant deployment would not reproduce that by default.
+#
+# Prerequisite: the MPS daemon must be running.
+#   kubectl apply -f 20-mps-daemon.yaml
+#   kubectl -n llm-demo rollout status ds/qwen-benchmark-mps-daemon
+#
+# Run:
+#   kubectl apply -f 90-mps-uid-test.yaml
+#   kubectl -n llm-demo logs -f mps-uid-a
+#   kubectl -n llm-demo logs -f mps-uid-b
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mps-uid-a
+  namespace: llm-demo
+  labels: {app: mps-uid-test}
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 1001
+    runAsGroup: 1001
+  containers:
+    - name: probe
+      image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+      env:
+        - name: HOME
+          value: /tmp
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_LOG_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_ACTIVE_THREAD_PERCENTAGE
+          value: "50"
+      command: ["/bin/bash", "-lc"]
+      args:
+        - |
+          python3 - <<'PY'
+          import os, sys, time
+          print("uid=%d  pipe=%s" % (os.getuid(), os.environ.get("CUDA_MPS_PIPE_DIRECTORY")), flush=True)
+          import torch
+          t0 = time.time()
+          print("creating CUDA context...", flush=True)
+          try:
+              x = torch.zeros(1024, device="cuda")
+              torch.cuda.synchronize()
+              print("CUDA_OK after %.1fs" % (time.time() - t0), flush=True)
+          except Exception as e:
+              print("CUDA_FAILED after %.1fs: %r" % (time.time() - t0, e), flush=True)
+              sys.exit(1)
+          # Hold the context open so the second client meets a live server.
+          print("HOLDING for 600s", flush=True)
+          time.sleep(600)
+          PY
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+          nvidia.com/gpumem: 2048
+      volumeMounts:
+        - {name: mps-pipe, mountPath: /tmp/nvidia-mps}
+  volumes:
+    - name: mps-pipe
+      hostPath: {path: /tmp/nvidia-mps}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mps-uid-b
+  namespace: llm-demo
+  labels: {app: mps-uid-test}
+spec:
+  restartPolicy: Never
+  # The ONLY difference from mps-uid-a. Same image, same everything else.
+  securityContext:
+    runAsUser: 1002
+    runAsGroup: 1002
+  containers:
+    - name: probe
+      image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+      env:
+        - name: HOME
+          value: /tmp
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_LOG_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_ACTIVE_THREAD_PERCENTAGE
+          value: "50"
+      command: ["/bin/bash", "-lc"]
+      args:
+        - |
+          # Let A establish its server first, so B is the one arriving second.
+          sleep 25
+          python3 - <<'PY'
+          import os, sys, time
+          print("uid=%d  pipe=%s" % (os.getuid(), os.environ.get("CUDA_MPS_PIPE_DIRECTORY")), flush=True)
+          import torch
+          t0 = time.time()
+          print("creating CUDA context...", flush=True)
+          try:
+              x = torch.zeros(1024, device="cuda")
+              torch.cuda.synchronize()
+              print("CUDA_OK after %.1fs" % (time.time() - t0), flush=True)
+          except Exception as e:
+              print("CUDA_FAILED after %.1fs: %r" % (time.time() - t0, e), flush=True)
+              sys.exit(1)
+          print("HOLDING for 600s", flush=True)
+          time.sleep(600)
+          PY
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+          nvidia.com/gpumem: 2048
+      volumeMounts:
+        - {name: mps-pipe, mountPath: /tmp/nvidia-mps}
+  volumes:
+    - name: mps-pipe
+      hostPath: {path: /tmp/nvidia-mps}
