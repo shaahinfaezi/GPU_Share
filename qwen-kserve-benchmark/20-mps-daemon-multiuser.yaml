@@ -1,0 +1,156 @@
+# MPS control daemon with -multiuser-server
+#
+# Identical to 20-mps-daemon.yaml except for the -multiuser-server flag, and
+# it deliberately reuses the SAME DaemonSet name so `kubectl apply -f` swaps
+# the two cleanly. Revert with:  kubectl apply -f 20-mps-daemon.yaml
+#
+# WHAT IT TESTS
+#   90-mps-uid-test.yaml showed that a client whose uid differs from the
+#   running MPS server blocks indefinitely. -multiuser-server is NVIDIA's
+#   documented relaxation: "Relax the single UID user requirement, allowing
+#   any UID to connect and share an MPS server started as root."
+#
+#   If it works, user containers can keep whatever uid their image was built
+#   with and still share a server. That matters for images we do not control,
+#   where forcing securityContext.runAsUser risks breaking the container on
+#   its own cache/home directories.
+#
+# WHAT IT COSTS
+#   Without this flag, the uid boundary is ALSO a fault boundary: clients of
+#   different uids cannot share a server, so an MPS server fault raised by one
+#   uid cannot terminate another uid's clients. Enabling it trades that away.
+#   NVIDIA's guidance is to enable it only where isolation between users can
+#   be safely disregarded, since a fatal fault from one client may bring down
+#   a different user's client sharing any GPU.
+#
+# RUN
+#   kubectl apply -f 20-mps-daemon-multiuser.yaml
+#   kubectl -n llm-demo rollout status ds/qwen-benchmark-mps-daemon
+#   kubectl -n llm-demo delete pod mps-uid-a mps-uid-b --ignore-not-found
+#   kubectl apply -f 90-mps-uid-test.yaml
+#   sleep 90
+#   kubectl -n llm-demo logs mps-uid-a; kubectl -n llm-demo logs mps-uid-b
+#   sudo tail -30 /tmp/nvidia-mps/control.log
+#
+# READ THE RESULT
+#   PASS  - both pods print CUDA_OK, and the control log shows a single server
+#           with "NEW CLIENT ... from user 1002: Server already exists" (or an
+#           equivalent accept) rather than "push client to pending list".
+#   FAIL  - pod B hangs exactly as before; the flag does not apply here.
+#
+#   Verify the flag actually took effect before trusting a PASS:
+#     ps -eo user,pid,args | grep mps-control
+#   must show -multiuser-server on the running daemon.
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: qwen-benchmark-mps-daemon
+  namespace: llm-demo
+  labels:
+    app: qwen-benchmark-mps-daemon
+spec:
+  selector:
+    matchLabels:
+      app: qwen-benchmark-mps-daemon
+  template:
+    metadata:
+      labels:
+        app: qwen-benchmark-mps-daemon
+        mps-mode: multiuser
+    spec:
+      hostPID: true
+      hostIPC: true
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: prepare-mps
+          image: nvidia/cuda:12.4.1-base-ubuntu22.04
+          securityContext:
+            privileged: true
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "utility,compute"
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -uo pipefail
+              mkdir -p /tmp/nvidia-mps
+              chmod 1777 /tmp/nvidia-mps
+              # A server left behind by the previous daemon will not accept the
+              # new one's clients and cannot be evicted while it holds workers.
+              # Clearing the pipe directory is not enough on its own, so stop
+              # any surviving daemon first.
+              echo quit | nvidia-cuda-mps-control 2>/dev/null || true
+              sleep 2
+              rm -rf /tmp/nvidia-mps/* || true
+              nvidia-smi -c DEFAULT || true
+              nvidia-smi || true
+          volumeMounts:
+            - name: mps-pipe
+              mountPath: /tmp/nvidia-mps
+      containers:
+        - name: mps
+          image: nvidia/cuda:12.4.1-base-ubuntu22.04
+          securityContext:
+            privileged: true
+          env:
+            - name: NVIDIA_VISIBLE_DEVICES
+              value: "all"
+            - name: NVIDIA_DRIVER_CAPABILITIES
+              value: "utility,compute"
+            - name: CUDA_MPS_PIPE_DIRECTORY
+              value: /tmp/nvidia-mps
+            - name: CUDA_MPS_LOG_DIRECTORY
+              value: /tmp/nvidia-mps
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -uo pipefail
+              export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
+              export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
+              # THE ONLY FUNCTIONAL DIFFERENCE from 20-mps-daemon.yaml.
+              # Must be started as root for -multiuser-server to be honoured.
+              nvidia-cuda-mps-control -d -multiuser-server
+              echo "started with -multiuser-server; verify with: ps -eo args | grep mps-control"
+              while true; do
+                if [ ! -S /tmp/nvidia-mps/control ]; then
+                  echo "MPS control pipe missing, restarting daemon"
+                  nvidia-cuda-mps-control -d -multiuser-server || true
+                fi
+                sleep 15
+              done
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/bash
+                  - -c
+                  - |
+                    echo quit | nvidia-cuda-mps-control || true
+                    nvidia-smi -c DEFAULT || true
+          volumeMounts:
+            - name: mps-pipe
+              mountPath: /tmp/nvidia-mps
+          readinessProbe:
+            exec:
+              command: ["test", "-S", "/tmp/nvidia-mps/control"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 12
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: mps-pipe
+          hostPath:
+            path: /tmp/nvidia-mps
+            type: DirectoryOrCreate

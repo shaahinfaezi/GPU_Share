@@ -1,0 +1,135 @@
+# NCCL-under-MPS test  (the tensor-parallel / DeepSpeed question)
+#
+# QUESTION
+#   Every benchmark run used a single-process engine at TP=1. A model sharded
+#   with vLLM --tensor-parallel-size>1, or served by DeepSpeed, runs one
+#   process per rank and exchanges activations over NCCL. NCCL's inter-process
+#   transport uses CUDA IPC; MPS on Volta+ gives each client an isolated GPU
+#   address space, which is exactly the separation IPC handles bridge. One
+#   collective stack (UCC's NCCL team layer) documents MPS as unsupported.
+#
+#   Neither fact proves vLLM TP fails under MPS. Both mean it cannot be
+#   assumed. This settles it.
+#
+# DESIGN
+#   One pod, two GPUs, two ranks via torchrun. The SAME NCCL all-reduce runs
+#   twice inside the pod:
+#     phase 1  MPS variables scrubbed  -> control, proves NCCL works at all here
+#     phase 2  MPS variables set       -> the actual question
+#   Running both in one pod removes machine-to-machine variation and avoids
+#   two pods fighting over the same two GPUs.
+#
+# PREREQUISITE
+#   BOTH GPUs must be free. The benchmark's GPU reserver pins one away:
+#     kubectl delete -f 06-gpu-reserver.yaml --ignore-not-found
+#   MPS daemon must be running for phase 2:
+#     kubectl apply -f 20-mps-daemon.yaml
+#     kubectl -n llm-demo rollout status ds/qwen-benchmark-mps-daemon
+#
+# RUN
+#   kubectl apply -f 91-nccl-tp-test.yaml
+#   kubectl -n llm-demo logs -f nccl-tp-test
+#
+# READ THE RESULT
+#   phase 1 ALLREDUCE_OK + phase 2 ALLREDUCE_OK  -> NCCL works under MPS.
+#        Tensor-parallel and DeepSpeed models are safe to co-locate.
+#   phase 1 ALLREDUCE_OK + phase 2 TIMEOUT       -> NCCL is broken by MPS.
+#        Schedule TP>1 models onto GPUs with MPS disabled. This is the
+#        outcome the documentation hints at.
+#   phase 1 TIMEOUT                              -> NCCL is broken on this node
+#        independently of MPS (PCIe topology, no NVLink, driver). Nothing to
+#        do with GPU sharing; fix that first or the test says nothing.
+#
+#   Each phase is wrapped in `timeout 180`, so a hang ends the phase rather
+#   than the pod. NCCL_DEBUG=INFO is on: a stall at bootstrap or at IPC handle
+#   exchange is the diagnostic signature.
+#
+# CLEANUP
+#   kubectl -n llm-demo delete pod nccl-tp-test
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nccl-tp-test
+  namespace: llm-demo
+  labels: {app: nccl-tp-test}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: nccl
+      image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+      env:
+        - name: HOME
+          value: /tmp
+        - name: NCCL_DEBUG
+          value: "INFO"
+        - name: NCCL_DEBUG_SUBSYS
+          value: "INIT,GRAPH"
+        # Consumer GPUs on PCIe without NVLink: P2P over the PCIe host bridge
+        # is a known source of NCCL hangs unrelated to MPS. Left ENABLED here
+        # so the control phase reflects the real default; if phase 1 times out,
+        # re-run with NCCL_P2P_DISABLE=1 to separate that cause from MPS.
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_LOG_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_ACTIVE_THREAD_PERCENTAGE
+          value: "50"
+      command: ["/bin/bash", "-lc"]
+      args:
+        - |
+          set -u
+          cat > /tmp/nccl_test.py <<'PY'
+          import os, time, torch, torch.distributed as dist
+          rank = int(os.environ["LOCAL_RANK"])
+          torch.cuda.set_device(rank)
+          mps = os.environ.get("CUDA_MPS_PIPE_DIRECTORY", "<unset>")
+          print(f"[rank {rank}] uid={os.getuid()} mps_pipe={mps}", flush=True)
+          t0 = time.time()
+          dist.init_process_group("nccl")
+          print(f"[rank {rank}] NCCL_INIT_OK after {time.time()-t0:.1f}s", flush=True)
+          x = torch.ones(1024 * 1024, device=f"cuda:{rank}")
+          dist.all_reduce(x)
+          torch.cuda.synchronize()
+          print(f"[rank {rank}] ALLREDUCE_OK value={x[0].item()} (expect 2.0)", flush=True)
+          dist.destroy_process_group()
+          PY
+
+          echo "############ PHASE 1 — control, MPS variables scrubbed ############"
+          timeout 180 env -u CUDA_MPS_PIPE_DIRECTORY \
+                          -u CUDA_MPS_LOG_DIRECTORY \
+                          -u CUDA_MPS_ACTIVE_THREAD_PERCENTAGE \
+            torchrun --nproc_per_node=2 /tmp/nccl_test.py
+          rc1=$?
+          [ $rc1 -eq 124 ] && echo "PHASE1_RESULT=TIMEOUT" || echo "PHASE1_RESULT=exit_$rc1"
+
+          echo
+          echo "############ PHASE 2 — MPS active ############"
+          echo "pipe=$CUDA_MPS_PIPE_DIRECTORY thread_pct=$CUDA_MPS_ACTIVE_THREAD_PERCENTAGE"
+          timeout 180 torchrun --nproc_per_node=2 /tmp/nccl_test.py
+          rc2=$?
+          [ $rc2 -eq 124 ] && echo "PHASE2_RESULT=TIMEOUT" || echo "PHASE2_RESULT=exit_$rc2"
+
+          echo
+          echo "############ SUMMARY ############"
+          echo "phase1 (no MPS): $rc1    phase2 (MPS): $rc2    [124 = hung]"
+          echo "0/0   -> NCCL works under MPS; TP and DeepSpeed are safe to co-locate"
+          echo "0/124 -> MPS breaks NCCL; keep TP>1 off MPS-enabled GPUs"
+          echo "124/* -> NCCL broken on this node regardless of MPS; fix that first"
+      resources:
+        limits:
+          nvidia.com/gpu: "2"
+          nvidia.com/gpumem: "4096"
+        requests:
+          nvidia.com/gpu: "2"
+          nvidia.com/gpumem: "4096"
+      volumeMounts:
+        - {name: mps-pipe, mountPath: /tmp/nvidia-mps}
+        - {name: shm, mountPath: /dev/shm}
+  volumes:
+    - name: mps-pipe
+      hostPath: {path: /tmp/nvidia-mps}
+    # torchrun/NCCL need more than the 64 MiB default or they fail for reasons
+    # that have nothing to do with MPS.
+    - name: shm
+      emptyDir: {medium: Memory, sizeLimit: 2Gi}

@@ -75,8 +75,19 @@ spec:
               set -uo pipefail
               export CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps
               export CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps
-              # The control daemon runs as root, so client processes running as
-              # any UID (the vLLM container is non-root) are allowed to connect.
+              # NOTE: an earlier version of this comment claimed that running the
+              # control daemon as root lets clients of ANY uid share one server.
+              # That is wrong, and 90-mps-uid-test.yaml disproves it: a client
+              # whose uid differs from the running server is pushed to a pending
+              # list and blocks indefinitely while the daemon retries evicting
+              # the incumbent (backoff observed out to 51200 ms). The incumbent
+              # keeps working; only the newcomer hangs, and it hangs in CUDA
+              # init with no error, on every GPU of the node.
+              #
+              # Sharing across uids requires -multiuser-server; see
+              # 20-mps-daemon-multiuser.yaml. All benchmark runs used a single
+              # uid (both tenants come from one image with no runAsUser), which
+              # is why they were unaffected.
               nvidia-cuda-mps-control -d
               # Self-heal. If the daemon dies the control pipe disappears and
               # every client silently falls back to non-MPS execution, which
