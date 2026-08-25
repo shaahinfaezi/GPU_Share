@@ -1,0 +1,6 @@
+# These scripts run on Linux. Store and check them out with LF endings so a
+# CRLF from a Windows working tree can never turn the shebang into "bash".
+*.sh text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
