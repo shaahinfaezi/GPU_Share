@@ -85,12 +85,16 @@ if have kubectl; then
   echo "--- HAMi components:"; kubectl get pods -A 2>/dev/null | grep -i hami | head -6
   echo "--- HAMi services:"; kubectl get svc -A 2>/dev/null | grep -i hami | head -6
   echo "--- do the HAMi exporters actually answer?"
-  for hp in "hami-device-plugin-monitor:31992" "hami-scheduler:31993"; do
-    svc="${hp%%:*}"; port="${hp##*:}"
-    n=$(kubectl run r2-curl-$$ -n "${NS}" --restart=Never --rm -q -i --image=curlimages/curl:8.10.1 \
-          --timeout=60s -- -s -m 8 "http://${svc}.kube-system:${port}/metrics" 2>/dev/null | grep -c '^[a-zA-Z]' )
-    echo "    ${svc}:${port} -> ${n:-0} metric lines"
+  # Both are NodePorts, so curl them straight from the host. The previous
+  # version span up a curlimages/curl pod, which cannot pull here: this node
+  # gets 403 from registry-1.docker.io.
+  for hp in 31992 31993; do
+    n="$(curl -s -m 8 "http://127.0.0.1:${hp}/metrics" 2>/dev/null | grep -c '^[a-zA-Z]')"
+    echo "    127.0.0.1:${hp}/metrics -> ${n:-0} metric lines"
+    curl -s -m 8 "http://127.0.0.1:${hp}/metrics" 2>/dev/null       | grep -E '^(vGPU|Device_|HostGPU|HostCore|hami)' | head -6 | sed 's/^/      /'
   done
+  echo "--- DCGM exporter (ClusterIP, needs a node-local probe):"
+  curl -s -m 8 "http://10.43.107.227:9400/metrics" 2>/dev/null | grep -c '^DCGM'     | sed 's/^/    my-hami-webui-dcgm-exporter DCGM series: /'
   echo "--- existing ServiceMonitors:"; kubectl get servicemonitor -A 2>/dev/null | head -12
 fi
 
@@ -114,6 +118,27 @@ else
   echo "curl NOT FOUND"
 fi
 
+
+hr "6b. DISK PRESSURE — this evicted the probe pod"
+# kubelet evicts on the filesystem holding the container runtime, which is NOT
+# necessarily the one `df /` reports. A large image pull can cross the
+# threshold and take running pods down with it.
+echo "--- kubelet-visible node conditions:"
+kubectl describe node mr-gholami 2>/dev/null | grep -A6 "^Conditions:" | head -12
+echo "--- k3s / containerd data dir:"
+for d in /var/lib/rancher/k3s /var/lib/rancher/k3s/agent/containerd /var/lib/kubelet; do
+  [[ -d "${d}" ]] && printf '    %-46s %8s  (fs: %s)
+' "${d}"     "$(du -sh "${d}" 2>/dev/null | cut -f1)" "$(df -P "${d}" | awk 'NR==2{print $6}')"
+done
+echo "--- filesystems:"; df -h | grep -Ev "tmpfs|overlay" | head -8
+echo "--- images held by containerd (top 10 by size):"
+if have k3s; then
+  k3s crictl images 2>/dev/null | sort -k4 -h -r | head -10
+elif have crictl; then
+  crictl images 2>/dev/null | head -10
+fi
+echo "--- is the benchmark image resident?"
+(k3s crictl images 2>/dev/null || crictl images 2>/dev/null) | grep -i huggingfaceserver || echo "    NOT PRESENT — it must be pulled, and that pull is what filled the disk"
 
 hr "7. GPU + MPS current state"
 if have nvidia-smi; then
