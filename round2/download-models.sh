@@ -54,7 +54,7 @@ DISCONNECT-SAFE
 
 GATED REPOS
   Llama-3.2-3B-Instruct needs an accepted licence and a token:
-      export HF_TOKEN=hf_xxxxxxxx
+      export HF_TOKEN=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
   Without it that one repo is reported FAILED and the rest still land.
 USAGE
 }
@@ -194,6 +194,34 @@ if ! "${PY_BIN}" -c "import huggingface_hub" 2>/dev/null; then
     exit 1; }
 fi
 
+# --- token sanity. An INVALID token is worse than none: huggingface.co answers
+# 401 to every request that carries one, including public repos, so a typo or a
+# copied placeholder breaks the entire download rather than just gated models.
+if [[ -n "${HF_TOKEN:-}" ]]; then
+  case "${HF_TOKEN}" in
+    hf_xxxxxxxx*|hf_XXXX*|"<"*|"your"*|"YOUR"*)
+      echo "ERROR: HF_TOKEN is the placeholder value: ${HF_TOKEN}" >&2
+      echo "       Either export a real token or unset it:" >&2
+      echo "         unset HF_TOKEN" >&2
+      exit 2 ;;
+  esac
+  if command -v curl >/dev/null 2>&1; then
+    code="$(curl -s -o /dev/null -w '%{http_code}' -m 15       -H "Authorization: Bearer ${HF_TOKEN}"       https://huggingface.co/api/whoami-v2 2>/dev/null)"
+    if [[ "${code}" == "200" ]]; then
+      who="$(curl -s -m 15 -H "Authorization: Bearer ${HF_TOKEN}"         https://huggingface.co/api/whoami-v2 2>/dev/null         | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)"
+      echo "token      : valid (user ${who:-?})"
+    else
+      echo "ERROR: HF_TOKEN rejected by huggingface.co (HTTP ${code})." >&2
+      echo "       A bad token 401s PUBLIC repos too, so this would fail" >&2
+      echo "       everything, not just gated models. Fix or unset it:" >&2
+      echo "         unset HF_TOKEN" >&2
+      exit 2
+    fi
+  fi
+else
+  echo "token      : none (gated repos will fail; public ones are fine)"
+fi
+
 export HF_HOME="${DEST}"
 export HF_HUB_ENABLE_HF_TRANSFER="${HF_HUB_ENABLE_HF_TRANSFER:-0}"
 # Keep tqdm on: the progress bars are the whole point when tailing the log.
@@ -207,8 +235,6 @@ echo "python     : ${PY_BIN} ($(${PY_BIN} -c 'import sys;print(sys.version.split
 echo "cache root : ${DEST}   (HF_HOME)"
 echo "tiers      : ${TIERS}"
 echo "free space : $(free_gib) GiB"
-if [[ -n "${HF_TOKEN:-}" ]]; then echo "token      : present"; else
-  echo "token      : ABSENT — gated repos (Llama-3.2) will fail, others are fine"; fi
 echo "======================================================================"
 
 ok=(); skipped=(); failed=()
