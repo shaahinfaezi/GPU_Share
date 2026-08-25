@@ -1,0 +1,153 @@
+# Round-2 model download.
+#
+# In-cluster alternative to download-models.sh, for when the box has kubectl
+# but you would rather not shell in. Writes into r2-models-pvc, which
+# 01-models-storage.yaml backs with /data2/hf-cache.
+#
+# The cache layout is identical to the one Qwen already uses, so the services
+# resolve these repos the same way: HF_HOME=/mnt/models plus the repo id in
+# `model.name`. Only the backing disk differs.
+#
+# PREREQ: kubectl apply -f 01-models-storage.yaml
+#
+# DISK. The full set is ~34 GiB. The node was previously observed at 79-92%
+# full, so this Job refuses to start a model unless MIN_FREE_GIB would still be
+# free afterwards, and it skips anything already complete. Run it more than
+# once: it resumes.
+#
+# RUN
+#   kubectl apply -f 10-model-download.yaml
+#   kubectl -n llm-demo logs -f job/r2-model-download
+#
+# The ConfigMap is the model list. Comment lines out to download a subset —
+# TIER-1 alone (~13 GiB) is enough to run tests T1, T2 and T3.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: r2-model-list
+  namespace: llm-demo
+data:
+  models.tsv: |
+    # tier  repo_id                             extra ignore globs (comma separated, optional)
+    1       Qwen/Qwen2.5-1.5B-Instruct
+    1       BAAI/bge-m3                         onnx/*,*.onnx,imgs/*
+    1       Qwen/Qwen2.5-7B-Instruct-AWQ
+    2       BAAI/bge-reranker-v2-m3             onnx/*,*.onnx,imgs/*
+    2       Qwen/Qwen2.5-3B-Instruct
+    2       BAAI/bge-large-en-v1.5              onnx/*,*.onnx,openvino/*,*.onnx_data
+    3       Qwen/Qwen2-VL-2B-Instruct
+    3       meta-llama/Llama-3.2-3B-Instruct    original/*
+    3       openai/whisper-large-v3-turbo
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: r2-model-download
+  namespace: llm-demo
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: fetch
+          # Same image the services run: it already has huggingface_hub, and it
+          # is resident on the node so nothing is pulled from an external
+          # registry (this node gets 403 from registry-1.docker.io).
+          image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+          env:
+            - name: HF_HOME
+              value: /mnt/models
+            - name: HF_HUB_ENABLE_HF_TRANSFER
+              value: "0"
+            # Set only if the cluster needs it for gated repos (Llama-3.2 is
+            # gated). Create with:
+            #   kubectl -n llm-demo create secret generic hf-token \
+            #     --from-literal=token=hf_xxx
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef: {name: hf-token, key: token, optional: true}
+            - name: MIN_FREE_GIB
+              value: "12"
+            - name: TIERS
+              value: "1,2"          # widen to 1,2,3 when disk allows
+          command: ["/bin/bash", "-lc"]
+          args:
+            - |
+              set -uo pipefail
+              python - <<'PY'
+              import os, shutil, sys, traceback
+              from huggingface_hub import snapshot_download
+
+              MIN_FREE = float(os.environ.get("MIN_FREE_GIB", "12"))
+              TIERS    = {t.strip() for t in os.environ.get("TIERS", "1").split(",")}
+              ROOT     = "/mnt/models"
+
+              # Weights only. Skipping the duplicate .bin/.pth copies that many
+              # repos carry alongside safetensors roughly halves the download.
+              IGNORE = ["*.pth", "*.bin", "*.h5", "*.msgpack", "*.ot",
+                        "*.tflite", "*.onnx_data"]
+
+              def free_gib():
+                  return shutil.disk_usage(ROOT).free / 2**30
+
+              def size_gib(path):
+                  n = 0
+                  for r, _, fs in os.walk(path):
+                      for f in fs:
+                          fp = os.path.join(r, f)
+                          if not os.path.islink(fp):
+                              n += os.path.getsize(fp)
+                  return n / 2**30
+
+              rows = []
+              for line in open("/config/models.tsv"):
+                  line = line.strip()
+                  if not line or line.startswith("#"):
+                      continue
+                  parts = line.split()
+                  tier, repo = parts[0], parts[1]
+                  extra = parts[2].split(",") if len(parts) > 2 else []
+                  rows.append((tier, repo, [e for e in extra if e]))
+
+              print(f"cache root {ROOT}  free {free_gib():.1f} GiB  "
+                    f"tiers {sorted(TIERS)}", flush=True)
+              done, skipped, failed = [], [], []
+              for tier, repo, extra in rows:
+                  if tier not in TIERS:
+                      skipped.append((repo, f"tier {tier} not selected")); continue
+                  if free_gib() < MIN_FREE:
+                      skipped.append((repo, f"only {free_gib():.1f} GiB free")); continue
+                  print(f"\n=== {repo}  (tier {tier}, {free_gib():.1f} GiB free)", flush=True)
+                  try:
+                      p = snapshot_download(repo_id=repo,
+                                            ignore_patterns=IGNORE + extra,
+                                            max_workers=4)
+                      print(f"    ok  {size_gib(p):.2f} GiB  -> {p}", flush=True)
+                      done.append(repo)
+                  except Exception as exc:
+                      traceback.print_exc()
+                      failed.append((repo, repr(exc)[:200]))
+
+              print("\n================ SUMMARY ================", flush=True)
+              for r in done:            print(f"  ok       {r}")
+              for r, why in skipped:    print(f"  skipped  {r}  ({why})")
+              for r, why in failed:     print(f"  FAILED   {r}  {why}")
+              print(f"free now: {free_gib():.1f} GiB")
+              # A gated or missing repo should not fail the whole Job; the
+              # summary above is the record of what actually landed.
+              sys.exit(0)
+              PY
+          volumeMounts:
+            - {name: models, mountPath: /mnt/models}
+            - {name: config, mountPath: /config}
+          resources:
+            requests: {cpu: "500m", memory: 2Gi}
+            limits:   {cpu: "4",    memory: 8Gi}
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: r2-models-pvc
+        - name: config
+          configMap: {name: r2-model-list}

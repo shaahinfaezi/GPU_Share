@@ -1,0 +1,331 @@
+#!/usr/bin/env python3
+"""Render the deployment manifests for one scenario in one arm.
+
+Requirement 7 says the three arms must be identical apart from the sharing
+mechanism. Hand-maintaining nine YAML files cannot guarantee that -- they drift.
+So there is ONE template per model type here, and the arm only controls:
+
+    dedicated   no co-tenant. Same gpumem quota, same vLLM flags, same trace.
+                Only the neighbour is removed.
+    hami        co-tenants, HAMi gpumem + gpucores, no MPS.
+    hami-mps    co-tenants, HAMi gpumem + gpucores, MPS env vars added.
+
+The gpumem quota is IDENTICAL in all three arms, including dedicated. That is
+deliberate and follows round one: if the baseline also got a bigger KV cache,
+its extra throughput would be a memory-budget effect wearing a sharing costume.
+`--dedicated-full-card` overrides it when the practical ceiling is wanted
+instead of the controlled baseline.
+
+EVERY model is an LLMInferenceService by default, exactly as Qwen is today --
+including the pooling ones. Whether the KServe runtime forwards vLLM's pooling
+flags is a question for 00-preflight.sh to answer on the box, not something to
+assume here. If it turns out not to, `--pooling-via vllm` re-renders the
+embedding and rerank tenants as plain `vllm serve` Deployments with the same
+image, PVC, quotas and MPS treatment; only KServe leaves the picture.
+
+    python render.py --scenario llm-embed --arm hami-mps --out rendered/
+"""
+import argparse
+import json
+import os
+import sys
+
+# --------------------------------------------------------------------------
+# Per-model facts. gpumem/util come from the accepted plan's configuration B/E;
+# weights are the measured on-disk size, kept here so the budget is auditable.
+MODELS = {
+    "llm": dict(
+        repo="Qwen/Qwen2.5-7B-Instruct-AWQ", kind="chat", weights_mib=5370,
+        gpumem=8192, util=0.92, max_model_len=4096, max_num_seqs=64,
+        extra=["--quantization=awq_marlin"],
+    ),
+    "llm2": dict(
+        repo="Qwen/Qwen2.5-1.5B-Instruct", kind="chat", weights_mib=2950,
+        gpumem=5632, util=0.92, max_model_len=4096, max_num_seqs=64, extra=[],
+    ),
+    "llm-small": dict(
+        repo="Qwen/Qwen2.5-0.5B-Instruct", kind="chat", weights_mib=990,
+        gpumem=2816, util=0.90, max_model_len=4096, max_num_seqs=32, extra=[],
+    ),
+    "llm-mid": dict(
+        repo="Qwen/Qwen2.5-3B-Instruct", kind="chat", weights_mib=5890,
+        gpumem=11264, util=0.93, max_model_len=8192, max_num_seqs=64, extra=[],
+    ),
+    "embed": dict(
+        repo="BAAI/bge-m3", kind="embed", weights_mib=1090,
+        gpumem=3072, util=0.90, max_model_len=8192, max_num_seqs=64,
+        extra=["--runner=pooling", "--convert=embed"],
+    ),
+    "rerank": dict(
+        repo="BAAI/bge-reranker-v2-m3", kind="rerank", weights_mib=1090,
+        gpumem=4608, util=0.88, max_model_len=8192, max_num_seqs=64,
+        extra=["--runner=pooling", "--convert=classify"],
+    ),
+    "embed-small": dict(
+        repo="BAAI/bge-large-en-v1.5", kind="embed", weights_mib=640,
+        gpumem=2816, util=0.90, max_model_len=512, max_num_seqs=64,
+        extra=["--runner=pooling", "--convert=embed"],
+    ),
+    "vl": dict(
+        repo="Qwen/Qwen2-VL-2B-Instruct", kind="chat", weights_mib=4220,
+        gpumem=6656, util=0.90, max_model_len=4096, max_num_seqs=32, extra=[],
+    ),
+}
+
+# Roles per scenario, mirroring workload/gen_trace.py so a trace and a
+# deployment cannot disagree about which services exist.
+SCENARIOS = {
+    "llm-only":    ["llm"],
+    "embed-only":  ["embed"],
+    "rerank-only": ["rerank"],
+    "llm-embed":   ["llm", "embed"],
+    "llm-llm":     ["llm", "llm2"],
+    "vl-rerank":   ["vl", "rerank"],
+    "dense4":      ["llm-small", "llm2", "embed-small", "rerank"],
+}
+
+IMAGE = "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu"
+PVC = "r2-models-pvc"
+NS = "llm-demo"
+CARD_MIB = 12288
+
+MPS_ENV = """
+          - name: CUDA_MPS_PIPE_DIRECTORY
+            value: /tmp/nvidia-mps
+          - name: CUDA_MPS_LOG_DIRECTORY
+            value: /tmp/nvidia-mps
+          - name: CUDA_MPS_ACTIVE_THREAD_PERCENTAGE
+            value: "{pct}\""""
+
+MPS_MOUNT = """
+        volumeMounts:
+          - {name: mps-pipe, mountPath: /tmp/nvidia-mps}"""
+
+MPS_VOL = """
+      volumes:
+        - name: mps-pipe
+          hostPath: {path: /tmp/nvidia-mps, type: Directory}"""
+
+
+def gpu_resources(m, arm, pct):
+    """The resource block. gpucores is requested in both HAMi arms because it is
+    what the scheduler packs against -- round one established it is a placement
+    token, not a compute bound, and that is exactly how it is used here."""
+    lines = ['            nvidia.com/gpu: "1"',
+             '            nvidia.com/gpumem: "%d"' % m["gpumem"]]
+    if arm in ("hami", "hami-mps"):
+        lines.append('            nvidia.com/gpucores: "%d"' % m["gpucores"])
+    return "\n".join(lines)
+
+
+def render_llm(role, m, arm, pct):
+    res = gpu_resources(m, arm, pct)
+    env = '          - name: HF_HOME\n            value: /mnt/models'
+    if arm == "hami-mps":
+        env += MPS_ENV.format(pct=pct)
+    args = ["--gpu-memory-utilization=%.2f" % m["util"],
+            "--max-model-len=%d" % m["max_model_len"],
+            "--max-num-seqs=%d" % m["max_num_seqs"]] + m["extra"]
+    argblock = "\n".join("          - %s" % a for a in args)
+    vol = MPS_MOUNT if arm == "hami-mps" else ""
+    volumes = MPS_VOL if arm == "hami-mps" else ""
+    return f"""---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: r2-{role}
+  namespace: {NS}
+  labels:
+    r2-arm: {arm}
+    r2-role: {role}
+spec:
+  model:
+    name: {m['repo']}
+    uri: pvc://{PVC}/
+  replicas: 1
+  router:
+    scheduler: {{}}
+    route: {{}}
+    gateway:
+      refs:
+        - name: kserve-ingress-gateway
+          namespace: kserve
+  template:
+    containers:
+      - name: main
+        image: {IMAGE}
+        args:
+{argblock}
+        resources:
+          limits:
+            cpu: "4"
+            memory: 12Gi
+{res}
+          requests:
+            cpu: "200m"
+            memory: 2Gi
+{res}
+        env:
+{env}{vol}{volumes}
+"""
+
+
+def render_pooling(role, m, arm, pct):
+    """Plain vllm serve. Same image, same PVC, same HAMi/MPS treatment -- the
+    only difference from the LLM path is that KServe is not in front of it."""
+    res = gpu_resources(m, arm, pct)
+    env = ('          - name: HF_HOME\n            value: /mnt/models\n'
+           '          - name: VLLM_LOGGING_LEVEL\n            value: INFO')
+    if arm == "hami-mps":
+        env += MPS_ENV.format(pct=pct)
+    args = ["serve", m["repo"],
+            "--served-model-name=%s" % role,
+            "--host=0.0.0.0", "--port=8000",
+            "--gpu-memory-utilization=%.2f" % m["util"],
+            "--max-model-len=%d" % m["max_model_len"],
+            "--max-num-seqs=%d" % m["max_num_seqs"],
+            "--download-dir=/mnt/models"] + m["extra"]
+    argblock = "\n".join("          - %s" % a for a in args)
+    mps_mount = ("\n          - {name: mps-pipe, mountPath: /tmp/nvidia-mps}"
+                 if arm == "hami-mps" else "")
+    mps_vol = ("\n        - name: mps-pipe\n"
+               "          hostPath: {path: /tmp/nvidia-mps, type: Directory}"
+               if arm == "hami-mps" else "")
+    return f"""---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: r2-{role}
+  namespace: {NS}
+  labels: {{r2-arm: {arm}, r2-role: {role}, app: r2-{role}}}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {{app: r2-{role}}}
+  template:
+    metadata:
+      labels: {{app: r2-{role}, r2-arm: {arm}, r2-role: {role}}}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: main
+        image: {IMAGE}
+        command: ["vllm"]
+        args:
+{argblock}
+        ports:
+          - {{name: http, containerPort: 8000}}
+        resources:
+          limits:
+            cpu: "4"
+            memory: 12Gi
+{res}
+          requests:
+            cpu: "200m"
+            memory: 2Gi
+{res}
+        env:
+{env}
+        volumeMounts:
+          - {{name: models, mountPath: /mnt/models}}{mps_mount}
+        readinessProbe:
+          httpGet: {{path: /health, port: 8000}}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          failureThreshold: 60
+      volumes:
+        - name: models
+          persistentVolumeClaim: {{claimName: {PVC}}}{mps_vol}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: r2-{role}
+  namespace: {NS}
+  labels: {{app: r2-{role}, r2-role: {role}}}
+spec:
+  selector: {{app: r2-{role}}}
+  ports:
+    - {{name: http, port: 80, targetPort: 8000}}
+"""
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--scenario", required=True, choices=sorted(SCENARIOS))
+    ap.add_argument("--arm", required=True, choices=("dedicated", "hami", "hami-mps"))
+    ap.add_argument("--out", required=True, help="directory for rendered YAML")
+    ap.add_argument("--mps-percent", default="", help="per-role, e.g. llm=75,embed=25; "
+                                                      "default 100 for every role")
+    ap.add_argument("--only", action="append", default=[],
+                    help="render just this role (dedicated baselines run one at a time)")
+    ap.add_argument("--dedicated-full-card", action="store_true",
+                    help="give the dedicated arm the whole card instead of the shared quota")
+    ap.add_argument("--pooling-via", choices=("kserve", "vllm"), default="kserve",
+                    help="how to serve embedding/rerank tenants. kserve keeps every "
+                         "model on one deployment path; switch to vllm only if "
+                         "00-preflight.sh shows the runtime drops the pooling flags")
+    a = ap.parse_args()
+
+    roles = SCENARIOS[a.scenario]
+    if a.only:
+        unknown = [r for r in a.only if r not in roles]
+        if unknown:
+            sys.exit("role(s) %s not in scenario %s (%s)"
+                     % (unknown, a.scenario, roles))
+        roles = [r for r in roles if r in a.only]
+
+    pcts = {}
+    for kv in filter(None, a.mps_percent.split(",")):
+        k, v = kv.split("=")
+        pcts[k] = int(v)
+
+    # gpucores is the scheduler's packing token: split the card between the
+    # co-tenants so HAMi's admission arithmetic reflects the intended density.
+    share = max(1, 100 // max(1, len(SCENARIOS[a.scenario])))
+
+    os.makedirs(a.out, exist_ok=True)
+    written, budget = [], 0
+    for role in roles:
+        m = dict(MODELS[role])
+        m["gpucores"] = share
+        if a.arm == "dedicated" and a.dedicated_full_card:
+            m["gpumem"] = CARD_MIB - 512
+        pct = pcts.get(role, 100)
+        as_kserve = m["kind"] == "chat" or a.pooling_via == "kserve"
+        body = (render_llm(role, m, a.arm, pct) if as_kserve
+                else render_pooling(role, m, a.arm, pct))
+        path = os.path.join(a.out, "r2-%s-%s.yaml" % (a.arm, role))
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        written.append(path)
+        budget += m["gpumem"]
+        print("%-10s %-32s gpumem %5d  util %.2f  cores %3d  mps %3d%%  -> %s"
+              % (role, m["repo"], m["gpumem"], m["util"], m["gpucores"], pct,
+                 os.path.basename(path)))
+
+    manifest = dict(scenario=a.scenario, arm=a.arm, roles=roles,
+                    pooling_via=a.pooling_via,
+                    gpumem_total_mib=budget, card_mib=CARD_MIB,
+                    fill_percent=round(budget / CARD_MIB * 100, 1),
+                    mps_percent={r: pcts.get(r, 100) for r in roles},
+                    files=[os.path.basename(p) for p in written],
+                    models={r: MODELS[r]["repo"] for r in roles})
+    with open(os.path.join(a.out, "r2-%s-manifest.json" % a.arm), "w",
+              encoding="utf-8") as fh:
+        json.dump(manifest, fh, indent=2)
+
+    print("\narm %s  scenario %s" % (a.arm, a.scenario))
+    print("gpumem requested %d of %d MiB = %.1f%% of the card"
+          % (budget, CARD_MIB, budget / CARD_MIB * 100))
+    if budget > CARD_MIB:
+        print("WARNING: over-subscribed; HAMi will refuse to place these together")
+    print("apply with: kubectl apply -f %s" % a.out)
+
+
+if __name__ == "__main__":
+    main()

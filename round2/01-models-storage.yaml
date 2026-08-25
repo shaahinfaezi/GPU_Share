@@ -1,0 +1,55 @@
+# Round-2 model storage on /data2.
+#
+# The existing qwen-local-pv-claim stays exactly as it is — Qwen keeps working
+# and round one stays reproducible. This adds a SECOND volume backed by
+# /data2/hf-cache, and the round-2 services mount that one instead.
+#
+# Why a separate PVC rather than repointing the old one: the old PV is what the
+# round-one results were produced against. Repointing it would make those runs
+# unreproducible, and there is no benefit — a Pod can mount either.
+#
+# NODE NAME. hostPath/local volumes bind to one node. Set it to the GPU node
+# reported by `kubectl get nodes` (00-preflight.sh prints it):
+#     sed -i 's/REPLACE_NODE_NAME/mr-gholami/' 01-models-storage.yaml
+#
+# ON THE HOST, FIRST:
+#     sudo mkdir -p /data2/hf-cache && sudo chmod 0777 /data2/hf-cache
+#
+# The 0777 is deliberate and matches how the models are read: the serving
+# container's uid is whatever its image sets, and round one established that
+# forcing runAsUser breaks images we do not control. A world-readable cache
+# avoids that whole class of failure for a directory that holds public weights.
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: r2-models-pv
+  labels: {app: r2-models}
+spec:
+  capacity:
+    storage: 200Gi          # advisory only for a local volume; not enforced
+  accessModes: [ReadWriteOnce]
+  persistentVolumeReclaimPolicy: Retain   # never let k8s delete the weights
+  storageClassName: r2-local
+  local:
+    path: /data2/hf-cache
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: ["REPLACE_NODE_NAME"]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: r2-models-pvc
+  namespace: llm-demo
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: r2-local
+  resources:
+    requests:
+      storage: 200Gi
+  volumeName: r2-models-pv
