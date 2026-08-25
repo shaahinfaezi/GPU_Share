@@ -17,6 +17,7 @@ set -uo pipefail
 
 DEST="/data2/hf-cache"
 TIERS="1"
+TIERS_SET=0
 MIN_FREE_GIB=12
 DRY_RUN=0
 LIST=0
@@ -53,9 +54,15 @@ DISCONNECT-SAFE
   Stop it with:  kill $(cat /data2/hf-cache/download.pid)
 
 GATED REPOS
-  Llama-3.2-3B-Instruct needs an accepted licence and a token:
-      export HF_TOKEN=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
-  Without it that one repo is reported FAILED and the rest still land.
+  Llama-3.2-3B-Instruct needs an accepted licence and a token. Supply it by
+  ANY of these -- never by editing this file, which is tracked by git:
+
+      export HF_TOKEN=...                    # shell only, gone on logout
+      echo '...' > .hf-token                 # git-ignored, survives reboots
+      huggingface-cli login                  # writes ~/.cache/huggingface/token
+
+  Checked in that order. Without one, that single repo is reported FAILED and
+  every other model still lands.
 USAGE
 }
 
@@ -75,7 +82,7 @@ MODELS=(
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dest)       DEST="${2:-}"; shift 2 ;;
-    --tiers)      TIERS="${2:-}"; shift 2 ;;
+    --tiers)      TIERS="${2:-}"; TIERS_SET=1; shift 2 ;;
     --min-free)   MIN_FREE_GIB="${2:-}"; shift 2 ;;
     --background) BACKGROUND=1; shift ;;
     --status)     STATUS=1; shift ;;
@@ -103,6 +110,9 @@ PIDFILE="${DEST}/download.pid"
 
 # ------------------------------------------------------------------ status
 if [[ "${STATUS}" -eq 1 ]]; then
+  # Report on everything unless a tier was explicitly asked for. Defaulting to
+  # tier 1 here made --status contradict the log.
+  [[ "${TIERS_SET}" -eq 1 ]] || TIERS="1,2,3"
   echo "cache : ${DEST}"
   if [[ -f "${PIDFILE}" ]] && kill -0 "$(cat "${PIDFILE}" 2>/dev/null)" 2>/dev/null; then
     echo "state : RUNNING (pid $(cat "${PIDFILE}"))"
@@ -119,7 +129,8 @@ if [[ "${STATUS}" -eq 1 ]]; then
     [[ ",${TIERS}," == *",${t},"* ]] || continue
     d="${DEST}/hub/$(repo_dir "${r}")"
     if [[ -d "${d}" ]]; then
-      have="$(du -sm "${d}" 2>/dev/null | cut -f1)"
+      have="$(find "${d}" -type f -printf '%s
+' 2>/dev/null                | awk '{t+=$1} END{printf "%d", t/1048576}')"
       have_gib="$(awk -v m="${have:-0}" 'BEGIN{printf "%.1f", m/1024}')"
       total_have=$(( total_have + ${have:-0} ))
       if compgen -G "${d}/blobs/*.incomplete" >/dev/null 2>&1; then
@@ -135,7 +146,8 @@ if [[ "${STATUS}" -eq 1 ]]; then
     fi
   done
   echo
-  echo "total on disk: $(awk -v m="${total_have}" 'BEGIN{printf "%.1f", m/1024}') GiB"
+  echo "listed models : $(awk -v m="${total_have}" 'BEGIN{printf "%.1f", m/1024}') GiB"
+  echo "whole cache   : $(du -sh "${DEST}" 2>/dev/null | cut -f1)"
   [[ -d "${DEST}" ]] && df -h "${DEST}" | tail -1
   if [[ -f "${LOG}" ]]; then
     echo
@@ -192,6 +204,18 @@ if ! "${PY_BIN}" -c "import huggingface_hub" 2>/dev/null; then
     echo "ERROR: could not install huggingface_hub. Try:" >&2
     echo "  ${PY_BIN} -m venv .venv && . .venv/bin/activate && pip install huggingface_hub" >&2
     exit 1; }
+fi
+
+# --- token sources, in order of precedence. A token must never live in this
+# file: it is tracked by git, and a credential in git history outlives any
+# later deletion of the line.
+if [[ -z "${HF_TOKEN:-}" ]]; then
+  for tf in "$(dirname "$0")/.hf-token" "${HOME}/.cache/huggingface/token"; do
+    if [[ -r "${tf}" ]]; then
+      HF_TOKEN="$(tr -d '[:space:]' < "${tf}")"
+      [[ -n "${HF_TOKEN}" ]] && { export HF_TOKEN; echo "token      : read from ${tf}"; break; }
+    fi
+  done
 fi
 
 # --- token sanity. An INVALID token is worse than none: huggingface.co answers
