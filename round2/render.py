@@ -33,6 +33,11 @@ import sys
 # --------------------------------------------------------------------------
 # Per-model facts. gpumem/util come from the accepted plan's configuration B/E;
 # weights are the measured on-disk size, kept here so the budget is auditable.
+#
+# The three BGE models are distributed in FLOAT32, not bfloat16 -- verify-models
+# --deep measured 2.14 GiB for the reranker against a 1090 MiB budget. They
+# carry --dtype=half so vLLM casts on load; without it each one needs twice the
+# VRAM assumed here and the card no longer fits two tenants.
 MODELS = {
     "llm": dict(
         repo="Qwen/Qwen2.5-7B-Instruct-AWQ", kind="chat", weights_mib=5370,
@@ -54,17 +59,17 @@ MODELS = {
     "embed": dict(
         repo="BAAI/bge-m3", kind="embed", weights_mib=1090,
         gpumem=3072, util=0.90, max_model_len=8192, max_num_seqs=64,
-        extra=["--runner=pooling", "--convert=embed"],
+        extra=["--runner=pooling", "--convert=embed", "--dtype=half"],
     ),
     "rerank": dict(
         repo="BAAI/bge-reranker-v2-m3", kind="rerank", weights_mib=1090,
         gpumem=4608, util=0.88, max_model_len=8192, max_num_seqs=64,
-        extra=["--runner=pooling", "--convert=classify"],
+        extra=["--runner=pooling", "--convert=classify", "--dtype=half"],
     ),
     "embed-small": dict(
         repo="BAAI/bge-large-en-v1.5", kind="embed", weights_mib=640,
         gpumem=2816, util=0.90, max_model_len=512, max_num_seqs=64,
-        extra=["--runner=pooling", "--convert=embed"],
+        extra=["--runner=pooling", "--convert=embed", "--dtype=half"],
     ),
     "vl": dict(
         repo="Qwen/Qwen2-VL-2B-Instruct", kind="chat", weights_mib=4220,

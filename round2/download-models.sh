@@ -290,9 +290,27 @@ from huggingface_hub import snapshot_download
 
 repo = os.environ["REPO"]
 extra = [g for g in os.environ.get("IGNORE", "-").split(",") if g and g != "-"]
-# Weights only. Most repos ship duplicate .bin/.pth copies beside the
-# safetensors; skipping them roughly halves the transfer.
-ignore = ["*.pth", "*.bin", "*.h5", "*.msgpack", "*.ot", "*.tflite"] + extra
+
+# Skipping *.bin roughly halves the transfer for repos that ship duplicate
+# .bin copies beside safetensors -- but it SILENTLY DESTROYS repos whose only
+# weights are .bin (BAAI/bge-m3 is one: 14 config files landed, no weights,
+# and snapshot_download still reported success). So ask the repo first.
+ignore = ["*.h5", "*.msgpack", "*.ot", "*.tflite"] + extra
+try:
+    from huggingface_hub import HfApi
+    files = HfApi().list_repo_files(repo)
+    has_st = any(f.endswith(".safetensors") for f in files)
+    if has_st:
+        ignore = ["*.pth", "*.bin"] + ignore
+        print("    safetensors present; skipping .bin/.pth duplicates")
+    else:
+        ignore = ["*.pth"] + ignore
+        print("    NO safetensors in this repo; keeping .bin weights")
+except Exception as exc:
+    # Cannot enumerate: keep everything rather than risk another silent miss.
+    ignore = ["*.pth"] + ignore
+    print("    could not list repo files (%s); keeping .bin to be safe"
+          % type(exc).__name__)
 try:
     path = snapshot_download(repo_id=repo, ignore_patterns=ignore, max_workers=4)
 except Exception as exc:

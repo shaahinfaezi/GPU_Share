@@ -110,8 +110,13 @@ def check(repo):
 
     # Shard index must reference files that actually exist. This is the check
     # that catches a truncated download.
-    idx = [f for f in files if f.endswith(".safetensors.index.json")]
-    weights = [f for f in files if f.endswith(".safetensors")]
+    # Weights may legitimately be .bin rather than .safetensors -- BAAI/bge-m3
+    # ships only pytorch_model.bin. Checking for safetensors alone reported a
+    # perfectly good repo as BROKEN.
+    idx = [f for f in files if f.endswith(".safetensors.index.json")
+                            or f.endswith(".bin.index.json")]
+    weights = [f for f in files
+               if f.endswith(".safetensors") or f.endswith(".bin")]
     if idx:
         try:
             wm = json.load(open(os.path.join(snap, idx[0]), encoding="utf-8"))
@@ -126,7 +131,7 @@ def check(repo):
         except Exception as e:
             problems.append("shard index unreadable: %s" % e)
     elif not weights:
-        problems.append("no .safetensors found")
+        problems.append("no weights found (.safetensors or .bin)")
     else:
         if any(real(os.path.join(snap, w)) == 0 for w in weights):
             problems.append("a weights file is 0 bytes")
@@ -150,7 +155,15 @@ def check(repo):
         kvh = cfg.get("num_key_value_heads") or cfg.get("num_attention_heads")
         heads = cfg.get("num_attention_heads")
         hid = cfg.get("hidden_size")
-        if layers and kvh and heads and hid:
+        arch = info.get("arch", "")
+        pooling = any(k in arch for k in
+                      ("Embedding", "SequenceClassification", "BertModel",
+                       "XLMRoberta", "Pooling"))
+        if pooling:
+            # No KV cache exists for an encoder/pooling model. Printing one
+            # invites exactly the wrong capacity planning.
+            info["kv_note"] = "encoder/pooling - no KV cache"
+        elif layers and kvh and heads and hid:
             head_dim = cfg.get("head_dim") or (hid // heads)
             # 2 (K and V) * layers * kv_heads * head_dim * 2 bytes, in KiB
             info["kv_kib_per_tok"] = 2 * layers * kvh * head_dim * 2 / 1024
@@ -182,6 +195,8 @@ for role, repo in EXPECT.items():
                 bits.append("%s=%s" % (k, info[k]))
         if "kv_kib_per_tok" in info:
             bits.append("KV=%.0f KiB/tok" % info["kv_kib_per_tok"])
+        elif info.get("kv_note"):
+            bits.append(info["kv_note"])
         if bits:
             print("%-14s %s" % ("", "  ".join(bits)))
 

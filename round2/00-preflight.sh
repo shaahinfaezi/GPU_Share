@@ -59,8 +59,9 @@ if have kubectl; then
   kubectl delete pod r2-probe -n "${NS}" --ignore-not-found >/dev/null 2>&1
   kubectl run r2-probe -n "${NS}" --restart=Never --image="${IMG}" \
     --command -- sleep 300 >/dev/null 2>&1
-  echo "--- waiting for the probe pod (up to 180s)"
-  if kubectl wait --for=condition=Ready pod/r2-probe -n "${NS}" --timeout=180s >/dev/null 2>&1; then
+  echo "--- waiting for the probe pod (up to 600s: a COLD pull of this"
+  echo "    9.5 GB image took 4-7 min on this node in round one)"
+  if kubectl wait --for=condition=Ready pod/r2-probe -n "${NS}" --timeout=600s >/dev/null 2>&1; then
     echo "--- versions"
     kubectl exec -n "${NS}" r2-probe -- python -c 'import sys;print("python:",sys.version.split()[0])' 2>&1 | tail -1
     kubectl exec -n "${NS}" r2-probe -- python -c 'import vllm;print("vllm:  ",vllm.__version__)' 2>&1 | tail -1
