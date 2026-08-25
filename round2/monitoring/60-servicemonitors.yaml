@@ -17,10 +17,15 @@
 #                              once vGPU pods are actually scheduled)
 #   my-hami-webui-dcgm-exporter:9400 -> 32 DCGM_* series
 #
-# SELECTOR LABELS are the remaining unknown -- a ServiceMonitor whose selector
-# matches nothing collects nothing, silently. Confirm with:
-#     kubectl -n kube-system get svc hami-scheduler hami-device-plugin-monitor #       -o custom-columns=NAME:.metadata.name,LABELS:.metadata.labels
-# and adjust matchLabels below if they differ.
+# SELECTOR LABELS -- CONFIRMED live, not guessed:
+#   hami-scheduler               name=hami           component=hami-scheduler
+#   hami-device-plugin-monitor   name=hami           component=hami-device-plugin
+#   my-hami-webui-dcgm-exporter  name=dcgm-exporter  instance=my-hami-webui
+#
+# Note that BOTH HAMi services share app.kubernetes.io/name=hami, so `name`
+# alone is ambiguous and would make each ServiceMonitor scrape both services --
+# on ports they do not serve. `component` is what discriminates them, so both
+# labels are matched below.
 #
 #   kubectl apply -f 60-servicemonitors.yaml
 #   # then confirm they are up:
@@ -38,7 +43,8 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: hami-scheduler
+      app.kubernetes.io/name: hami
+      app.kubernetes.io/component: hami-scheduler
   namespaceSelector:
     matchNames: [kube-system]
   endpoints:
@@ -63,7 +69,8 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: hami-device-plugin-monitor
+      app.kubernetes.io/name: hami
+      app.kubernetes.io/component: hami-device-plugin
   namespaceSelector:
     matchNames: [kube-system]
   endpoints:
@@ -74,6 +81,13 @@ spec:
       scrapeTimeout: 4s
       honorLabels: true
 ---
+# There are TWO DCGM exporters on this node: my-hami-webui-dcgm-exporter in
+# kube-system (v3.5.0, verified answering with 32 series) and the GPU
+# operator's nvidia-dcgm-exporter in gpu-operator (v4.1.1). Scraping both
+# yields two series per GPU per metric, differing only in job label -- which
+# silently doubles anything a panel sums. This pins the one that was verified.
+# If 05-pooling-probe.sh shows the gpu-operator build exposes DCGM_FI_PROF_*
+# and this one does not, switch to that one rather than adding it.
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -85,8 +99,9 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: dcgm-exporter
+      app.kubernetes.io/instance: my-hami-webui
   namespaceSelector:
-    matchNames: [kube-system, gpu-operator]
+    matchNames: [kube-system]
   endpoints:
     - targetPort: 9400
       path: /metrics

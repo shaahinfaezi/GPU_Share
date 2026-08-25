@@ -9,6 +9,7 @@
 #   ./00-preflight.sh            # human-readable
 #   ./00-preflight.sh > pf.txt   # and send pf.txt
 set -uo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
 NS="${NS:-llm-demo}"
 DATA_DIR="${DATA_DIR:-/data2}"
 IMG="${IMG:-127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu}"
@@ -65,12 +66,17 @@ if have kubectl; then
     echo "--- versions"
     kubectl exec -n "${NS}" r2-probe -- python -c 'import sys;print("python:",sys.version.split()[0])' 2>&1 | tail -1
     kubectl exec -n "${NS}" r2-probe -- python -c 'import vllm;print("vllm:  ",vllm.__version__)' 2>&1 | tail -1
-    echo "--- the flags that settle the pooling question"
-    kubectl exec -n "${NS}" r2-probe -- bash -lc 'vllm serve --help 2>/dev/null | grep -E -- "--task|--runner|--convert|--kv-cache-dtype" | head -12' 2>&1
-    echo "--- does this vllm build register pooling endpoints?"
-    kubectl exec -n "${NS}" r2-probe -- python -c 'from vllm.entrypoints.openai import api_server as a; import inspect,re; s=inspect.getsource(a); r=sorted(set(re.findall(chr(34)+r"(/v[0-9]/[a-z_]+|/rerank|/score|/health)"+chr(34), s))); print("routes:", " ".join(r) if r else "none found")' 2>&1 | tail -3
-    echo "--- kserve huggingfaceserver present?"
-    kubectl exec -n "${NS}" r2-probe -- python -c 'import huggingfaceserver,os;print(os.path.dirname(huggingfaceserver.__file__))' 2>&1 | tail -1
+    # Delegated to probe_vllm.py. The previous inline version was wrong twice:
+    # it ran `vllm serve --help` with stderr discarded (so a missing console
+    # script looked like missing flags), and it regex-scanned api_server.py's
+    # SOURCE TEXT for "/v1/embeddings" (so decorator-registered routes read as
+    # "none found"). The replacement interrogates the argparse parser and the
+    # FastAPI router as objects.
+    if [[ -f "${HERE}/probe_vllm.py" ]]; then
+      kubectl exec -i -n "${NS}" r2-probe -- python - < "${HERE}/probe_vllm.py" 2>&1
+    else
+      echo "  probe_vllm.py missing next to this script; run ./05-pooling-probe.sh"
+    fi
   else
     echo "  probe pod never became Ready:"
     kubectl describe pod r2-probe -n "${NS}" 2>&1 | tail -12

@@ -227,8 +227,8 @@ if [[ -n "${SERVE}" ]]; then
     llm)    REPO="Qwen/Qwen2.5-7B-Instruct-AWQ"; MODE=chat;  EXTRA="--quantization=awq_marlin" ;;
     llm2)   REPO="Qwen/Qwen2.5-1.5B-Instruct";   MODE=chat;  EXTRA="" ;;
     vl)     REPO="Qwen/Qwen2-VL-2B-Instruct";    MODE=chat;  EXTRA="" ;;
-    embed)  REPO="BAAI/bge-m3";                  MODE=embed; EXTRA="--runner=pooling --convert=embed" ;;
-    rerank) REPO="BAAI/bge-reranker-v2-m3";      MODE=score; EXTRA="--runner=pooling --convert=classify" ;;
+    embed)  REPO="BAAI/bge-m3";                  MODE=embed; EXTRA="--runner=pooling --convert=embed --dtype=half" ;;
+    rerank) REPO="BAAI/bge-reranker-v2-m3";      MODE=score; EXTRA="--runner=pooling --convert=classify --dtype=half" ;;
     *) echo "unknown role: ${SERVE}" >&2; exit 2 ;;
   esac
 
@@ -243,7 +243,9 @@ if [[ -n "${SERVE}" ]]; then
 {"spec":{"containers":[{
   "name":"main","image":"${IMG}","command":["/bin/bash","-lc"],
   "args":["vllm serve ${REPO} --served-model-name=t --host=0.0.0.0 --port=8000 --gpu-memory-utilization=0.45 --max-model-len=2048 ${EXTRA} & sleep 260; echo READY-WINDOW-OVER"],
-  "env":[{"name":"HF_HOME","value":"/mnt/models"}],
+  "env":[{"name":"HF_HOME","value":"/mnt/models"},
+         {"name":"HF_HUB_OFFLINE","value":"1"},
+         {"name":"TRANSFORMERS_OFFLINE","value":"1"}],
   "resources":{"limits":{"nvidia.com/gpu":"1"}},
   "volumeMounts":[{"name":"models","mountPath":"/mnt/models"}]
 }],
