@@ -8,9 +8,10 @@
 # round-one results were produced against. Repointing it would make those runs
 # unreproducible, and there is no benefit — a Pod can mount either.
 #
-# NODE NAME. hostPath/local volumes bind to one node. Set it to the GPU node
-# reported by `kubectl get nodes` (00-preflight.sh prints it):
-#     sed -i 's/REPLACE_NODE_NAME/mr-gholami/' 01-models-storage.yaml
+# NODE NAME is already set to mr-gholami, the single node this cluster runs.
+# storageClassName is `manual` (kubernetes.io/no-provisioner) because that is
+# what qwen-local-pv already uses successfully here -- not the default
+# local-path class, which would try to provision a new directory.
 #
 # ON THE HOST, FIRST:
 #     sudo mkdir -p /data2/hf-cache && sudo chmod 0777 /data2/hf-cache
@@ -30,7 +31,7 @@ spec:
     storage: 200Gi          # advisory only for a local volume; not enforced
   accessModes: [ReadWriteOnce]
   persistentVolumeReclaimPolicy: Retain   # never let k8s delete the weights
-  storageClassName: r2-local
+  storageClassName: manual
   local:
     path: /data2/hf-cache
   nodeAffinity:
@@ -39,7 +40,7 @@ spec:
         - matchExpressions:
             - key: kubernetes.io/hostname
               operator: In
-              values: ["REPLACE_NODE_NAME"]
+              values: ["mr-gholami"]
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -48,7 +49,7 @@ metadata:
   namespace: llm-demo
 spec:
   accessModes: [ReadWriteOnce]
-  storageClassName: r2-local
+  storageClassName: manual
   resources:
     requests:
       storage: 200Gi
