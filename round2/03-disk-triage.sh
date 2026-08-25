@@ -161,15 +161,49 @@ PLANEOF
 fi
 
 hr "verdict"
+# Measure against kubelet's ACTUAL eviction threshold, not a round number.
+# An earlier version of this script called 33 GiB "enough headroom" and was
+# wrong: the 9.5 GB serving image unpacks to roughly 29 GiB in overlayfs, which
+# took the node from 34 GiB free to 5.3 GiB -- about 460 MB above the threshold.
+THRESH_BYTES="$(kubectl get --raw /api/v1/nodes/$(hostname)/proxy/configz 2>/dev/null   | grep -o '"nodefs.available":"[^"]*"' | head -1 | cut -d'"' -f4)"
+THRESH_GIB="4.84"     # observed on this node: 5193265229 bytes
 avail_k="$(df -Pk /var/lib/rancher/k3s/agent/containerd 2>/dev/null | awk 'NR==2{print $4}')"
 avail_g="$(awk -v k="${avail_k:-0}" 'BEGIN{printf "%.1f", k/1048576}')"
-echo "container-runtime filesystem has ${avail_g} GiB available"
-if awk -v g="${avail_g}" 'BEGIN{exit !(g < 25)}'; then
-  echo "STATUS: TOO TIGHT for round two."
-  echo "  One serving image plus two model replicas needs comfortably more."
-  echo "  Run:  ./03-disk-triage.sh --clean     then re-check"
-  echo "  If still tight: ./03-disk-triage.sh --plan-move"
+margin="$(awk -v a="${avail_g}" -v t="${THRESH_GIB}" 'BEGIN{printf "%.2f", a-t}')"
+
+echo "container-runtime filesystem : ${avail_g} GiB available"
+echo "kubelet eviction threshold   : ${THRESH_GIB} GiB${THRESH_BYTES:+  (configz: ${THRESH_BYTES})}"
+echo "margin before eviction       : ${margin} GiB"
+echo
+
+img_resident=no
+(k3s crictl images 2>/dev/null || crictl images 2>/dev/null)   | grep -qi huggingfaceserver && img_resident=yes
+echo "serving image resident       : ${img_resident}"
+if [[ "${img_resident}" == "no" ]]; then
+  echo
+  echo "  Pulling it will cost roughly 29 GiB unpacked (9.5 GB compressed)."
+  echo "  You need that much ON TOP of the margin below."
+fi
+echo
+
+if awk -v m="${margin}" 'BEGIN{exit !(m < 3)}'; then
+  echo "STATUS: CRITICAL — under 3 GiB above the eviction threshold."
+  echo "  Pod logs alone can cross this. Eviction is node-wide and will kill"
+  echo "  running benchmark pods mid-run."
+  echo "  Reclaim now:"
+  echo "    systemctl is-active containerd docker   # if inactive, /var/lib/containerd is stale"
+  echo "    ./03-disk-triage.sh --clean"
+  echo "    ./03-disk-triage.sh --plan-move         # durable: move the store to /data2"
+  exit 2
+fi
+if awk -v m="${margin}" -v r="${img_resident}" 'BEGIN{exit !(m < 12 && r == "no")}'; then
+  echo "STATUS: TOO TIGHT to pull the serving image."
+  echo "  Free space first, or the pull will evict pods on its way in."
   exit 1
 fi
-echo "STATUS: enough headroom to deploy."
+if awk -v m="${margin}" 'BEGIN{exit !(m < 8)}'; then
+  echo "STATUS: WORKABLE but thin. Watch it during the first run."
+  exit 0
+fi
+echo "STATUS: healthy."
 exit 0
