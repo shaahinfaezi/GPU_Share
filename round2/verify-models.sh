@@ -73,6 +73,9 @@ EXPECT = {
     "llama":       "meta-llama/Llama-3.2-3B-Instruct",
 }
 
+# Gated and deliberately optional: reported but never counted as a failure.
+OPTIONAL = {"llama"}
+
 
 def snapshot(repo):
     d = os.path.join(HUB, "models--" + repo.replace("/", "--"), "snapshots")
@@ -184,6 +187,11 @@ for role, repo in EXPECT.items():
         continue                      # not every tier is expected to be here
     present += 1
     if state != "OK":
+        if role in OPTIONAL:
+            print("%-14s %-34s %7s %6s  SKIPPED (gated, optional)"
+                  % (role, repo, "-", "-"))
+            present -= 1
+            continue
         bad += 1
     print("%-14s %-34s %7.2f %6d  %s%s"
           % (role, repo, info.get("size_gib", 0), info.get("files", 0),

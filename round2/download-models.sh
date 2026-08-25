@@ -43,7 +43,12 @@ TIERS
   1  ~11 GiB  Qwen2.5-1.5B-Instruct, bge-m3, Qwen2.5-7B-Instruct-AWQ
               enough for tests T1, T2 and T3
   2  ~10 GiB  bge-reranker-v2-m3, Qwen2.5-3B-Instruct, bge-large-en-v1.5
-  3  ~13 GiB  Qwen2-VL-2B-Instruct, Llama-3.2-3B-Instruct, whisper-large-v3-turbo
+  3  ~6 GiB   Qwen2-VL-2B-Instruct, whisper-large-v3-turbo
+  4  ~6.5 GiB Llama-3.2-3B-Instruct -- GATED and OPTIONAL. Nothing in T1-T8
+              needs it; it is only the KV outlier (112 KiB/tok) for T6, which
+              Qwen2.5-3B at 36 KiB/tok covers well enough. Requires accepting
+              the licence at huggingface.co/meta-llama/Llama-3.2-3B-Instruct
+              with the same account the token belongs to.
 
 DISCONNECT-SAFE
   --background re-executes under setsid+nohup, so the download is reparented to
@@ -68,14 +73,14 @@ USAGE
 
 # tier | repo | extra ignore globs ("-" for none) | approx GiB after ignores
 MODELS=(
-  "1|Qwen/Qwen2.5-1.5B-Instruct|-|3.1"
-  "1|BAAI/bge-m3|onnx/*,*.onnx,imgs/*|2.3"
-  "1|Qwen/Qwen2.5-7B-Instruct-AWQ|-|5.6"
-  "2|BAAI/bge-reranker-v2-m3|onnx/*,*.onnx,imgs/*|2.3"
-  "2|Qwen/Qwen2.5-3B-Instruct|-|6.2"
+  "1|Qwen/Qwen2.5-1.5B-Instruct|-|2.9"
+  "1|BAAI/bge-m3|onnx/*,*.onnx,imgs/*|2.2"
+  "1|Qwen/Qwen2.5-7B-Instruct-AWQ|-|5.3"
+  "2|BAAI/bge-reranker-v2-m3|onnx/*,*.onnx,imgs/*|2.2"
+  "2|Qwen/Qwen2.5-3B-Instruct|-|5.8"
   "2|BAAI/bge-large-en-v1.5|onnx/*,*.onnx,openvino/*|1.3"
-  "3|Qwen/Qwen2-VL-2B-Instruct|-|4.4"
-  "3|meta-llama/Llama-3.2-3B-Instruct|original/*|6.5"
+  "3|Qwen/Qwen2-VL-2B-Instruct|-|4.2"
+  "4|meta-llama/Llama-3.2-3B-Instruct|original/*|6.5"
   "3|openai/whisper-large-v3-turbo|-|1.6"
 )
 
