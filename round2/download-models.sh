@@ -275,13 +275,21 @@ except Exception as exc:
     print("    %s: %s" % (type(exc).__name__, str(exc)[:300]), file=sys.stderr)
     sys.exit(1)
 
-total = 0
+# A snapshot directory contains ONLY symlinks into ../../blobs, so skipping
+# symlinks (as this did) reported 0.00 GiB for every model. Follow them, and
+# dedupe by real path so a blob shared by two files is counted once.
+seen, total = set(), 0
 for root, _, files in os.walk(path):
     for f in files:
-        fp = os.path.join(root, f)
-        if not os.path.islink(fp):
-            total += os.path.getsize(fp)
-print("    ok  %.2f GiB  ->  %s" % (total / 2**30, path))
+        rp = os.path.realpath(os.path.join(root, f))
+        if rp in seen:
+            continue
+        seen.add(rp)
+        try:
+            total += os.path.getsize(rp)
+        except OSError:
+            pass
+print("    ok  %.2f GiB in %d files  ->  %s" % (total / 2**30, len(seen), path))
 PY
   then
     echo "    took $(( SECONDS - t0 ))s"
