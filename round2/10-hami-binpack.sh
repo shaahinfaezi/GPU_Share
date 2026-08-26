@@ -90,13 +90,21 @@ PATCHED="$(kubectl -n "${NS}" get deploy "${DEP}" -o json 2>/dev/null \
 import json, os, sys
 pol = os.environ["POLICY"]
 d = json.load(sys.stdin)
+# ONLY the extender. An earlier version matched on "scheduler" in the
+# container name and broke on the first hit, which is kube-scheduler --
+# upstream kube-scheduler does not know --gpu-scheduler-policy, refused to
+# start, and the rollout hung with the old replica pending termination.
+# The HAMi flags live only on the vgpu-scheduler-extender container.
+# (No apostrophes in here: this whole block is a single-quoted shell string,
+# and one apostrophe ends it mid-script.)
 target = None
 for c in d["spec"]["template"]["spec"]["containers"]:
-    if "extender" in c["name"] or "scheduler" in c["name"]:
+    if "extender" in c["name"]:
         target = c
         break
 if target is None:
-    sys.exit("no scheduler/extender container found")
+    sys.exit("no vgpu-scheduler-extender container in this deployment; "
+             "inspect it by hand before patching anything")
 args = [a for a in (target.get("args") or [])
         if not a.startswith("--gpu-scheduler-policy")
         and not a.startswith("--node-scheduler-policy")]
@@ -113,7 +121,20 @@ kubectl -n "${NS}" patch deploy "${DEP}" --type=strategic -p "${PATCHED}" || exi
 
 echo
 echo "--- waiting for the scheduler to roll out"
-kubectl -n "${NS}" rollout status deploy/"${DEP}" --timeout=180s || exit 1
+# Auto-revert on failure. A wedged hami-scheduler blocks GPU scheduling for the
+# whole cluster, so leaving a bad rollout in place is far worse than not having
+# made the change. This script broke exactly that way once.
+if ! kubectl -n "${NS}" rollout status deploy/"${DEP}" --timeout=180s; then
+  echo
+  echo "ROLLOUT FAILED -- reverting so the cluster can schedule GPU pods again."
+  kubectl -n "${NS}" rollout undo deploy/"${DEP}" >/dev/null 2>&1
+  kubectl -n "${NS}" rollout status deploy/"${DEP}" --timeout=180s     || echo "  revert also did not settle; inspect deploy/${DEP} by hand"
+  echo
+  echo "--- why the new replica would not start:"
+  kubectl -n "${NS}" get pods -l app.kubernetes.io/component=hami-scheduler     2>/dev/null | sed 's/^/      /'
+  kubectl -n "${NS}" logs deploy/"${DEP}" -c vgpu-scheduler-extender     --tail=30 2>&1 | sed 's/^/      /'
+  exit 1
+fi
 
 echo
 echo "=== after"
