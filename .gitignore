@@ -27,3 +27,6 @@ __pycache__/
 # may be shared. Losing them costs a re-derivation, so back them up elsewhere.
 CLAUDE.md
 FINDINGS.md
+
+# calibration outputs are per-machine measurements, not source
+round2/calibration/*/

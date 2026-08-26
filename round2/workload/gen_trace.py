@@ -37,6 +37,11 @@ SCENARIOS = {
     "llm-only":    [("llm", 1.0, "chat")],
     "embed-only":  [("embed", 1.0, "embed")],
     "rerank-only": [("rerank", 1.0, "rerank")],
+    # Single-tenant scenarios for every role, so 15-calibrate.py can drive one
+    # model at a known rate with no weighting in between.
+    "llm2-only":   [("llm2", 1.0, "chat")],
+    "vl-only":     [("vl", 1.0, "chat")],
+    "embed-small-only": [("embed-small", 1.0, "embed")],
     "llm-embed":   [("llm", 0.5, "chat"), ("embed", 0.5, "embed")],
     "llm-llm":     [("llm", 0.5, "chat"), ("llm2", 0.5, "chat")],
     "vl-rerank":   [("vl", 0.5, "chat"), ("rerank", 0.5, "rerank")],

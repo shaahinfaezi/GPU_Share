@@ -77,6 +77,7 @@ if os.path.exists(_AZ):
 # Scenario -> roles, mirroring render.py and workload/gen_trace.py.
 ROLES = {
     "llm-only": ["llm"], "embed-only": ["embed"], "rerank-only": ["rerank"],
+    "llm2-only": ["llm2"], "vl-only": ["vl"], "embed-small-only": ["embed-small"],
     "llm-embed": ["llm", "embed"], "llm-llm": ["llm", "llm2"],
     "vl-rerank": ["vl", "rerank"],
     "dense4": ["llm2", "embed", "embed-small", "rerank"],
