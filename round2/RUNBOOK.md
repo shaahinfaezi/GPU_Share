@@ -12,6 +12,7 @@ Order matters. Each step is safe to re-run.
 ./06-kserve-pooling-check.sh           # ...and that KServe forwards the flags
 ./07-prefetch-traces.sh                # ShareGPT + Azure corpora onto /data2
 ./08-flatten-models.sh                 # flat model dirs KServe can mount
+./10-hami-binpack.sh                   # co-locate co-tenants (see below)
 kubectl apply -f 01-models-storage.yaml
 kubectl apply -f monitoring/60-servicemonitors.yaml
 kubectl apply -f monitoring/61-dashboard.yaml
@@ -87,6 +88,13 @@ workload pods carry `app.kubernetes.io/name=r2-<role>` and
 `kserve.io/component=workload` instead. `harness.pods_for()` selects on both
 schemes, and there are two PodMonitors for the same reason. A selector that
 matches nothing collects nothing and does not complain.
+
+**Per-pod GPU pinning does not work through KServe.** `nvidia.com/use-gpuuuid`
+never reaches the pod — no `metadata` on a bare `PodSpec`, so annotations are
+dropped exactly like labels. HAMi's default `spread` policy then puts
+co-tenants on separate cards, which makes a sharing arm an uncontended arm.
+Fix it at the scheduler with `./10-hami-binpack.sh`, and note that `run.py`
+verifies placement against `nvidia-smi` afterwards and aborts on a split.
 
 **The router is off by default.** `router.scheduler: {}` makes KServe create a
 deployment pulling `ghcr.io/llm-d/llm-d-inference-scheduler`, which this node

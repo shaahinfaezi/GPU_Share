@@ -25,12 +25,22 @@ image, PVC, quotas and MPS treatment; only KServe leaves the picture.
 
 ONE PHYSICAL GPU. This node has two idle 3080 Tis and HAMi's default GPU
 scheduling policy is spread, so nothing stops two "co-tenants" from being
-placed on separate cards -- which would make the sharing arm an uncontended
-arm and produce a clean, entirely meaningless result. --pin-gpu asks HAMi for
-a specific device by UUID. Because it is not certain that the KServe CRD
-carries pod annotations through to the pod, run.py VERIFIES the placement
-afterwards from HAMi's own allocation annotation and aborts the run if the
-tenants landed on different devices. Asking is best-effort; checking is not.
+placed on separate cards -- which would make the sharing arm an uncontended arm
+and produce a clean, entirely meaningless result. Three consecutive unpinned
+runs landed on GPU 1 with GPU 0 at 39 MiB, so this is measured behaviour.
+
+--pin-gpu emits nvidia.com/use-gpuuuid, and on the KSERVE PATH IT DOES NOT
+WORK. Confirmed: the annotation never reaches the pod, because
+LLMInferenceService's spec.template is a bare PodSpec with no metadata field --
+the same reason labels do not propagate. The pod carries only the hami.io/*
+annotations HAMi wrote itself. The flag is still emitted because it DOES work
+on the plain-Deployment path (--pooling-via vllm), where we own the template.
+
+For the KServe path, co-location comes from the scheduler instead:
+10-hami-binpack.sh sets gpuSchedulerPolicy=binpack cluster-wide. Either way
+run.py VERIFIES placement afterwards -- against nvidia-smi, which cannot be
+fooled by a renamed annotation -- and aborts rather than publish a sharing arm
+whose tenants never met.
 
     python render.py --scenario llm-embed --arm hami-mps --out rendered/
 """
