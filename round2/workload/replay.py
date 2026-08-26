@@ -40,18 +40,38 @@ DEFAULT_TIMEOUT = 600.0
 
 # --------------------------------------------------------------- endpoints
 def resolve_chat(base, model, timeout, insecure):
-    """KServe fronts vLLM at a few different prefixes depending on the route."""
-    for path in ("/openai/v1/chat/completions", "/v1/chat/completions"):
+    """Find the chat route this deployment actually serves.
+
+    The acceptance test used to be `status_code < 500`, and a 404 is < 500. So
+    it probed /openai/v1/chat/completions, got {"detail":"Not Found"}, accepted
+    that as proof the route existed, and fired every subsequent request into
+    it. Every generative request in T1 and in calibration came back 404 while
+    the model served perfectly -- 0/885, 0/40, 0/102, 0/152, all rate-
+    independent, which is what finally ruled out overload.
+
+    A 404 or 405 means the route is ABSENT. Only a 200 proves it is there and
+    accepts our payload shape. Anything else (400, 422) means the route exists
+    but disliked this particular probe, which is still usable, so it is kept as
+    a fallback rather than treated as success.
+
+    Returns (url, status). A caller seeing status != 200 should refuse to run.
+    """
+    probe = {"model": model, "max_tokens": 1,
+             "messages": [{"role": "user", "content": "ping"}]}
+    fallback = None
+    for path in ("/v1/chat/completions", "/openai/v1/chat/completions"):
         url = base.rstrip("/") + path
         try:
-            r = requests.post(url, json={"model": model, "messages": [{"role": "user", "content": "ping"}],
-                                         "max_tokens": 1},
-                              timeout=15, verify=not insecure)
-            if r.status_code < 500:
-                return url
+            r = requests.post(url, json=probe, timeout=15, verify=not insecure)
         except requests.RequestException:
             continue
-    return base.rstrip("/") + "/v1/chat/completions"
+        if r.status_code == 200:
+            return url, 200
+        if r.status_code not in (404, 405) and fallback is None:
+            fallback = (url, r.status_code)
+    if fallback:
+        return fallback
+    return base.rstrip("/") + "/v1/chat/completions", 404
 
 
 def resolve_simple(base, suffixes):
@@ -152,9 +172,15 @@ def do_pooling(urls, model, row, timeout, insecure, origin, sched, kind):
                 rec["output_tokens"] = 0      # pooling models emit no tokens
                 rec["chunks"] = n
                 rec["ok"] = True
-            else:
-                rec["error"] = r.text[:300]
-            return rec
+                return rec
+            # A 404/405 means THIS path is absent, not that the request is
+            # bad -- keep trying the remaining candidates. Returning here made
+            # the first path final, which is the same mistake resolve_chat made
+            # when it accepted a 404 as a working route.
+            last = "%s %s" % (r.status_code, r.text[:200])
+            if r.status_code not in (404, 405):
+                rec["error"] = last
+                return rec
         except Exception as exc:
             last = repr(exc)[:300]
     rec["t_last"] = time.perf_counter() - origin
@@ -331,12 +357,20 @@ def main():
         kind = next(r["kind"] for r in rows_in if r["service"] == role)
         mdl = models.get(role, "model")
         if kind == "chat":
-            chat_url[role] = resolve_chat(base, mdl, a.timeout, a.insecure)
+            chat_url[role], _st = resolve_chat(base, mdl, a.timeout, a.insecure)
+            if _st != 200:
+                sys.exit("replay: %s has no working chat route (probe returned "
+                         "%s at %s). Refusing to replay a whole trace into an "
+                         "endpoint that does not answer -- that is exactly how "
+                         "T1 produced 0/885 successes."
+                         % (role, _st, chat_url[role]))
+            print("  %-6s chat route %s" % (role, chat_url[role]), flush=True)
         elif kind == "embed":
-            pool_url[role] = resolve_simple(base, ("/openai/v1/embeddings", "/v1/embeddings"))
+            pool_url[role] = resolve_simple(base, ("/v1/embeddings", "/openai/v1/embeddings"))
         else:
             pool_url[role] = resolve_simple(
-                base, ("/openai/v1/rerank", "/v1/rerank", "/rerank", "/v1/score", "/score"))
+                base, ("/v1/rerank", "/rerank", "/v1/score", "/score",
+                       "/openai/v1/rerank"))
 
     os.makedirs(a.out_dir, exist_ok=True)
     results, lock = [], threading.Lock()
