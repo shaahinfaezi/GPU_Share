@@ -13,6 +13,7 @@ Order matters. Each step is safe to re-run.
 ./07-prefetch-traces.sh                # ShareGPT + Azure corpora onto /data2
 ./08-flatten-models.sh                 # flat model dirs KServe can mount
 ./10-hami-binpack.sh                   # co-locate co-tenants (see below)
+./11-verify-colocation.sh              # ...and prove they really co-located
 kubectl apply -f 01-models-storage.yaml
 kubectl apply -f monitoring/60-servicemonitors.yaml
 kubectl apply -f monitoring/61-dashboard.yaml

@@ -293,18 +293,14 @@ for c in d["spec"]["template"]["spec"]["containers"]:
 cat <<'EOF'
 
 VERIFY IT ACTUALLY CHANGED PLACEMENT -- the flag being present is not the
-same as HAMi honouring it. Deploy the two T1 tenants and look at the cards:
+same as HAMi honouring it:
 
-    python3 render.py --scenario llm-embed --arm hami --out .binpack
-    kubectl apply -f .binpack
-    kubectl wait --for=condition=Ready pod -l kserve.io/component=workload \
-      -n llm-demo --timeout=900s
-    nvidia-smi --query-gpu=index,memory.used --format=csv,noheader
+    ./11-verify-colocation.sh
 
-One device holding both models means co-location works and T1 can run.
-Two devices holding one each means binpack did not take, and the fallback is
-to render every tenant as a plain Deployment, where the pod template is ours
-and nvidia.com/use-gpuuuid definitely lands.
-
-    kubectl delete -f .binpack && rm -rf .binpack
+Do NOT hand-roll this with `kubectl wait -l ...`: a label selector matching
+nothing fails IMMEDIATELY rather than waiting, so it returns before KServe has
+created a single pod and nvidia-smi then reads two idle cards. That reads as a
+clean failure while measuring nothing. 11-verify-colocation.sh polls for the
+pods to appear, then for them to load, then reports both HAMi's allocation
+record and what the hardware says.
 EOF
