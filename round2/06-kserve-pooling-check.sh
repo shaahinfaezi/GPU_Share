@@ -119,8 +119,14 @@ if [[ "${DIAG_ONLY}" -eq 1 ]]; then
 fi
 
 echo "=== rendering ${ROLE} through the KServe path"
+# --pin-gpu is passed because an unpinned run of this very check landed on GPU 1
+# while GPU 0 sat at 39 MiB -- three times. HAMi will happily spread, so whether
+# the pin survives the KServe path is the last thing that could silently
+# invalidate the sharing arms: an "8-way contention" run whose tenants never met.
+PINARG=()
+[[ -n "${PIN}" ]] && PINARG=(--pin-gpu "${PIN}")
 python3 "${HERE}/render.py" --scenario "${SCEN}" --arm dedicated --only "${ROLE}" \
-  --out "${OUT}" --pooling-via kserve || exit 1
+  --out "${OUT}" --pooling-via kserve "${PINARG[@]}" || exit 1
 echo
 echo "--- flags requested:"
 grep -E "^\s+- --" "${OUT}"/r2-dedicated-"${ROLE}".yaml | sed 's/^/      /'
@@ -250,11 +256,40 @@ PY
 done
 
 echo
-echo "=== 5. did it fit the quota?"
+echo "=== 5. quota and PLACEMENT"
+echo "--- resource limits as admitted:"
 kubectl get pod "${POD}" -n "${NS}" \
   -o jsonpath='{.spec.containers[0].resources.limits}' 2>/dev/null | sed 's/^/      /'
 echo
-nvidia-smi --query-gpu=index,memory.used --format=csv,noheader 2>/dev/null | sed 's/^/      /'
+echo "--- per-device memory (which card actually holds the model):"
+nvidia-smi --query-gpu=index,uuid,memory.used --format=csv,noheader 2>/dev/null \
+  | sed 's/^/      /'
+echo
+echo "--- HAMi annotations on the pod (its own record of the decision):"
+kubectl get pod "${POD}" -n "${NS}" -o jsonpath='{.metadata.annotations}' 2>/dev/null \
+  | tr ',' '\n' | grep -iE "hami|gpu" | sed 's/^/      /' || echo "      (none)"
+echo
+if [[ -n "${PIN}" ]]; then
+  # A loaded model is hundreds of MiB at minimum; the MPS server alone is ~39.
+  busy="$(nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits 2>/dev/null \
+          | awk -F, '$2+0 > 500 {print $1}' | tr -d ' ' | paste -sd, -)"
+  want_idx="$(nvidia-smi --query-gpu=index,uuid --format=csv,noheader 2>/dev/null \
+              | grep -F "${PIN}" | cut -d, -f1 | tr -d ' ')"
+  echo "  pinned to      : ${PIN} (index ${want_idx:-?})"
+  echo "  device(s) busy : ${busy:-none}"
+  if [[ "${busy}" == "${want_idx}" ]]; then
+    echo "  PIN HONOURED -- nvidia.com/use-gpuuuid survives the KServe path."
+    echo "  The sharing arms will actually share. T1 is clear to run."
+  else
+    echo "  *** PIN NOT HONOURED. *** The annotation did not reach HAMi through"
+    echo "  LLMInferenceService. run.py's placement check would abort a split"
+    echo "  arm rather than report it, so nothing invalid gets published --"
+    echo "  but the sharing arms cannot run until this is resolved."
+    echo "  Options: set gpuSchedulerPolicy: binpack in the HAMi scheduler"
+    echo "  ConfigMap cluster-wide, or use --pooling-via vllm, where the pod"
+    echo "  template is ours and the annotation definitely lands."
+  fi
+fi
 
 echo
 if [[ "${ok}" -eq 1 ]]; then
