@@ -6,20 +6,14 @@
 # --pooling-via vllm". That verdict was not earned. No pod carrying that label
 # ever appeared, so nothing about pooling was tested.
 #
-# The likely reason is that KServe does not copy an LLMInferenceService's
-# metadata.labels down onto the pods it creates. If so it is a much bigger
-# problem than pooling, because the whole harness selects on that label:
-#
-#   harness.pods_for()          -l r2-role=<role>   -> readiness, endpoints,
-#                                                      GPU placement check
-#   harness.teardown()          -l r2-role
-#   monitoring PodMonitor       r2-role: Exists     -> ALL vLLM metrics
-#
-# A silent mismatch there means every run times out waiting for a pod that is
-# running fine, and the dashboard stays empty. So this version never selects on
-# that label. It snapshots the namespace, applies, and reports whatever pod
-# actually appears -- with its real labels. That answers the propagation
-# question directly instead of inferring it from a timeout.
+# CONFIRMED since: KServe does not copy an LLMInferenceService's metadata.labels
+# onto the pods it creates. spec.template is a bare PodSpec, which has no
+# metadata field, so there is nowhere to put them. harness.pods_for() and a
+# second PodMonitor now select on app.kubernetes.io/name + kserve.io/component
+# instead, and this check never selects on r2-role at all: it snapshots the
+# namespace, applies, and reports whatever pod actually appears, with its real
+# labels. Answering from observation rather than inferring from a timeout is
+# the whole point -- the first version inferred, and inferred wrongly.
 #
 #   ./06-kserve-pooling-check.sh              # embed
 #   ./06-kserve-pooling-check.sh --role rerank
@@ -162,10 +156,12 @@ if kubectl get pod "${POD}" -n "${NS}" -o jsonpath='{.metadata.labels}' 2>/dev/n
      | grep -q "r2-role"; then
   echo "  r2-role IS propagated to the pod -- the harness selectors are fine."
 else
-  echo "  *** r2-role is NOT on the pod. ***"
-  echo "  harness.pods_for(), wait_ready(), endpoints(), the GPU placement"
-  echo "  check and the PodMonitor all select on it, so every run would time"
-  echo "  out and the dashboard would stay empty. Fix that before T1."
+  echo "  r2-role is NOT on the pod -- expected, and handled."
+  echo "  spec.template is a bare PodSpec with no metadata field, so KServe has"
+  echo "  nowhere to put our labels. harness.pods_for() and the second"
+  echo "  PodMonitor select on app.kubernetes.io/name + kserve.io/component"
+  echo "  instead. Nothing to fix; this line is here so a future change to"
+  echo "  either selector shows up immediately."
 fi
 
 echo

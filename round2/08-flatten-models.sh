@@ -96,19 +96,44 @@ for entry in "${ROLES[@]}"; do
   mkdir -p "${dest}"
   linked=0
   copied=0
-  # Only top-level files. Weight shards, config.json, tokenizer files and the
-  # index all live at the snapshot root; subdirectories in these repos are the
-  # onnx/openvino variants we deliberately did not download.
+  # RECURSIVE, and it has to be. An earlier version took only the top level,
+  # which is fine for the Qwen models but silently broke all three
+  # sentence-transformers ones: modules.json survived while the 1_Pooling/
+  # directory it points at did not. vLLM then read modules.json, failed to find
+  # the pooling config on disk, and fell back to fetching it from the Hub using
+  # the local path as a repo id:
+  #
+  #   Repo id must be in the form 'repo_name' or 'namespace/repo_name':
+  #   '/mnt/models'
+  #
+  # It cost exactly one file per model -- bge-m3 15 vs 14, reranker 9 vs 8,
+  # bge-large 12 vs 11 -- which is why the counts are now checked below.
+  #
+  # Recursing is safe: the onnx/openvino variants were excluded at download
+  # time by ignore_patterns, so they are not in the snapshot to begin with.
   while IFS= read -r f; do
+    rel="${f#"${snap}"}"
+    rel="${rel#/}"
     real="$(readlink -f "${f}")"
     [[ -f "${real}" ]] || continue
-    base="$(basename "${f}")"
-    if ln "${real}" "${dest}/${base}" 2>/dev/null; then
+    mkdir -p "${dest}/$(dirname "${rel}")"
+    if ln "${real}" "${dest}/${rel}" 2>/dev/null; then
       linked=$((linked+1))
-    elif cp -a "${real}" "${dest}/${base}" 2>/dev/null; then
+    elif cp -a "${real}" "${dest}/${rel}" 2>/dev/null; then
       copied=$((copied+1))
     fi
-  done < <(find "${snap}" -maxdepth 1 -mindepth 1 \( -type f -o -type l \))
+  done < <(find "${snap}" -mindepth 1 \( -type f -o -type l \))
+
+  # A count mismatch means a file did not make it across. That failure mode is
+  # invisible until vLLM tries to read the missing file minutes later, so it is
+  # worth one find per model here.
+  want="$(find "${snap}" -mindepth 1 \( -type f -o -type l \) | wc -l)"
+  got="$(find "${dest}" -type f | wc -l)"
+  if [[ "${want}" -ne "${got}" ]]; then
+    printf '%-13s %-34s %8s %6s  %s\n' "${role}" "${repo}" "-" \
+      "${got}/${want}" "INCOMPLETE"
+    rc=1; continue
+  fi
 
   if [[ -f "${dest}/config.json" ]]; then
     sz="$(du -sh --dereference "${dest}" 2>/dev/null | cut -f1)"
