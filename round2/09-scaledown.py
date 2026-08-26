@@ -1,0 +1,401 @@
+#!/usr/bin/env python3
+"""T9 -- admission under pressure: a new model arrives on a full card.
+
+Requirement 6, with the evict-to-zero semantics chosen for this project:
+
+    two models are serving; five minutes later a third arrives that cannot
+    fit; the incumbent is scaled to zero and only then is the newcomer
+    admitted.
+
+    python 09-scaledown.py --arm hami
+    python 09-scaledown.py --arm hami-mps --incumbent llm --incumbent embed \\
+                           --arrival llm2 --wait 300
+
+WHY THIS IS NOT JUST "kubectl scale"
+
+The interesting quantity is not that the newcomer eventually starts. It is the
+DEAD TIME -- the gap between deciding to evict and the newcomer serving its
+first token -- and who pays for it. On this card that gap is dominated by three
+things nothing in the Kubernetes API surfaces:
+
+  * a vLLM process holds its VRAM until the process exits, so `replicas: 0`
+    returning is not the memory being free. This script waits on nvidia-smi,
+    not on the API.
+  * the newcomer then reloads weights from the PVC and re-runs CUDA graph
+    capture, which on a 7B AWQ model is most of the wait.
+  * HAMi's refusal is a SCHEDULING event, not an error condition. The pod sits
+    Pending with a reason buried in events, and if you are not reading them the
+    system looks hung rather than correctly full.
+
+All three are recorded with timestamps, and traffic keeps running against the
+incumbent throughout so the cost of eviction lands in a latency series rather
+than in prose. The failed requests during the drain are the point, not noise.
+
+Everything lands in the same results layout run.py uses, so render_results.py
+draws T9 from the same code path as the rest.
+"""
+import argparse
+import datetime
+import json
+import os
+import subprocess
+import sys
+import threading
+import time
+
+import harness as H
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PY = sys.executable
+
+# Same reasoning as run.py: keep the 650 MB ShareGPT corpus off the root
+# filesystem, where kubelet's eviction threshold lives.
+os.environ.setdefault("HF_HOME", "/data2/hf-cache")
+
+# gpumem budgets from render.py, in MiB, against a 12288 MiB card:
+#   llm 8192 | embed 3072 | llm2 5632 | llm-mid 11264 | rerank 4608
+# The default pairing leaves 11264 of 12288 allocated, so the 5632 MiB newcomer
+# cannot be admitted without the incumbent leaving. That is the whole setup.
+DEFAULT_INCUMBENTS = ["llm", "embed"]
+DEFAULT_ARRIVAL = "llm2"
+SCENARIO = "llm-embed"          # supplies llm + embed
+ARRIVAL_SCENARIO = "llm-llm"    # supplies llm2
+
+
+def run(cmd, timeout=3600, echo=True):
+    if echo:
+        print("    $ " + " ".join(str(c) for c in cmd))
+    p = subprocess.run([str(c) for c in cmd], cwd=HERE, capture_output=True,
+                       text=True, timeout=timeout)
+    return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+
+def render(scenario, arm, roles, out, pin, pooling_via, mps_percent=""):
+    cmd = [PY, "render.py", "--scenario", scenario, "--arm", arm,
+           "--out", out, "--pooling-via", pooling_via]
+    for r in roles:
+        cmd += ["--only", r]
+    if pin:
+        cmd += ["--pin-gpu", pin]
+    if mps_percent:
+        cmd += ["--mps-percent", mps_percent]
+    rc, txt = run(cmd, echo=False)
+    if rc != 0:
+        raise RuntimeError("render failed:\n" + txt[-2000:])
+    return out
+
+
+def pod_reason(role, ns=H.NS):
+    """Why is this role's pod not running? HAMi's refusal lives in events."""
+    out = {"phase": None, "waiting": None, "events": []}
+    for p in H.pods_for(role, ns):
+        out["phase"] = p.get("status", {}).get("phase")
+        for c in (p.get("status", {}).get("conditions") or []):
+            if c.get("type") == "PodScheduled" and c.get("status") != "True":
+                out["waiting"] = "%s: %s" % (c.get("reason"), c.get("message"))
+        for cs in (p.get("status", {}).get("containerStatuses") or []):
+            w = cs.get("state", {}).get("waiting") or {}
+            if w:
+                out["waiting"] = "%s: %s" % (w.get("reason"), w.get("message"))
+        rc, txt = H.kubectl(["get", "events", "-n", ns, "--field-selector",
+                             "involvedObject.name=%s" % p["metadata"]["name"],
+                             "--sort-by", ".lastTimestamp",
+                             "-o", "custom-columns=REASON:.reason,MSG:.message",
+                             "--no-headers"], timeout=30)
+        if rc == 0:
+            out["events"] = [l.strip() for l in txt.strip().splitlines()][-6:]
+    return out
+
+
+def scale_to_zero(role, ns=H.NS):
+    """Evict-to-zero across both deployment paths.
+
+    LLMInferenceService and Deployment take the same `replicas` field but live
+    at different API groups, so try both rather than branching on how the role
+    happened to be rendered.
+    """
+    done = []
+    for kind in ("llminferenceservice", "deployment"):
+        rc, out = H.kubectl(["patch", kind, "r2-%s" % role, "-n", ns,
+                             "--type", "merge",
+                             "-p", '{"spec":{"replicas":0}}'], timeout=60)
+        if rc == 0:
+            done.append(kind)
+    if not done:
+        # Nothing patchable: delete instead. Still evict-to-zero, just blunter.
+        H.kubectl(["delete", "llminferenceservice,deployment", "-n", ns,
+                   "-l", "r2-role=%s" % role, "--ignore-not-found",
+                   "--wait=false"], timeout=60)
+        done.append("deleted")
+    return done
+
+
+class Traffic(threading.Thread):
+    """Keep the incumbent under load for the whole experiment.
+
+    Without this the eviction is measured on an idle system, where it costs
+    nothing and proves nothing. With it, the drain shows up as failed requests
+    and a latency cliff in exactly the series the dashboard is already drawing.
+    """
+
+    def __init__(self, trace, arm, out_dir, roles, eps, models, note):
+        super().__init__(daemon=True)
+        self.args = (trace, arm, out_dir, roles, eps, models, note)
+        self.rc, self.out = None, ""
+
+    def run(self):
+        trace, arm, out_dir, roles, eps, models, note = self.args
+        cmd = [PY, os.path.join("workload", "replay.py"), "--trace", trace,
+               "--arm", arm, "--out-dir", out_dir, "--note", note]
+        for r in roles:
+            cmd += ["--only", r]
+        for r, u in eps.items():
+            cmd += ["--endpoint", "%s=%s" % (r, u)]
+        for r, m in models.items():
+            cmd += ["--model", "%s=%s" % (r, m)]
+        self.rc, self.out = run(cmd, timeout=7200, echo=False)
+
+
+def main():
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--arm", default="hami", choices=("dedicated", "hami", "hami-mps"))
+    ap.add_argument("--incumbent", action="append", default=[],
+                    help="repeatable; default llm + embed")
+    ap.add_argument("--arrival", default=DEFAULT_ARRIVAL)
+    ap.add_argument("--wait", type=float, default=300.0,
+                    help="seconds the incumbents serve before the newcomer arrives")
+    ap.add_argument("--admit-timeout", type=float, default=120.0,
+                    help="how long to let the newcomer sit Pending before "
+                         "evicting. Its whole purpose is to prove it CANNOT be "
+                         "admitted while the card is full.")
+    ap.add_argument("--evict", default="",
+                    help="which incumbent to scale to zero; default the first")
+    ap.add_argument("--ready-timeout", type=float, default=900.0)
+    ap.add_argument("--drain", type=float, default=120.0,
+                    help="extra seconds of traffic after the newcomer is up")
+    ap.add_argument("--rate", type=float, default=4.0)
+    ap.add_argument("--seed", type=int, default=20260826)
+    ap.add_argument("--pin-gpu", default=H.GPU_UUIDS[0])
+    ap.add_argument("--pooling-via", choices=("kserve", "vllm"), default="kserve")
+    ap.add_argument("--mps-percent", default="")
+    ap.add_argument("--out", default=os.path.join(HERE, "results"))
+    ap.add_argument("--skip-preconditions", action="store_true")
+    a = ap.parse_args()
+
+    incumbents = a.incumbent or DEFAULT_INCUMBENTS
+    evict = a.evict or incumbents[0]
+    if evict not in incumbents:
+        sys.exit("--evict %s is not among the incumbents %s" % (evict, incumbents))
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_dir = os.path.join(a.out, "T9-%s-%s" % (a.arm, stamp))
+    d = os.path.join(run_dir, "%s__scaledown" % a.arm)
+    os.makedirs(d, exist_ok=True)
+    ev = H.Events(os.path.join(run_dir, "events.jsonl"))
+    marks = {}
+
+    print("=== T9 admission / scale-down   arm=%s" % a.arm)
+    print("    incumbents %s -> newcomer %s arrives after %.0fs"
+          % ("+".join(incumbents), a.arrival, a.wait))
+    print("    evict-to-zero target: %s" % evict)
+    print("    %s\n" % run_dir)
+
+    if not a.skip_preconditions:
+        problems = H.preconditions(ev)
+        if problems:
+            print("REFUSING TO START:")
+            for p in problems:
+                print("  - %s" % p)
+            return 2
+
+    rec = dict(test="T9", arm=a.arm, incumbents=incumbents, arrival=a.arrival,
+               evict=evict, wait=a.wait, rate=a.rate, seed=a.seed,
+               run_dir=run_dir, stamp=stamp, status="started")
+    sampler = None
+    traffic = None
+    try:
+        # ---- 0. clean slate ---------------------------------------------
+        ev.mark("teardown_begin")
+        H.teardown()
+        H.wait_gpu_idle(ev=ev)
+
+        # ---- 1. a trace long enough to cover the whole experiment --------
+        total = a.wait + a.admit_timeout + a.ready_timeout * 0.5 + a.drain
+        trace = os.path.join(run_dir, "trace.json")
+        rc, out = run([PY, os.path.join("workload", "gen_trace.py"),
+                       "--scenario", SCENARIO, "--rate", a.rate,
+                       "--duration", total, "--source", "sharegpt",
+                       "--seed", a.seed, "--out", trace], echo=False)
+        if rc != 0:
+            raise RuntimeError("gen_trace failed:\n" + out[-2000:])
+        tdoc = H.read_json(trace, {})
+        rec["trace_id"] = tdoc.get("trace_id")
+        ev.mark("trace", trace_id=rec["trace_id"],
+                requests=len(tdoc.get("requests", [])), seconds=round(total))
+
+        # ---- 2. incumbents ----------------------------------------------
+        rdir = os.path.join(d, "rendered-incumbent")
+        render(SCENARIO, a.arm, incumbents, rdir, a.pin_gpu, a.pooling_via,
+               a.mps_percent)
+        ev.mark("apply_incumbents", roles=",".join(incumbents))
+        rc, out = H.kubectl(["apply", "-f", rdir], timeout=180)
+        if rc != 0:
+            raise RuntimeError("apply incumbents failed:\n" + out[-2000:])
+        ok, diag = H.wait_ready(incumbents, timeout=a.ready_timeout, ev=ev)
+        if not ok:
+            raise RuntimeError("incumbents never ready: %s"
+                               % json.dumps({k: v[:600] for k, v in diag.items()}))
+        colo, detail = H.assert_colocated(incumbents, ev=ev)
+        rec["placement_incumbent"] = detail
+        if not colo:
+            raise RuntimeError("incumbents on different GPUs: %s" % detail)
+
+        eps = H.endpoints(incumbents, ev=ev)
+        models = {r: H.served_model(u) for r, u in eps.items()}
+        models = {r: m for r, m in models.items() if m}
+
+        # ---- 3. traffic + sampling start --------------------------------
+        sampler = H.GpuSampler(os.path.join(d, "gpu.csv"))
+        sampler.start()
+        traffic = Traffic(trace, a.arm, d, incumbents, eps, models, "T9 incumbent")
+        traffic.start()
+        marks["t_traffic"] = ev.mark("traffic_begin")
+
+        # ---- 4. serve for --wait seconds --------------------------------
+        print("\n    incumbents serving; newcomer arrives in %.0fs" % a.wait)
+        time.sleep(a.wait)
+
+        # ---- 5. the newcomer arrives on a full card ---------------------
+        adir = os.path.join(d, "rendered-arrival")
+        render(ARRIVAL_SCENARIO, a.arm, [a.arrival], adir, a.pin_gpu,
+               a.pooling_via, a.mps_percent)
+        marks["t_arrive"] = ev.mark("arrival_applied", role=a.arrival)
+        rc, out = H.kubectl(["apply", "-f", adir], timeout=180)
+        if rc != 0:
+            raise RuntimeError("apply arrival failed:\n" + out[-2000:])
+
+        # It SHOULD fail to be admitted. Watch it fail, and record why.
+        print("    watching %s for %.0fs -- it should NOT be admitted"
+              % (a.arrival, a.admit_timeout))
+        t0 = time.time()
+        admitted_early = False
+        reasons = []
+        while time.time() - t0 < a.admit_timeout:
+            r = pod_reason(a.arrival)
+            if r not in reasons:
+                reasons.append(r)
+            ready = any(
+                c.get("type") == "Ready" and c.get("status") == "True"
+                for p in H.pods_for(a.arrival)
+                for c in (p.get("status", {}).get("conditions") or []))
+            if ready:
+                admitted_early = True
+                break
+            time.sleep(5)
+        rec["arrival_reasons"] = reasons
+        rec["admitted_without_eviction"] = admitted_early
+        marks["t_blocked"] = ev.mark("arrival_blocked",
+                                     admitted_early=admitted_early)
+        if admitted_early:
+            # Not a script failure -- a finding. It means the card had room,
+            # so the premise of the test (a full card) did not hold and the
+            # gpumem budget needs re-checking before this run means anything.
+            print("\n    NOTE: %s was admitted WITHOUT eviction. The card was "
+                  "not full.\n    Check the gpumem budget in render.py before "
+                  "reporting this run." % a.arrival)
+        else:
+            print("    blocked as expected. Last reason: %s"
+                  % json.dumps(reasons[-1] if reasons else {})[:300])
+
+            # ---- 6. evict to zero --------------------------------------
+            marks["t_evict"] = ev.mark("evict_begin", role=evict)
+            rec["evict_via"] = scale_to_zero(evict)
+            # replicas:0 returning is NOT the memory being free -- the vLLM
+            # process holds its allocation until it exits.
+            freed = H.wait_gpu_idle(baseline_mib=_incumbent_floor(incumbents, evict),
+                                    timeout=300, ev=ev)
+            marks["t_freed"] = ev.mark("vram_released", ok=freed)
+
+            # ---- 7. admission ------------------------------------------
+            ok, diag = H.wait_ready([a.arrival], timeout=a.ready_timeout, ev=ev)
+            marks["t_admitted"] = ev.mark("arrival_ready", ok=ok)
+            rec["arrival_ready"] = ok
+            if not ok:
+                rec["arrival_diag"] = {k: v[:1200] for k, v in diag.items()}
+                print("    newcomer STILL not ready after eviction:")
+                for k, v in diag.items():
+                    print(v[:1500])
+
+        # ---- 8. let the tail run, then collect --------------------------
+        print("    draining for %.0fs" % a.drain)
+        time.sleep(a.drain)
+        marks["t_end"] = ev.mark("drain_end")
+
+    except Exception as exc:
+        rec["status"] = "error"
+        rec["error"] = "%s: %s" % (type(exc).__name__, exc)
+        print("\nERROR %s" % rec["error"])
+    finally:
+        if traffic is not None:
+            traffic.join(timeout=180)
+            rec["traffic_rc"] = traffic.rc
+        if sampler is not None:
+            sampler.stop()
+        t0 = marks.get("t_traffic", time.time() - 60)
+        t1 = marks.get("t_end", time.time())
+        H.prom_collect(os.path.join(d, "prom.json"), t0, t1, ev=ev)
+        rec["summary"] = H.read_json(os.path.join(d, "replay.summary.json"), {})
+        rec["marks"] = marks
+        rec["timeline"] = _timeline(marks)
+        if rec["status"] == "started":
+            rec["status"] = "ok"
+        H.write_json(os.path.join(d, "subrun.json"), rec)
+        H.write_json(os.path.join(run_dir, "run.json"),
+                     dict(test="T9", config=rec, subruns=[rec],
+                          run_dir=run_dir, trace_id=rec.get("trace_id")))
+        ev.mark("teardown_end")
+        H.teardown(quiet=True)
+        ev.close()
+
+    print("\n=== timeline")
+    for k, v in rec.get("timeline", {}).items():
+        print("  %-34s %s" % (k, v))
+    print("\n  results: %s" % run_dir)
+    print("  render with: python render_results.py %s" % run_dir)
+    return 0 if rec["status"] == "ok" else 1
+
+
+def _incumbent_floor(incumbents, evicted):
+    """VRAM we expect to REMAIN after evicting one tenant.
+
+    wait_gpu_idle waits for the card to fall to a floor. Here the floor is not
+    idle -- the other incumbents are still serving -- so it is their combined
+    budget plus headroom. Getting this wrong makes the wait either instant
+    (useless) or eternal (a hang that looks like a bug).
+    """
+    budgets = {"llm": 8192, "llm2": 5632, "llm-small": 2816, "llm-mid": 11264,
+               "embed": 3072, "embed-small": 2816, "rerank": 4608, "vl": 6656}
+    remaining = sum(budgets.get(r, 3072) for r in incumbents if r != evicted)
+    return remaining + 700
+
+
+def _timeline(m):
+    """Human-readable durations, which are the actual deliverable of T9."""
+    out = {}
+
+    def gap(a, b, label):
+        if a in m and b in m:
+            out[label] = "%.1fs" % (m[b] - m[a])
+
+    gap("t_traffic", "t_arrive", "incumbent served for")
+    gap("t_arrive", "t_blocked", "newcomer sat Pending for")
+    gap("t_evict", "t_freed", "VRAM release after replicas=0")
+    gap("t_freed", "t_admitted", "newcomer load + graph capture")
+    gap("t_evict", "t_admitted", "TOTAL dead time (evict -> serving)")
+    gap("t_arrive", "t_admitted", "TOTAL from arrival to serving")
+    return out
+
+
+if __name__ == "__main__":
+    sys.exit(main())

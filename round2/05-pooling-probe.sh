@@ -131,7 +131,10 @@ NVPY
   echo "--- MPS daemon flags currently in effect"
   ps -eo pid,user,args 2>/dev/null | grep -E "nvidia-cuda-mps-(control|server)" \
     | grep -v grep | cut -c1-120 | sed 's/^/    /'
-  if ps -eo args 2>/dev/null | grep -v grep | grep -q -- "-multiuser-server"; then
+  # Anchored to argv[0]: the daemon pod's `/bin/bash -c` wrapper carries a
+  # comment explaining -multiuser-server, and an unanchored grep matches that
+  # comment and reports PRESENT while the real daemon runs bare.
+  if ps -eo args= 2>/dev/null | grep -E "^nvidia-cuda-mps-control"        | grep -q -- "-multiuser-server"; then
     echo "    -multiuser-server : PRESENT"
   else
     echo "    -multiuser-server : ABSENT"

@@ -23,6 +23,15 @@ assume here. If it turns out not to, `--pooling-via vllm` re-renders the
 embedding and rerank tenants as plain `vllm serve` Deployments with the same
 image, PVC, quotas and MPS treatment; only KServe leaves the picture.
 
+ONE PHYSICAL GPU. This node has two idle 3080 Tis and HAMi's default GPU
+scheduling policy is spread, so nothing stops two "co-tenants" from being
+placed on separate cards -- which would make the sharing arm an uncontended
+arm and produce a clean, entirely meaningless result. --pin-gpu asks HAMi for
+a specific device by UUID. Because it is not certain that the KServe CRD
+carries pod annotations through to the pod, run.py VERIFIES the placement
+afterwards from HAMi's own allocation annotation and aborts the run if the
+tenants landed on different devices. Asking is best-effort; checking is not.
+
     python render.py --scenario llm-embed --arm hami-mps --out rendered/
 """
 import argparse
@@ -94,6 +103,19 @@ PVC = "r2-models-pvc"
 NS = "llm-demo"
 CARD_MIB = 12288
 
+# HAMi reads these from the POD's annotations. use-gpuuuid pins the device;
+# the binpack policy is a second, independent lever towards the same outcome in
+# case the UUID pin is dropped somewhere along the KServe path.
+def pin_annotations(uuid, indent):
+    """HAMi reads the device pin from the POD's annotations, and the two call
+    sites nest at different depths, so the indent is a parameter rather than
+    baked into a constant."""
+    if not uuid:
+        return ""
+    pad = "\n" + " " * indent
+    return ('%snvidia.com/use-gpuuuid: "%s"'
+            '%shami.io/gpu-scheduler-policy: "binpack"' % (pad, uuid, pad))
+
 MPS_ENV = """
           - name: CUDA_MPS_PIPE_DIRECTORY
             value: /tmp/nvidia-mps
@@ -106,10 +128,15 @@ MPS_MOUNT = """
         volumeMounts:
           - {name: mps-pipe, mountPath: /tmp/nvidia-mps}"""
 
+# `volumes` is a sibling of `containers` under spec.template, so it sits at the
+# same indent as `containers:` (4), NOT at the indent of the container list
+# items (6). At 6 the YAML parser reads it as a scalar key interrupting the
+# block sequence and rejects the whole document -- which made every hami-mps
+# KServe manifest unparseable until a round-trip yaml.safe_load_all caught it.
 MPS_VOL = """
-      volumes:
-        - name: mps-pipe
-          hostPath: {path: /tmp/nvidia-mps, type: Directory}"""
+    volumes:
+      - name: mps-pipe
+        hostPath: {path: /tmp/nvidia-mps, type: Directory}"""
 
 
 def gpu_resources(m, arm, pct):
@@ -123,8 +150,9 @@ def gpu_resources(m, arm, pct):
     return "\n".join(lines)
 
 
-def render_llm(role, m, arm, pct):
+def render_llm(role, m, arm, pct, pin=""):
     res = gpu_resources(m, arm, pct)
+    pin = pin_annotations(pin, 4) or " {}"
     env = '          - name: HF_HOME\n            value: /mnt/models'
     if arm == "hami-mps":
         env += MPS_ENV.format(pct=pct)
@@ -143,6 +171,7 @@ metadata:
   labels:
     r2-arm: {arm}
     r2-role: {role}
+  annotations:{pin}
 spec:
   model:
     name: {m['repo']}
@@ -175,10 +204,11 @@ spec:
 """
 
 
-def render_pooling(role, m, arm, pct):
+def render_pooling(role, m, arm, pct, pin=""):
     """Plain vllm serve. Same image, same PVC, same HAMi/MPS treatment -- the
     only difference from the LLM path is that KServe is not in front of it."""
     res = gpu_resources(m, arm, pct)
+    pin_ann = pin_annotations(pin, 8)
     env = ('          - name: HF_HOME\n            value: /mnt/models\n'
            '          - name: VLLM_LOGGING_LEVEL\n            value: INFO')
     if arm == "hami-mps":
@@ -213,7 +243,7 @@ spec:
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
-        prometheus.io/path: "/metrics"
+        prometheus.io/path: "/metrics"{pin_ann}
     spec:
       containers:
       - name: main
@@ -270,6 +300,10 @@ def main():
                     help="render just this role (dedicated baselines run one at a time)")
     ap.add_argument("--dedicated-full-card", action="store_true",
                     help="give the dedicated arm the whole card instead of the shared quota")
+    ap.add_argument("--pin-gpu", default="",
+                    help="HAMi device UUID to pin every tenant to. Without this "
+                         "HAMi may spread co-tenants across the two cards, and "
+                         "the sharing arms silently stop sharing.")
     ap.add_argument("--pooling-via", choices=("kserve", "vllm"), default="kserve",
                     help="how to serve embedding/rerank tenants. kserve keeps every "
                          "model on one deployment path; switch to vllm only if "
@@ -302,8 +336,8 @@ def main():
             m["gpumem"] = CARD_MIB - 512
         pct = pcts.get(role, 100)
         as_kserve = m["kind"] == "chat" or a.pooling_via == "kserve"
-        body = (render_llm(role, m, a.arm, pct) if as_kserve
-                else render_pooling(role, m, a.arm, pct))
+        body = (render_llm(role, m, a.arm, pct, a.pin_gpu) if as_kserve
+                else render_pooling(role, m, a.arm, pct, a.pin_gpu))
         path = os.path.join(a.out, "r2-%s-%s.yaml" % (a.arm, role))
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(body)
@@ -314,7 +348,7 @@ def main():
                  os.path.basename(path)))
 
     manifest = dict(scenario=a.scenario, arm=a.arm, roles=roles,
-                    pooling_via=a.pooling_via,
+                    pooling_via=a.pooling_via, pin_gpu=a.pin_gpu,
                     gpumem_total_mib=budget, card_mib=CARD_MIB,
                     fill_percent=round(budget / CARD_MIB * 100, 1),
                     mps_percent={r: pcts.get(r, 100) for r in roles},

@@ -73,10 +73,15 @@ try:
             obj = getattr(A, name)
         except Exception:
             continue
-        for r in getattr(obj, "routes", []) or []:
-            p = getattr(r, "path", None)
-            if isinstance(p, str):
-                paths.add(p)
+        rts = getattr(obj, "routes", None)
+        # On a CLASS (rather than an instance) this is the property object,
+        # which is not iterable -- that TypeError is what aborted the walk.
+        if not isinstance(rts, (list, tuple)):
+            continue
+        for r in rts:
+            pth = getattr(r, "path", None)
+            if isinstance(pth, str):
+                paths.add(pth)
     if paths:
         for p in sorted(paths):
             mark = "   <== POOLING" if any(k in p for k in POOLY) else ""

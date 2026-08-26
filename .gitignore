@@ -1,0 +1,23 @@
+# Credentials. A HuggingFace token was once pasted into the help text of
+# round2/download-models.sh and committed; the script now reads it from
+# $HF_TOKEN, ./.hf-token, or ~/.cache/huggingface/token instead. Keep every
+# spelling of that filename out of the repo.
+.hf-token
+*.hf-token
+hf-token
+*.token
+.env
+.netrc
+
+# Run output. These are large, machine-specific, and regenerable from the
+# scripts; render_results.py reads them from disk rather than from git.
+round2/results/
+round2/.selftest/
+round2/.rcheck/
+round2/rendered/
+round2/preflight*.txt
+round2/probe*.txt
+
+# Python
+__pycache__/
+*.pyc
