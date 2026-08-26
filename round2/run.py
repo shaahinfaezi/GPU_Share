@@ -250,6 +250,22 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
         # request into a cold vLLM pays CUDA graph capture and torch.compile;
         # inside the measured window it lands in p99 and gets reported as a
         # sharing cost, which it is not.
+        # A tenant that cannot serve should cost 30 seconds, not 45 minutes.
+        # T1's first attempt ran four arms to completion with 0/885 successful
+        # LLM requests: the pods were Ready, placement was verified, the trace
+        # matched across arms, and every generative request failed. Readiness
+        # only proves /health answers -- it says nothing about whether the
+        # endpoint accepts the request shape the client is about to send.
+        import render as _R
+        _models = {r: _R.MODELS[r]["repo"] for r in roles}
+        _kinds = {r: _R.MODELS[r]["kind"] for r in roles}
+        smoke_ok, smoke_detail = H.smoke_test(eps, _models, _kinds, ev=ev)
+        rec["smoke"] = smoke_detail
+        if not smoke_ok:
+            lines = "\n  ".join("%s: %s" % kv for kv in sorted(smoke_detail.items()))
+            raise RuntimeError("smoke test failed, refusing to spend a "
+                               "measurement window on it:\n  " + lines)
+
         sampler = H.GpuSampler(os.path.join(d, "gpu.csv"))
         sampler.start()
         t0 = ev.mark("replay_begin")

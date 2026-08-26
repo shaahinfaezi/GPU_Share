@@ -30,6 +30,7 @@ scale-down test in 09-scaledown.py uses the same primitives.
 import csv
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -419,6 +420,64 @@ def assert_colocated(roles, ns=NS, ev=None):
     return ok, detail
 
 
+# ----------------------------------------------------------------- smoke test
+def _post(url, body, timeout=120):
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, method="POST",
+                                 headers={"content-type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read(4096).decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read(2048).decode("utf-8", "replace")
+    except Exception as exc:
+        return None, "%s: %s" % (type(exc).__name__, exc)
+
+
+def smoke_test(endpoints, models, kinds, timeout=120, ev=None):
+    """One real request per role, BEFORE the measured replay starts.
+
+    T1's first run spent 45 minutes producing 0/885 successful LLM requests in
+    every arm. The pods were Ready, the placement was verified, the trace was
+    identical -- and every single generative request failed. Readiness only
+    proves /health answers; it says nothing about whether the endpoint accepts
+    the request shape the client will send.
+
+    Thirty seconds here would have caught it before the first arm, instead of
+    after the fourth. Returns (ok, {role: detail}).
+    """
+    detail, ok = {}, True
+    for role, base in sorted(endpoints.items()):
+        model = models.get(role, role)
+        kind = kinds.get(role, "chat")
+        if kind == "chat":
+            paths = ["/v1/chat/completions"]
+            body = {"model": model, "max_tokens": 8, "stream": False,
+                    "messages": [{"role": "user", "content": "reply with: ok"}]}
+        elif kind == "rerank":
+            paths = ["/v1/rerank", "/rerank", "/v1/score", "/score"]
+            body = {"model": model, "query": "what is MPS",
+                    "documents": ["NVIDIA MPS shares a GPU", "unrelated"]}
+        else:
+            paths = ["/v1/embeddings"]
+            body = {"model": model, "input": ["hello world"]}
+
+        last = None
+        for path in paths:
+            code, text = _post(base + path, body, timeout)
+            last = "%s %s -> %s %s" % (path, model, code, (text or "")[:240])
+            if code == 200:
+                detail[role] = "ok via %s" % path
+                break
+        else:
+            ok = False
+            detail[role] = "FAILED: %s" % last
+        if ev:
+            ev.mark("smoke", role=role, ok=(role in detail
+                                            and detail[role].startswith("ok")))
+    return ok, detail
+
+
 # -------------------------------------------------------------- gpu sampling
 class GpuSampler(threading.Thread):
     """1 Hz nvidia-smi sampling into a CSV, alongside Prometheus.
@@ -489,29 +548,68 @@ def prometheus_url():
 # instead is the honest substitute set -- power and energy track real SM work,
 # MEM_COPY_UTIL separates memory-bound from compute-bound, and the per-tenant
 # vLLM counters do the discriminating that DCGM_FI_DEV_GPU_UTIL cannot.
+# Metric names move between vLLM releases. They have now been wrong twice --
+# vllm:gpu_cache_usage_perc and vllm:time_per_output_token_seconds_bucket both
+# vanished by 0.15.1, and each silently produced an empty panel that reads as
+# "the system was idle". So names are no longer hardcoded: every alias lists
+# candidates in preference order, resolve_metrics() picks whichever this
+# Prometheus actually holds, and prom_collect records the choice. An alias that
+# resolves to nothing is SKIPPED with a reason rather than emitting a query
+# whose empty result is indistinguishable from no load.
+METRIC_CANDIDATES = {
+    "TTFT":      ["vllm:time_to_first_token_seconds"],
+    # True per-token spacing ONLY. vllm:request_decode_time_seconds is total
+    # decode time per REQUEST and is a different quantity -- accepting it as a
+    # fallback would put the wrong number under an "ITL" label. It is collected
+    # separately below under its own name. If neither per-token metric exists,
+    # the itl_* queries are skipped and the CLIENT measurement stands, which is
+    # authoritative anyway: replay.py streams and records real inter-token gaps.
+    "ITL":       ["vllm:time_per_output_token_seconds",
+                  "vllm:inter_token_latency_seconds"],
+    "DECODE":    ["vllm:request_decode_time_seconds"],
+    "PREFILL":   ["vllm:request_prefill_time_seconds"],
+    "QUEUE":     ["vllm:request_queue_time_seconds"],
+    "E2E":       ["vllm:e2e_request_latency_seconds"],
+    "GEN":       ["vllm:generation_tokens_total"],
+    "PROMPT":    ["vllm:prompt_tokens_total"],
+    "RUNNING":   ["vllm:num_requests_running"],
+    "WAITING":   ["vllm:num_requests_waiting"],
+    "KV":        ["vllm:kv_cache_usage_perc", "vllm:gpu_cache_usage_perc"],
+    "PREEMPT":   ["vllm:num_preemptions_total"],
+    "PREFIX":    ["vllm:prefix_cache_hit_rate", "vllm:gpu_prefix_cache_hit_rate"],
+    "SUCCESS":   ["vllm:request_success_total"],
+    "HAMICORE":  ["hami_gpu_core_allocated_ratio", "hami_core_allocated_ratio"],
+    "HAMILIMIT": ["hami_gpu_core_limit_ratio", "hami_core_limit_ratio"],
+    "HAMIMEM":   ["hami_gpu_memory_allocated_bytes", "hami_memory_allocated_bytes"],
+}
+
+# Histogram aliases carry no suffix; each query supplies _bucket, _sum, _count.
 QUERIES = {
-    # --- vLLM, per tenant
-    "ttft_p99":      'histogram_quantile(0.99, sum by (le, r2_role) (rate(vllm:time_to_first_token_seconds_bucket{namespace="%(ns)s"}[1m])))',
-    "ttft_p95":      'histogram_quantile(0.95, sum by (le, r2_role) (rate(vllm:time_to_first_token_seconds_bucket{namespace="%(ns)s"}[1m])))',
-    "ttft_p50":      'histogram_quantile(0.50, sum by (le, r2_role) (rate(vllm:time_to_first_token_seconds_bucket{namespace="%(ns)s"}[1m])))',
-    "ttft_mean":     'sum by (r2_role) (rate(vllm:time_to_first_token_seconds_sum{namespace="%(ns)s"}[1m])) / clamp_min(sum by (r2_role) (rate(vllm:time_to_first_token_seconds_count{namespace="%(ns)s"}[1m])), 0.001)',
-    "itl_p99":       'histogram_quantile(0.99, sum by (le, r2_role) (rate(vllm:time_per_output_token_seconds_bucket{namespace="%(ns)s"}[1m])))',
-    "itl_p95":       'histogram_quantile(0.95, sum by (le, r2_role) (rate(vllm:time_per_output_token_seconds_bucket{namespace="%(ns)s"}[1m])))',
-    "e2e_p99":       'histogram_quantile(0.99, sum by (le, r2_role) (rate(vllm:e2e_request_latency_seconds_bucket{namespace="%(ns)s"}[1m])))',
-    "e2e_p95":       'histogram_quantile(0.95, sum by (le, r2_role) (rate(vllm:e2e_request_latency_seconds_bucket{namespace="%(ns)s"}[1m])))',
-    "gen_tok_s":     'sum by (r2_role) (rate(vllm:generation_tokens_total{namespace="%(ns)s"}[1m]))',
-    "prompt_tok_s":  'sum by (r2_role) (rate(vllm:prompt_tokens_total{namespace="%(ns)s"}[1m]))',
-    "running":       'sum by (r2_role) (vllm:num_requests_running{namespace="%(ns)s"})',
-    "waiting":       'sum by (r2_role) (vllm:num_requests_waiting{namespace="%(ns)s"})',
-    "kv_usage":      'vllm:gpu_cache_usage_perc{namespace="%(ns)s"}',
-    "preemptions":   'sum by (r2_role) (rate(vllm:num_preemptions_total{namespace="%(ns)s"}[1m]))',
-    "prefix_hit":    'vllm:gpu_prefix_cache_hit_rate{namespace="%(ns)s"}',
-    "req_success":   'sum by (r2_role) (rate(vllm:request_success_total{namespace="%(ns)s"}[1m]))',
-    # --- HAMi, what the scheduler promised
-    "hami_cores":    'hami_gpu_core_allocated_ratio',
-    "hami_limit":    'hami_gpu_core_limit_ratio',
-    "hami_mem":      'hami_gpu_memory_allocated_bytes',
-    # --- hardware, what the card did
+    "ttft_p99":      'histogram_quantile(0.99, sum by (le, r2_role) (rate({TTFT}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "ttft_p95":      'histogram_quantile(0.95, sum by (le, r2_role) (rate({TTFT}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "ttft_p50":      'histogram_quantile(0.50, sum by (le, r2_role) (rate({TTFT}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "ttft_mean":     'sum by (r2_role) (rate({TTFT}_sum{{namespace="%(ns)s"}}[1m])) / clamp_min(sum by (r2_role) (rate({TTFT}_count{{namespace="%(ns)s"}}[1m])), 0.001)',
+    "itl_p99":       'histogram_quantile(0.99, sum by (le, r2_role) (rate({ITL}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "itl_p95":       'histogram_quantile(0.95, sum by (le, r2_role) (rate({ITL}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "e2e_p99":       'histogram_quantile(0.99, sum by (le, r2_role) (rate({E2E}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "e2e_p95":       'histogram_quantile(0.95, sum by (le, r2_role) (rate({E2E}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "gen_tok_s":     'sum by (r2_role) (rate({GEN}{{namespace="%(ns)s"}}[1m]))',
+    "prompt_tok_s":  'sum by (r2_role) (rate({PROMPT}{{namespace="%(ns)s"}}[1m]))',
+    "running":       'sum by (r2_role) ({RUNNING}{{namespace="%(ns)s"}})',
+    "waiting":       'sum by (r2_role) ({WAITING}{{namespace="%(ns)s"}})',
+    "kv_usage":      '{KV}{{namespace="%(ns)s"}}',
+    "preemptions":   'sum by (r2_role) (rate({PREEMPT}{{namespace="%(ns)s"}}[1m]))',
+    "prefix_hit":    '{PREFIX}{{namespace="%(ns)s"}}',
+    "req_success":   'sum by (r2_role) (rate({SUCCESS}{{namespace="%(ns)s"}}[1m]))',
+    # Per-request phase breakdown. Not a substitute for ITL, but it separates
+    # queueing from prefill from decode, which is exactly what tells apart
+    # "the GPU is slow" from "the scheduler is holding requests".
+    "decode_p95":    'histogram_quantile(0.95, sum by (le, r2_role) (rate({DECODE}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "prefill_p95":   'histogram_quantile(0.95, sum by (le, r2_role) (rate({PREFILL}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "queue_p95":     'histogram_quantile(0.95, sum by (le, r2_role) (rate({QUEUE}_bucket{{namespace="%(ns)s"}}[1m])))',
+    "hami_cores":    '{HAMICORE}',
+    "hami_limit":    '{HAMILIMIT}',
+    "hami_mem":      '{HAMIMEM}',
     "gpu_util":      'DCGM_FI_DEV_GPU_UTIL',
     "fb_used":       'DCGM_FI_DEV_FB_USED',
     "mem_copy_util": 'DCGM_FI_DEV_MEM_COPY_UTIL',
@@ -520,6 +618,31 @@ QUERIES = {
     "energy_mj":     'DCGM_FI_DEV_TOTAL_ENERGY_CONSUMPTION',
     "gpu_temp":      'DCGM_FI_DEV_GPU_TEMP',
 }
+
+
+def metric_names(base, timeout=30):
+    """Every metric name this Prometheus currently knows about."""
+    url = base + "/api/v1/label/__name__/values"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            doc = json.loads(r.read().decode("utf-8"))
+        return set(doc.get("data", []) or [])
+    except Exception:
+        return set()
+
+
+def resolve_metrics(base, known=None):
+    """alias -> the candidate that exists here. Unresolvable aliases omitted."""
+    known = known if known is not None else metric_names(base)
+    out = {}
+    for alias, cands in METRIC_CANDIDATES.items():
+        for c in cands:
+            # A histogram counts as present if any suffixed series exists.
+            if c in known or any(c + sfx in known
+                                 for sfx in ("_bucket", "_sum", "_count")):
+                out[alias] = c
+                break
+    return out
 
 
 def prom_range(base, expr, t0, t1, step=5):
@@ -549,21 +672,36 @@ def prom_collect(out_path, t0, t1, ns=NS, step=5, base=None, ev=None):
         if ev:
             ev.mark("prom_unavailable")
         return None
+    known = metric_names(base)
+    res = resolve_metrics(base, known)
     doc = {"base": base, "t0": t0, "t1": t1, "step": step, "ns": ns,
-           "collected_at": time.time(), "series": {}}
-    errs = 0
+           "collected_at": time.time(), "series": {},
+           "resolved_metrics": res,
+           "unresolved": sorted(set(METRIC_CANDIDATES) - set(res))}
+    errs, skipped = 0, []
     for name, tmpl in QUERIES.items():
-        data = prom_range(base, tmpl % {"ns": ns}, t0 - 30, t1 + 30, step)
+        need = set(re.findall(r"\{([A-Z]+)\}", tmpl))
+        if not need.issubset(res):
+            skipped.append(name)
+            doc["series"][name] = {
+                "skipped": "no metric present for %s"
+                           % ",".join(sorted(need - set(res)))}
+            continue
+        expr = tmpl.format(**res) % {"ns": ns}
+        data = prom_range(base, expr, t0 - 30, t1 + 30, step)
+        if isinstance(data, dict):
+            data["expr"] = expr
         if "error" in data:
             errs += 1
         doc["series"][name] = data
+    doc["skipped"] = skipped
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(doc, fh)
     n = sum(len(v.get("result", [])) for v in doc["series"].values()
             if isinstance(v, dict))
     if ev:
         ev.mark("prom_collected", series=n, errors=errs,
-                path=os.path.basename(out_path))
+                skipped=len(skipped), path=os.path.basename(out_path))
     return doc
 
 
