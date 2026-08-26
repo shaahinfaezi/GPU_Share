@@ -21,3 +21,9 @@ round2/probe*.txt
 # Python
 __pycache__/
 *.pyc
+
+# Local working notes. Kept out of the repo deliberately: they carry the
+# credential-exposure record and internal production judgements, and this repo
+# may be shared. Losing them costs a re-derivation, so back them up elsewhere.
+CLAUDE.md
+FINDINGS.md
