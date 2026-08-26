@@ -31,7 +31,6 @@ import csv
 import json
 import os
 import shlex
-import signal
 import subprocess
 import sys
 import threading
@@ -435,7 +434,14 @@ class GpuSampler(threading.Thread):
         super().__init__(daemon=True)
         self.path = path
         self.interval = interval
-        self._stop = threading.Event()
+        # NOT self._stop: threading.Thread has a PRIVATE METHOD of that name,
+        # and join() calls it via _wait_for_tstate_lock once the thread ends.
+        # Shadowing it with an Event made join() raise
+        #     TypeError: 'Event' object is not callable
+        # in the CALLING thread -- which aborted the caller before it could
+        # collect Prometheus, silently losing prom.json for every sub-run of
+        # the first T1 attempt while the run otherwise looked healthy.
+        self._halt = threading.Event()
         self.rows = 0
 
     def run(self):
@@ -444,7 +450,7 @@ class GpuSampler(threading.Thread):
         with open(self.path, "w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
             w.writerow(["t"] + q.split(","))
-            while not self._stop.is_set():
+            while not self._halt.is_set():
                 rc, out = sh(["nvidia-smi", "--query-gpu=" + q,
                               "--format=csv,noheader,nounits"], timeout=15)
                 now = time.time()
@@ -454,10 +460,10 @@ class GpuSampler(threading.Thread):
                                    + [x.strip() for x in line.split(",")])
                         self.rows += 1
                     fh.flush()
-                self._stop.wait(self.interval)
+                self._halt.wait(self.interval)
 
     def stop(self):
-        self._stop.set()
+        self._halt.set()
         self.join(timeout=10)
 
 

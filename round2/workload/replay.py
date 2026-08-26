@@ -216,11 +216,17 @@ def tokens_in(rows, service, start, end):
     return total
 
 
-def summarize(rows, meta, wall):
+def summarize(rows, meta, wall, epoch_start=None, epoch_end=None):
     live = [r for r in rows if not r["warmup"]]
     ok = [r for r in live if r["ok"]]
     out = dict(meta)
     out["wall_seconds"] = wall
+    # Absolute anchors. Everything else here is an offset from an in-process
+    # perf_counter origin, which cannot be mapped back to a Prometheus window
+    # after the fact -- backfill_prom.py had to infer it from events.jsonl
+    # ordering. These make each sub-run self-describing.
+    out["epoch_start"] = epoch_start
+    out["epoch_end"] = epoch_end
     out["requests_total"] = len(live)
     out["requests_ok"] = len(ok)
     out["requests_failed"] = len(live) - len(ok)
@@ -362,6 +368,7 @@ def main():
           % (len(live), trace["params"]["duration"], trace["trace_id"]), flush=True)
 
     origin = time.perf_counter()     # restart the clock after warm-up
+    epoch_start = time.time()        # ...and its absolute counterpart
     for row in live:
         due = origin + row["t"]
         gap = due - time.perf_counter()
@@ -370,13 +377,14 @@ def main():
         pool.submit(fire, row)
     pool.shutdown(wait=True)
     wall = time.perf_counter() - origin
+    epoch_end = time.time()
 
     meta = dict(arm=a.arm, note=a.note, trace_id=trace["trace_id"],
                 trace_params=trace["params"],
                 roles=sorted(set(r["service"] for r in rows_in)),
                 endpoints=eps, models=models,
                 only=sorted(only) if only else None)
-    summary = summarize(results, meta, wall)
+    summary = summarize(results, meta, wall, epoch_start, epoch_end)
 
     base = os.path.join(a.out_dir, "replay")
     with open(base + ".summary.json", "w", encoding="utf-8") as fh:
