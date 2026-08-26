@@ -57,9 +57,21 @@ kubectl -n "${NS}" get deploy "${DEP}" -o json 2>/dev/null \
 import json, sys
 d = json.load(sys.stdin)
 for c in d["spec"]["template"]["spec"]["containers"]:
-    args = c.get("args") or []
-    hits = [a for a in args if "scheduler-policy" in a]
-    print("  container %-28s %s" % (c["name"], ", ".join(hits) if hits else "(no policy flags -- HAMi default: gpu=spread)"))
+    # BOTH lists. HAMi 2.9.0 keeps its flags in command with args empty, so
+    # reading only args showed "binpack" while command still said "spread".
+    cmd = [a for a in (c.get("command") or []) if "scheduler-policy" in a]
+    arg = [a for a in (c.get("args") or []) if "scheduler-policy" in a]
+    if not cmd and not arg:
+        print("  container %-28s (no policy flags -- HAMi defaults: gpu=spread, node=binpack)" % c["name"])
+        continue
+    bits = []
+    if cmd: bits.append("command: " + ", ".join(cmd))
+    if arg: bits.append("args: " + ", ".join(arg))
+    print("  container %-28s %s" % (c["name"], "  |  ".join(bits)))
+    both = {a.split("=")[0] for a in cmd} & {a.split("=")[0] for a in arg}
+    for f in sorted(both):
+        print("      *** %s is specified in BOTH command and args -- the process"
+              " sees it twice ***" % f)
 ' || { echo "  could not read ${DEP} in ${NS}" >&2; exit 1; }
 
 echo
@@ -156,13 +168,43 @@ for c in d["spec"]["template"]["spec"]["containers"]:
 if target is None:
     sys.exit("no vgpu-scheduler-extender container in this deployment; "
              "inspect it by hand before patching anything")
-args = [a for a in (target.get("args") or [])
-        if not a.startswith("--gpu-scheduler-policy")
-        and not a.startswith("--node-scheduler-policy")]
-args += ["--gpu-scheduler-policy=" + pol, "--node-scheduler-policy=binpack"]
-target["args"] = args
-print(json.dumps({"spec": {"template": {"spec": {"containers": [
-    {"name": target["name"], "args": args}]}}}}))
+# HAMi 2.9.0 puts its flags in COMMAND, not args -- args is empty:
+#   command: [scheduler, ..., --gpu-scheduler-policy=spread, ...]
+# An earlier version appended to args instead, which left the flag specified
+# TWICE because kubelet runs command + args. pflag last-wins would probably
+# have picked ours, but "probably" is not good enough for the control the whole
+# experiment rests on, and anyone inspecting the deployment would see two
+# contradictory values.
+#
+# So: strip the policy flags from BOTH lists, then add exactly one set to
+# whichever list the binary is actually invoked through. That also repairs a
+# deployment already polluted by the earlier version.
+FLAGS = [("--gpu-scheduler-policy", pol), ("--node-scheduler-policy", "binpack")]
+
+def strip(seq):
+    keep = []
+    for a in seq or []:
+        if any(a == f or a.startswith(f + "=") for f, _ in FLAGS):
+            continue
+        keep.append(a)
+    return keep
+
+cmd = strip(target.get("command"))
+arg = strip(target.get("args"))
+tail = ["%s=%s" % (f, v) for f, v in FLAGS]
+if cmd:
+    cmd += tail
+else:
+    arg += tail
+
+patch = {"name": target["name"]}
+# Emit a list whenever the container originally had one, so a now-empty args
+# is actually cleared rather than left behind by the strategic merge.
+if target.get("command") is not None or cmd:
+    patch["command"] = cmd
+if target.get("args") is not None or arg:
+    patch["args"] = arg
+print(json.dumps({"spec": {"template": {"spec": {"containers": [patch]}}}}))
 ')"
 if [[ -z "${PATCHED}" ]]; then
   echo "  could not build the patch" >&2
@@ -238,9 +280,14 @@ kubectl -n "${NS}" get deploy "${DEP}" -o json 2>/dev/null \
 import json, sys
 d = json.load(sys.stdin)
 for c in d["spec"]["template"]["spec"]["containers"]:
-    hits = [a for a in (c.get("args") or []) if "scheduler-policy" in a]
+    hits = [a for a in ((c.get("command") or []) + (c.get("args") or []))
+            if "scheduler-policy" in a]
     if hits:
         print("  container %-28s %s" % (c["name"], ", ".join(hits)))
+        for f in ("--gpu-scheduler-policy", "--node-scheduler-policy"):
+            n = sum(1 for a in hits if a.startswith(f + "="))
+            if n > 1:
+                print("      *** %s appears %d times -- ambiguous ***" % (f, n))
 '
 
 cat <<'EOF'
