@@ -28,9 +28,12 @@ FAIRNESS, ENFORCED RATHER THAN INTENDED (requirement 7)
 
   * one trace per test, replayed by every arm; its SHA-256 trace_id is stored
     in each sub-run and compared at the end. Divergence fails the run.
-  * every tenant pinned to ONE physical GPU, and the placement VERIFIED after
-    deployment. HAMi's default GPU policy is spread, and two "co-tenants" on
-    separate cards would produce a clean result that measures nothing.
+  * co-tenants forced onto ONE physical GPU, and the placement VERIFIED after
+    deployment. HAMi ships gpuSchedulerPolicy=spread, so two "co-tenants" would
+    otherwise land on separate cards and produce a clean result that measures
+    nothing. Co-location comes from the scheduler (10-hami-binpack.sh), because
+    the per-pod pin does not survive KServe. Verification is against nvidia-smi
+    as well as HAMi's annotation, and a split aborts the arm.
   * the GPU is drained to idle between sub-runs, verified by nvidia-smi rather
     than by sleeping.
   * the client talks straight to the pod IP, so the KServe router is outside
@@ -222,7 +225,7 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
         if not colocated:
             raise RuntimeError(
                 "tenants landed on DIFFERENT GPUs: %s\nThis arm would not "
-                "actually be sharing anything. Re-run with --pin-gpu, or set "
+                "actually be sharing anything. Run ./10-hami-binpack.sh, or set "
                 "the HAMi scheduler's gpuSchedulerPolicy to binpack."
                 % json.dumps(detail))
         if detail.get("warning"):
@@ -296,9 +299,20 @@ def main():
     ap.add_argument("--arms", default=",".join(ARMS))
     ap.add_argument("--out", default=os.path.join(HERE, "results"))
     ap.add_argument("--seed", type=int, default=20260826)
-    ap.add_argument("--pin-gpu", default=H.GPU_UUIDS[0],
-                    help="physical device every tenant is pinned to; "
-                         "'' disables pinning (not recommended)")
+    # Default OFF. The annotation is inert on the KServe path -- KServe drops
+    # pod annotations -- so pinning does nothing there, and co-location now
+    # comes from the scheduler (10-hami-binpack.sh, verified co-locating both
+    # T1 tenants on one card). But it DOES land on the plain-Deployment path,
+    # so a mixed render would pin the Deployment tenants to this UUID while
+    # binpack sent the KServe tenants wherever it liked -- a guaranteed split,
+    # caused by the very flag meant to prevent one.
+    #
+    # Set it only when EVERY tenant renders as a Deployment (--pooling-via vllm
+    # on an all-pooling scenario), where it is then the only mechanism.
+    ap.add_argument("--pin-gpu", default="",
+                    help="pin every tenant to this device UUID. Leave empty: "
+                         "KServe ignores it and binpack handles co-location. "
+                         "Only useful when every tenant is a plain Deployment.")
     ap.add_argument("--pooling-via", choices=("kserve", "vllm"), default="kserve")
     ap.add_argument("--mps-percent", default="",
                     help="per-role CUDA_MPS_ACTIVE_THREAD_PERCENTAGE, e.g. "
