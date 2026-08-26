@@ -204,9 +204,50 @@ def main():
         ev.close()
 
     # --- verdict ---------------------------------------------------------
-    good_rows = [r for r in rows if "error" not in r
-                 and r["tracking"] >= 0.95 and r["success"] >= 0.98]
+    # Throughput tracking alone is too noisy to locate the knee. `achieved`
+    # is measured against the NOMINAL rate, but a Poisson trace of 90 s at
+    # 0.5/s holds ~40 requests, not 45, so tracking reads 0.89 at a rate the
+    # model handles with 100% success. The first run of this flagged 0.5/s as
+    # "past the knee" while 6/s passed -- exactly backwards.
+    #
+    # Latency is the sharp signal. Below capacity, added load costs almost
+    # nothing per token; past it, queueing shows up in inter-token spacing
+    # immediately. On the 7B the ladder ran 0.011, 0.011, 0.012, 0.013, 0.018,
+    # 0.022, then 0.071 -- a 3.2x jump between 4/s and 6/s.
+    clean = [r for r in rows if "error" not in r]
+    base_itl = min((r["itl_p95"] for r in clean if r["itl_p95"] > 0), default=0.0)
+    base_ttft = min((r["ttft_p95"] for r in clean if r["ttft_p95"] > 0), default=0.0)
+
+    def sustainable(r):
+        if r["success"] < 0.98:
+            return False, "success %.1f%%" % (100 * r["success"])
+        # Offered load as the TRACE actually contains it, not the nominal rate.
+        offered = (r["requests_total"] / r["wall"]) if r["wall"] else 0.0
+        if offered and r["achieved"] / offered < 0.95:
+            return False, "throughput fell behind the trace"
+        if base_itl and r["itl_p95"] > 2.0 * base_itl:
+            return False, ("ITL p95 %.4f is %.1fx the unloaded %.4f"
+                           % (r["itl_p95"], r["itl_p95"] / base_itl, base_itl))
+        if not base_itl and base_ttft and r["ttft_p95"] > 2.0 * base_ttft:
+            return False, ("TTFT p95 %.3f is %.1fx the unloaded %.3f"
+                           % (r["ttft_p95"], r["ttft_p95"] / base_ttft, base_ttft))
+        return True, ""
+
+    verdicts = {}
+    good_rows = []
+    for r in clean:
+        okr, why = sustainable(r)
+        verdicts[r["rate"]] = (okr, why)
+        r["sustainable"] = okr
+        r["why_not"] = why
+        if okr:
+            good_rows.append(r)
     knee = max((r["rate"] for r in good_rows), default=0.0)
+    print("\n  per-rate verdict (latency baseline: ITL p95 %.4f)" % base_itl)
+    for r in clean:
+        okr, why = verdicts[r["rate"]]
+        print("    %-6g %s%s" % (r["rate"], "sustainable" if okr else "OVER",
+                                 ("  -- " + why) if why else ""))
     peak_tok = max((r["tokens_per_second"] for r in rows
                     if "error" not in r), default=0.0)
 
