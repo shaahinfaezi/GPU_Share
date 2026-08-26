@@ -8,6 +8,8 @@ Order matters. Each step is safe to re-run.
 ./00-preflight.sh > preflight.txt      # cluster shape, disk, GPU, monitoring
 ./05-pooling-probe.sh > probe.txt      # vLLM capability + DCGM metric inventory
 ./verify-models.sh --deep              # all 8 models present and loadable
+./verify-models.sh --serve embed       # a pooling model really serves vectors
+./06-kserve-pooling-check.sh           # ...and that KServe forwards the flags
 ./07-prefetch-traces.sh                # ShareGPT + Azure corpora onto /data2
 kubectl apply -f 01-models-storage.yaml
 kubectl apply -f monitoring/60-servicemonitors.yaml
