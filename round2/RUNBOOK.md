@@ -11,6 +11,7 @@ Order matters. Each step is safe to re-run.
 ./verify-models.sh --serve embed       # a pooling model really serves vectors
 ./06-kserve-pooling-check.sh           # ...and that KServe forwards the flags
 ./07-prefetch-traces.sh                # ShareGPT + Azure corpora onto /data2
+./08-flatten-models.sh                 # flat model dirs KServe can mount
 kubectl apply -f 01-models-storage.yaml
 kubectl apply -f monitoring/60-servicemonitors.yaml
 kubectl apply -f monitoring/61-dashboard.yaml
@@ -71,6 +72,27 @@ costume.
 - a test that asks for `source=azure` and silently gets synthetic aborts
 - the client talks straight to the pod IP, so the KServe router is outside the
   measurement in every arm
+
+## Two KServe facts the harness is built around
+
+**`spec.model.uri` is the mount, and `--model` points at it.** KServe passes the
+uri as the volume and sets vLLM's `--model` to `/mnt/models`, using
+`spec.model.name` only as `--served-model-name`. So the uri must point at a
+directory with `config.json` at its root — not at an HF cache tree. That is what
+`08-flatten-models.sh` builds, with hardlinks, so it costs no disk.
+
+**KServe does not put our labels on its pods.** `spec.template` is a bare
+`PodSpec`, which has no `metadata`, so there is nowhere for `r2-role` to go. The
+workload pods carry `app.kubernetes.io/name=r2-<role>` and
+`kserve.io/component=workload` instead. `harness.pods_for()` selects on both
+schemes, and there are two PodMonitors for the same reason. A selector that
+matches nothing collects nothing and does not complain.
+
+**The router is off by default.** `router.scheduler: {}` makes KServe create a
+deployment pulling `ghcr.io/llm-d/llm-d-inference-scheduler`, which this node
+cannot fetch — ghcr returns 403 to anonymous pulls for that repo. Nothing is
+lost: the client talks straight to the pod IP so the router is outside the
+measurement in every arm. Pass `--router` if external ingress is ever wanted.
 
 ## Known limits of this hardware
 

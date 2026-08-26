@@ -119,14 +119,13 @@ def teardown(ns=NS, timeout=300, quiet=False):
     tens of seconds. Deleting and immediately deploying the next arm is how you
     get an OOM that looks like a sharing failure.
     """
-    for kind in ("llminferenceservice", "deployment", "service", "pod"):
-        kubectl(["delete", kind, "-n", ns, "-l", "r2-role",
-                 "--ignore-not-found", "--wait=false"], timeout=60)
+    for sel in ("r2-role", "app.kubernetes.io/part-of=llminferenceservice"):
+        for kind in ("llminferenceservice", "deployment", "service", "pod"):
+            kubectl(["delete", kind, "-n", ns, "-l", sel,
+                     "--ignore-not-found", "--wait=false"], timeout=60)
     t0 = time.time()
     while time.time() - t0 < timeout:
-        rc, out = kubectl(["get", "pods", "-n", ns, "-l", "r2-role",
-                           "--no-headers"], timeout=30)
-        if rc == 0 and not out.strip():
+        if not all_r2_pods(ns):
             break
         time.sleep(3)
     else:
@@ -169,9 +168,47 @@ def wait_gpu_idle(baseline_mib=300, timeout=240, ev=None):
     return False
 
 
+# KServe does NOT copy an LLMInferenceService's metadata.labels onto the pods
+# it creates -- spec.template is a bare PodSpec, which has no metadata field, so
+# there is nowhere to put them. Confirmed on the real object; the workload pod
+# came up carrying only:
+#
+#   app.kubernetes.io/name=r2-embed
+#   app.kubernetes.io/component=llminferenceservice-workload
+#   kserve.io/component=workload
+#   llm-d.ai/role=both
+#   hami.io/vgpu-node=mr-gholami
+#
+# A plain vllm Deployment (--pooling-via vllm) DOES carry r2-role, because we
+# write its pod template ourselves. So selection has to cover both, and the
+# KServe half must also exclude the router-scheduler pod, which shares
+# app.kubernetes.io/name with the workload.
+KSERVE_SEL = "app.kubernetes.io/name=r2-%s,kserve.io/component=workload"
+
+
 def pods_for(role, ns=NS):
-    d = kjson(["get", "pods", "-n", ns, "-l", "r2-role=%s" % role])
-    return (d or {}).get("items", [])
+    seen, out = set(), []
+    for sel in ("r2-role=%s" % role, KSERVE_SEL % role):
+        d = kjson(["get", "pods", "-n", ns, "-l", sel])
+        for p in (d or {}).get("items", []):
+            name = p.get("metadata", {}).get("name")
+            if name and name not in seen:
+                seen.add(name)
+                out.append(p)
+    return out
+
+
+def all_r2_pods(ns=NS):
+    """Every round-2 pod, whichever path created it."""
+    seen, out = set(), []
+    for sel in ("r2-role", "kserve.io/component=workload"):
+        d = kjson(["get", "pods", "-n", ns, "-l", sel])
+        for p in (d or {}).get("items", []):
+            name = p.get("metadata", {}).get("name")
+            if name and name not in seen:
+                seen.add(name)
+                out.append(p)
+    return out
 
 
 def wait_ready(roles, ns=NS, timeout=900, ev=None):

@@ -150,9 +150,30 @@ def gpu_resources(m, arm, pct):
     return "\n".join(lines)
 
 
-def render_llm(role, m, arm, pct, pin=""):
+ROUTER_BLOCK = """
+  router:
+    scheduler: {}
+    route: {}
+    gateway:
+      refs:
+        - name: kserve-ingress-gateway
+          namespace: kserve
+"""
+
+
+def render_llm(role, m, arm, pct, pin="", router=False):
     res = gpu_resources(m, arm, pct)
     pin = pin_annotations(pin, 4) or " {}"
+    # The router is OFF by default. `scheduler: {}` makes KServe create a
+    # router-scheduler Deployment pulling ghcr.io/llm-d/llm-d-inference-
+    # scheduler, which this node cannot fetch -- ghcr returns 403 Forbidden to
+    # anonymous pulls for that repo. It crashlooped through the whole check.
+    #
+    # Nothing is lost: the client deliberately talks straight to the pod IP so
+    # that the KServe router is outside the measurement in every arm. The
+    # workload pod and its Service (r2-<role>-kserve-workload-svc:8000) exist
+    # either way. Pass --router if external ingress is ever wanted.
+    router = ROUTER_BLOCK if router else ""
     env = '          - name: HF_HOME\n            value: /mnt/models'
     if arm == "hami-mps":
         env += MPS_ENV.format(pct=pct)
@@ -175,15 +196,8 @@ metadata:
 spec:
   model:
     name: {m['repo']}
-    uri: pvc://{PVC}/
-  replicas: 1
-  router:
-    scheduler: {{}}
-    route: {{}}
-    gateway:
-      refs:
-        - name: kserve-ingress-gateway
-          namespace: kserve
+    uri: pvc://{PVC}/models/{role}
+  replicas: 1{router}
   template:
     containers:
       - name: main
@@ -300,6 +314,11 @@ def main():
                     help="render just this role (dedicated baselines run one at a time)")
     ap.add_argument("--dedicated-full-card", action="store_true",
                     help="give the dedicated arm the whole card instead of the shared quota")
+    ap.add_argument("--router", action="store_true",
+                    help="also create the KServe router/scheduler. Off by "
+                         "default: its image (ghcr.io/llm-d/llm-d-inference-"
+                         "scheduler) 403s on this node, and the client bypasses "
+                         "the router anyway.")
     ap.add_argument("--pin-gpu", default="",
                     help="HAMi device UUID to pin every tenant to. Without this "
                          "HAMi may spread co-tenants across the two cards, and "
@@ -336,7 +355,7 @@ def main():
             m["gpumem"] = CARD_MIB - 512
         pct = pcts.get(role, 100)
         as_kserve = m["kind"] == "chat" or a.pooling_via == "kserve"
-        body = (render_llm(role, m, a.arm, pct, a.pin_gpu) if as_kserve
+        body = (render_llm(role, m, a.arm, pct, a.pin_gpu, a.router) if as_kserve
                 else render_pooling(role, m, a.arm, pct, a.pin_gpu))
         path = os.path.join(a.out, "r2-%s-%s.yaml" % (a.arm, role))
         with open(path, "w", encoding="utf-8") as fh:
@@ -349,6 +368,7 @@ def main():
 
     manifest = dict(scenario=a.scenario, arm=a.arm, roles=roles,
                     pooling_via=a.pooling_via, pin_gpu=a.pin_gpu,
+                    router=a.router,
                     gpumem_total_mib=budget, card_mib=CARD_MIB,
                     fill_percent=round(budget / CARD_MIB * 100, 1),
                     mps_percent={r: pcts.get(r, 100) for r in roles},

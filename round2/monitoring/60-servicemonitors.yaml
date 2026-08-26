@@ -143,3 +143,53 @@ spec:
           targetLabel: r2_arm
         - sourceLabels: [__meta_kubernetes_pod_name]
           targetLabel: pod
+---
+# The KServe workload pods, which carry NONE of our labels.
+#
+# spec.template on an LLMInferenceService is a bare PodSpec -- no metadata
+# field -- so there is nowhere to put r2-role and KServe does not copy the CR's
+# labels down. Confirmed on a real object; the workload pod came up with only:
+#
+#   app.kubernetes.io/name=r2-embed
+#   app.kubernetes.io/component=llminferenceservice-workload
+#   kserve.io/component=workload
+#   llm-d.ai/role=both
+#
+# The PodMonitor above (r2-role: Exists) therefore matches only the plain
+# vllm Deployment path and would have collected NOTHING for KServe tenants --
+# silently, which is the worst way for a dashboard to be wrong.
+#
+# kserve.io/component=workload also excludes the router-scheduler pod, which
+# shares app.kubernetes.io/name with the workload and serves no vLLM metrics.
+#
+# r2_arm cannot be recovered from a pod label here. It does not need to be:
+# only one arm runs at a time, and run.py records each arm's exact t0/t1 in
+# events.jsonl, which is what render_results.py slices on.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: r2-vllm-kserve
+  namespace: llm-demo
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      kserve.io/component: workload
+  namespaceSelector:
+    matchNames: [llm-demo]
+  podMetricsEndpoints:
+    - targetPort: 8000
+      path: /metrics
+      interval: 5s
+      scrapeTimeout: 4s
+      honorLabels: true
+      relabelings:
+        # app.kubernetes.io/name is "r2-<role>"; strip the prefix so the panels
+        # key on the same r2_role the Deployment path produces.
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+          regex: "r2-(.+)"
+          targetLabel: r2_role
+          replacement: "$1"
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
