@@ -51,12 +51,14 @@ cleanup() {
   if [[ "${KEEP}" -eq 0 ]]; then
     echo
     echo "--- cleaning up"
-    kubectl delete -f "${OUT}" --ignore-not-found --wait=false >/dev/null 2>&1
+    # By label, not by -f DIR: if any file in there fails to parse, a
+    # directory-based delete leaves the real resources behind.
+    kubectl delete llminferenceservice,deployment,service,pod -n "${NS}"       -l r2-role --ignore-not-found --wait=false >/dev/null 2>&1
     rm -rf "${OUT}"
   else
     echo
     echo "--- left running (--keep). Remove with:"
-    echo "      kubectl delete -f ${OUT}"
+    echo "      kubectl delete llminferenceservice,deployment -n ${NS} -l r2-role"
   fi
 }
 trap cleanup EXIT
@@ -71,7 +73,7 @@ grep -E "^\s+- --" "${OUT}"/r2-dedicated-"${ROLE}".yaml | sed 's/^/      /'
 
 echo
 echo "=== applying"
-kubectl delete -f "${OUT}" --ignore-not-found --wait=false >/dev/null 2>&1
+kubectl delete llminferenceservice,deployment,service,pod -n "${NS}"   -l r2-role --ignore-not-found --wait=false >/dev/null 2>&1
 sleep 3
 kubectl apply -f "${OUT}" || exit 1
 

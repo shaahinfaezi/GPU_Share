@@ -354,7 +354,16 @@ def main():
                     mps_percent={r: pcts.get(r, 100) for r in roles},
                     files=[os.path.basename(p) for p in written],
                     models={r: MODELS[r]["repo"] for r in roles})
-    with open(os.path.join(a.out, "r2-%s-manifest.json" % a.arm), "w",
+    # NOT in a.out itself. `kubectl apply -f DIR` reads every .json/.yaml/.yml
+    # directly inside the directory, so a metadata file sitting beside the
+    # manifests gets submitted to the API server as if it were an object:
+    #     error validating ...manifest.json: [apiVersion not set, kind not set]
+    # and apply exits non-zero AFTER partially creating the real resources.
+    # Directory reads are non-recursive without -R, so a subdirectory is
+    # invisible to apply while staying next to the YAML for auditing.
+    meta_dir = os.path.join(a.out, "meta")
+    os.makedirs(meta_dir, exist_ok=True)
+    with open(os.path.join(meta_dir, "r2-%s-manifest.json" % a.arm), "w",
               encoding="utf-8") as fh:
         json.dump(manifest, fh, indent=2)
 
