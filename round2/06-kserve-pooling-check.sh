@@ -1,40 +1,46 @@
 #!/usr/bin/env bash
-# The last unknown before T1: does the KSERVE path carry vLLM's pooling flags?
+# Does the KSERVE path work at all, and does it carry vLLM's pooling flags?
 #
-# What is already settled:
-#   ./verify-models.sh --serve embed   -> bge-m3 served real 1024-dim vectors
-# but that ran a BARE `vllm serve` pod. render.py defaults to
-# --pooling-via kserve, which goes through LLMInferenceService and the
-# huggingfaceserver entrypoint instead. Those are different code paths, and
-# only one of them has been exercised.
+# Two questions, in that order, because the first run of this check answered
+# neither: it waited on `-l r2-role=embed`, found nothing, and concluded "use
+# --pooling-via vllm". That verdict was not earned. No pod carrying that label
+# ever appeared, so nothing about pooling was tested.
 #
-# 05-pooling-probe.sh found parse_known_args and maybe_add_vllm in
-# huggingfaceserver/__main__.py, which is strong evidence the flags are
-# forwarded -- but that is static analysis of source text, which is exactly the
-# kind of reasoning that produced the wrong answer about /v1/embeddings the
-# first time. This runs it.
+# The likely reason is that KServe does not copy an LLMInferenceService's
+# metadata.labels down onto the pods it creates. If so it is a much bigger
+# problem than pooling, because the whole harness selects on that label:
 #
-# It also checks a second thing worth knowing early: whether bge-m3 fits the
-# 3072 MiB gpumem quota at --dtype=half. fp32 weights are 2.14 GiB; halved
-# they are ~1.14 GiB, leaving roughly 1.6 GiB for activations at
-# max_model_len=8192 and max_num_seqs=64. That should fit. "Should" is why
-# this runs before T1 rather than during it.
+#   harness.pods_for()          -l r2-role=<role>   -> readiness, endpoints,
+#                                                      GPU placement check
+#   harness.teardown()          -l r2-role
+#   monitoring PodMonitor       r2-role: Exists     -> ALL vLLM metrics
+#
+# A silent mismatch there means every run times out waiting for a pod that is
+# running fine, and the dashboard stays empty. So this version never selects on
+# that label. It snapshots the namespace, applies, and reports whatever pod
+# actually appears -- with its real labels. That answers the propagation
+# question directly instead of inferring it from a timeout.
 #
 #   ./06-kserve-pooling-check.sh              # embed
 #   ./06-kserve-pooling-check.sh --role rerank
-#   ./06-kserve-pooling-check.sh --keep       # leave it running to poke at
+#   ./06-kserve-pooling-check.sh --keep       # leave it up to poke at
+#   ./06-kserve-pooling-check.sh --diagnose   # report on what is already there
 set -uo pipefail
 
 NS="${NS:-llm-demo}"
 ROLE="embed"
 KEEP=0
+DIAG_ONLY=0
+WAIT_POD="${WAIT_POD:-180}"     # seconds for a pod to APPEAR
+WAIT_READY="${WAIT_READY:-600}" # seconds for it to become Ready
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --role) ROLE="${2:-embed}"; shift 2 ;;
     --keep) KEEP=1; shift ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    --diagnose) DIAG_ONLY=1; KEEP=1; shift ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -43,122 +49,199 @@ case "${ROLE}" in
   embed)       SCEN="llm-embed";  PATHS="/v1/embeddings" ;;
   embed-small) SCEN="dense4";     PATHS="/v1/embeddings" ;;
   rerank)      SCEN="vl-rerank";  PATHS="/v1/rerank /rerank /v1/score /score" ;;
-  *) echo "role must be embed, embed-small or rerank" >&2; exit 2 ;;
+  llm)         SCEN="llm-only";   PATHS="/v1/chat/completions" ;;
+  *) echo "role must be llm, embed, embed-small or rerank" >&2; exit 2 ;;
 esac
 
 OUT="${HERE}/.kcheck"
+CR="r2-${ROLE}"
+
+# Infrastructure that lives in this namespace and must not be mistaken for
+# something this check created.
+KEEPERS='qwen-benchmark-image-pinner|qwen-benchmark-mps-daemon'
+
 cleanup() {
   if [[ "${KEEP}" -eq 0 ]]; then
     echo
     echo "--- cleaning up"
-    # By label, not by -f DIR: if any file in there fails to parse, a
-    # directory-based delete leaves the real resources behind.
-    kubectl delete llminferenceservice,deployment,service,pod -n "${NS}"       -l r2-role --ignore-not-found --wait=false >/dev/null 2>&1
+    # Delete the CR by NAME. Deleting by -l r2-role only works if the label is
+    # on the object, which is the very thing in question here.
+    kubectl delete llminferenceservice "${CR}" -n "${NS}" \
+      --ignore-not-found --wait=false >/dev/null 2>&1
+    kubectl delete deployment,service,pod -n "${NS}" -l r2-role \
+      --ignore-not-found --wait=false >/dev/null 2>&1
     rm -rf "${OUT}"
   else
     echo
-    echo "--- left running (--keep). Remove with:"
-    echo "      kubectl delete llminferenceservice,deployment -n ${NS} -l r2-role"
+    echo "--- left running. Remove with:"
+    echo "      kubectl delete llminferenceservice ${CR} -n ${NS}"
   fi
 }
 trap cleanup EXIT
 
+pods_now() {
+  kubectl get pods -n "${NS}" --no-headers -o custom-columns=N:.metadata.name \
+    2>/dev/null | grep -Ev "${KEEPERS}" | sort
+}
+
+diagnose() {
+  echo
+  echo "================= DIAGNOSIS ================="
+  echo
+  echo "--- the LLMInferenceService and its status conditions"
+  kubectl get llminferenceservice "${CR}" -n "${NS}" -o yaml 2>&1 \
+    | sed -n '/^status:/,$p' | head -50 | sed 's/^/      /'
+  echo
+  echo "--- everything in ${NS} right now, WITH LABELS"
+  kubectl get pods -n "${NS}" --show-labels 2>&1 | sed 's/^/      /'
+  echo
+  echo "--- workloads KServe did or did not create"
+  kubectl get deploy,rs,svc,httproute -n "${NS}" 2>&1 | head -20 | sed 's/^/      /'
+  echo
+  echo "--- recent namespace events (newest last)"
+  kubectl get events -n "${NS}" --sort-by .lastTimestamp 2>&1 \
+    | tail -20 | sed 's/^/      /'
+  echo
+  echo "--- does spec.template accept pod metadata at all?"
+  echo "    (PodSpec has no metadata; PodTemplateSpec does. If it is a bare"
+  echo "     PodSpec, labels CANNOT be set on the pod from the CR and the"
+  echo "     harness must select on what KServe does set.)"
+  kubectl explain llminferenceservice.spec.template --recursive 2>&1 \
+    | head -12 | sed 's/^/      /'
+  echo
+  echo "--- KServe controller complaints about this object"
+  kubectl logs -n kserve -l control-plane=kserve-controller-manager \
+    --tail=4000 2>/dev/null | grep -i "${CR}" | tail -15 | sed 's/^/      /' \
+    || echo "      (controller logs not readable under that selector)"
+  echo
+  echo "============================================="
+}
+
+if [[ "${DIAG_ONLY}" -eq 1 ]]; then
+  diagnose
+  exit 0
+fi
+
 echo "=== rendering ${ROLE} through the KServe path"
 python3 "${HERE}/render.py" --scenario "${SCEN}" --arm dedicated --only "${ROLE}" \
   --out "${OUT}" --pooling-via kserve || exit 1
-
 echo
-echo "--- the flags render.py asked for:"
+echo "--- flags requested:"
 grep -E "^\s+- --" "${OUT}"/r2-dedicated-"${ROLE}".yaml | sed 's/^/      /'
 
 echo
 echo "=== applying"
-kubectl delete llminferenceservice,deployment,service,pod -n "${NS}"   -l r2-role --ignore-not-found --wait=false >/dev/null 2>&1
-sleep 3
+kubectl delete llminferenceservice "${CR}" -n "${NS}" --ignore-not-found >/dev/null 2>&1
+BEFORE="$(pods_now)"
 kubectl apply -f "${OUT}" || exit 1
 
 echo
-echo "--- waiting for Ready (bge-m3 took ~110s as a bare pod; KServe adds a"
-echo "    router, so allow more)"
-if ! kubectl wait --for=condition=Ready pod -l "r2-role=${ROLE}" -n "${NS}" \
-     --timeout=600s 2>/dev/null; then
-  echo
-  echo "NEVER BECAME READY. This is the answer, not a failure of the check."
-  POD="$(kubectl get pods -n "${NS}" -l "r2-role=${ROLE}" \
-         -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
-  if [[ -n "${POD}" ]]; then
-    echo "--- pod state:"
-    kubectl get pod "${POD}" -n "${NS}" -o wide 2>&1 | sed 's/^/      /'
-    echo "--- events:"
-    kubectl get events -n "${NS}" --field-selector "involvedObject.name=${POD}" \
-      --sort-by .lastTimestamp 2>/dev/null | tail -8 | sed 's/^/      /'
-    echo "--- logs (the flag error, if there is one, is here):"
-    kubectl logs "${POD}" -n "${NS}" --tail=60 2>&1 | sed 's/^/      /'
-  fi
-  echo
-  echo "VERDICT: use --pooling-via vllm. That path is already proven by"
-  echo "         ./verify-models.sh --serve ${ROLE}, so nothing is blocked --"
-  echo "         run.py just needs --pooling-via vllm."
+echo "=== 1. does a pod appear at all, and what labels does it carry?"
+POD=""
+t0=$SECONDS
+while (( SECONDS - t0 < WAIT_POD )); do
+  NEW="$(comm -13 <(printf '%s\n' "${BEFORE}") <(pods_now) | head -1)"
+  if [[ -n "${NEW}" ]]; then POD="${NEW}"; break; fi
+  sleep 5
+done
+
+if [[ -z "${POD}" ]]; then
+  echo "  NO POD APPEARED in ${WAIT_POD}s."
+  echo "  The CR was accepted but KServe created no workload. This is NOT a"
+  echo "  pooling problem -- it would affect the chat models identically."
+  diagnose
   exit 1
 fi
 
-POD="$(kubectl get pods -n "${NS}" -l "r2-role=${ROLE}" \
-       -o jsonpath='{.items[0].metadata.name}')"
-IP="$(kubectl get pod "${POD}" -n "${NS}" -o jsonpath='{.status.podIP}')"
+echo "  pod appeared after $(( SECONDS - t0 ))s: ${POD}"
+echo "  labels actually on the pod:"
+kubectl get pod "${POD}" -n "${NS}" -o jsonpath='{.metadata.labels}' 2>/dev/null \
+  | tr ',' '\n' | sed 's/^/      /'
 echo
-echo "--- pod ${POD} at ${IP}"
+if kubectl get pod "${POD}" -n "${NS}" -o jsonpath='{.metadata.labels}' 2>/dev/null \
+     | grep -q "r2-role"; then
+  echo "  r2-role IS propagated to the pod -- the harness selectors are fine."
+else
+  echo "  *** r2-role is NOT on the pod. ***"
+  echo "  harness.pods_for(), wait_ready(), endpoints(), the GPU placement"
+  echo "  check and the PodMonitor all select on it, so every run would time"
+  echo "  out and the dashboard would stay empty. Fix that before T1."
+fi
 
 echo
-echo "=== 1. did the pooling flags survive into the actual process?"
-# The pod spec is what KServe admitted; /proc/1/cmdline is what actually ran.
-# They can differ, and only the second one matters.
+echo "=== 2. does it become Ready?"
+if ! kubectl wait --for=condition=Ready "pod/${POD}" -n "${NS}" \
+     --timeout="${WAIT_READY}s" 2>&1 | sed 's/^/      /'; then
+  echo "  never became Ready. Container state and logs:"
+  kubectl get pod "${POD}" -n "${NS}" -o wide 2>&1 | sed 's/^/      /'
+  kubectl describe pod "${POD}" -n "${NS}" 2>&1 \
+    | sed -n '/Containers:/,/Conditions:/p' | head -30 | sed 's/^/      /'
+  echo "  --- logs (a rejected flag shows up here):"
+  kubectl logs "${POD}" -n "${NS}" --all-containers --tail=80 2>&1 | sed 's/^/      /'
+  diagnose
+  exit 1
+fi
+
+IP="$(kubectl get pod "${POD}" -n "${NS}" -o jsonpath='{.status.podIP}')"
+echo "  Ready at ${IP}"
+
+echo
+echo "=== 3. did the pooling flags survive into the running process?"
 echo "--- container args as admitted:"
 kubectl get pod "${POD}" -n "${NS}" \
-  -o jsonpath='{.spec.containers[0].args}' 2>/dev/null | tr ',' '\n' | sed 's/^/      /'
+  -o jsonpath='{.spec.containers[*].args}' 2>/dev/null | tr ',' '\n' | sed 's/^/      /'
 echo "--- the real command line inside the container:"
-kubectl exec -n "${NS}" "${POD}" -- sh -c \
-  'tr "\0" "\n" < /proc/1/cmdline' 2>/dev/null | sed 's/^/      /' | head -30
+kubectl exec -n "${NS}" "${POD}" -c main -- sh -c \
+  'tr "\0" "\n" < /proc/1/cmdline' 2>/dev/null | sed 's/^/      /' | head -30 \
+  || kubectl exec -n "${NS}" "${POD}" -- sh -c \
+       'tr "\0" "\n" < /proc/1/cmdline' 2>/dev/null | sed 's/^/      /' | head -30
 echo "--- what vLLM logged about runner/convert:"
-kubectl logs "${POD}" -n "${NS}" 2>/dev/null \
-  | grep -iE "runner|convert|pooling|embed|task=" | head -8 | sed 's/^/      /'
+kubectl logs "${POD}" -n "${NS}" --all-containers 2>/dev/null \
+  | grep -iE "runner|convert|pooling|task=" | head -8 | sed 's/^/      /'
 
 echo
-echo "=== 2. does it actually answer?"
+echo "=== 4. does it answer?"
+PORT=""
 for port in 8080 8000 80; do
-  code="$(curl -s -o /dev/null -w '%{http_code}' -m 5 "http://${IP}:${port}/v1/models" 2>/dev/null)"
-  if [[ "${code}" == "200" ]]; then PORT="${port}"; break; fi
+  if [[ "$(curl -s -o /dev/null -w '%{http_code}' -m 5 \
+           "http://${IP}:${port}/v1/models" 2>/dev/null)" == "200" ]]; then
+    PORT="${port}"; break
+  fi
 done
-if [[ -z "${PORT:-}" ]]; then
+if [[ -z "${PORT}" ]]; then
   echo "  no port among 8080/8000/80 answered /v1/models"
+  kubectl get pod "${POD}" -n "${NS}" \
+    -o jsonpath='{.spec.containers[*].ports}' 2>/dev/null | sed 's/^/      ports: /'
   exit 1
 fi
-echo "--- serving on port ${PORT}"
+echo "  serving on port ${PORT}"
 MODEL="$(curl -s -m 5 "http://${IP}:${PORT}/v1/models" \
   | python3 -c 'import json,sys; print((json.load(sys.stdin).get("data") or [{}])[0].get("id",""))' 2>/dev/null)"
-echo "--- advertised model id: ${MODEL:-<none>}"
+echo "  advertised model id: ${MODEL:-<none>}"
 
 ok=0
 for p in ${PATHS}; do
   for prefix in "" "/openai"; do
-    url="http://${IP}:${PORT}${prefix}${p}"
     if [[ "${ROLE}" == "rerank" ]]; then
       body="{\"model\":\"${MODEL}\",\"query\":\"what is MPS\",\"documents\":[\"NVIDIA MPS shares a GPU\",\"unrelated\"]}"
+    elif [[ "${ROLE}" == "llm" ]]; then
+      body="{\"model\":\"${MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"say ok\"}],\"max_tokens\":8}"
     else
       body="{\"model\":\"${MODEL}\",\"input\":[\"hello world\",\"second document\"]}"
     fi
-    code="$(curl -s -o /tmp/r2k.json -w '%{http_code}' -m 30 "${url}" \
+    code="$(curl -s -o /tmp/r2k.json -w '%{http_code}' -m 30 \
+            "http://${IP}:${PORT}${prefix}${p}" \
             -H 'content-type: application/json' -d "${body}" 2>/dev/null)"
-    printf '    %-42s %s\n' "${prefix}${p}" "${code}"
+    printf '    %-40s %s\n' "${prefix}${p}" "${code}"
     if [[ "${code}" == "200" ]]; then
       ok=1
       python3 - <<'PY' 2>/dev/null || head -c 200 /tmp/r2k.json
 import json
 d = json.load(open("/tmp/r2k.json"))
-if "data" in d:
-    rows = d["data"]
-    dim = len((rows[0] or {}).get("embedding") or [])
+rows = d.get("data")
+if isinstance(rows, list) and rows and "embedding" in (rows[0] or {}):
     print("      -> %d vector(s), dim %d, usage %s"
-          % (len(rows), dim, d.get("usage")))
+          % (len(rows), len(rows[0]["embedding"]), d.get("usage")))
 else:
     print("      -> %s" % json.dumps(d)[:220])
 PY
@@ -169,7 +252,7 @@ PY
 done
 
 echo
-echo "=== 3. did it fit the quota?"
+echo "=== 5. did it fit the quota?"
 kubectl get pod "${POD}" -n "${NS}" \
   -o jsonpath='{.spec.containers[0].resources.limits}' 2>/dev/null | sed 's/^/      /'
 echo
@@ -177,11 +260,9 @@ nvidia-smi --query-gpu=index,memory.used --format=csv,noheader 2>/dev/null | sed
 
 echo
 if [[ "${ok}" -eq 1 ]]; then
-  echo "VERDICT: KServe carries the pooling flags. Keep render.py's default"
-  echo "         (--pooling-via kserve) and every model stays on one"
-  echo "         deployment path, which is what makes the arms comparable."
+  echo "VERDICT: the KServe path serves ${ROLE}. Keep --pooling-via kserve."
 else
-  echo "VERDICT: the pod runs but no pooling endpoint answered. Use"
-  echo "         --pooling-via vllm for run.py; that path is already proven."
+  echo "VERDICT: the pod runs but no ${ROLE} endpoint answered."
+  echo "         Use --pooling-via vllm, already proven by verify-models.sh."
   exit 1
 fi
