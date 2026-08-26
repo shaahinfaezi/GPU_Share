@@ -19,11 +19,16 @@ replay.requests.csv, replay.itl.json) comes from a separate process that exited
 and Prometheus still HAS that data -- kube-prometheus-stack retains ~10 days by
 default. This re-queries it for each sub-run's measurement window.
 
-The window comes from events.jsonl, because replay.requests.csv stores times as
-offsets from an in-process perf_counter origin with no absolute anchor. Sub-runs
-are sequential, so the Nth replay_begin/replay_end pair belongs to the Nth
-sub-run directory by creation time. (replay.py now also records epoch_start and
-epoch_end so future runs anchor themselves.)
+The window comes from each sub-run's OWN events.jsonl. replay.requests.csv
+stores times as offsets from an in-process perf_counter origin with no absolute
+anchor, so it cannot supply one. run.py keeps two phase logs -- one per sub-run
+and one at the run root -- and replay_begin/replay_end are marked inside the
+sub-run, so they land in the sub-run's file. An earlier version of this script
+read only the root log, found nothing, and skipped every sub-run.
+
+replay.py now also records epoch_start and epoch_end bracketing the post-warmup
+measurement window, so future runs anchor themselves and this script prefers
+those when present.
 
     python backfill_prom.py results/T1-20260826-175322
     python backfill_prom.py results/T1-*            # several runs
@@ -39,9 +44,8 @@ import time
 import harness as H
 
 
-def windows_from_events(run_dir):
-    """Ordered (t0, t1) pairs, one per sub-run, from the phase log."""
-    path = os.path.join(run_dir, "events.jsonl")
+def _pairs(path):
+    """(t0, t1) replay windows from one phase log, in order."""
     if not os.path.exists(path):
         return []
     begins, pairs = [], []
@@ -58,6 +62,18 @@ def windows_from_events(run_dir):
     return pairs
 
 
+def windows_from_events(run_dir):
+    """Ordered (t0, t1) pairs from the RUN-ROOT log, if it has any.
+
+    run.py keeps two phase logs: one per sub-run in the sub-run directory, and
+    one at the run root. replay_begin/replay_end are marked inside the sub-run,
+    so they land in the sub-run's own file and the root log has none. This is
+    only the fallback; subrun_window() prefers the per-sub-run file, which needs
+    no ordering inference at all.
+    """
+    return _pairs(os.path.join(run_dir, "events.jsonl"))
+
+
 def subrun_dirs(run_dir):
     """Sub-run directories in the order they were created, which is plan order."""
     out = []
@@ -68,14 +84,22 @@ def subrun_dirs(run_dir):
     return sorted(out, key=lambda d: os.path.getmtime(d))
 
 
-def anchored_window(d):
-    """Prefer the sub-run's own absolute timestamps when replay recorded them."""
+def subrun_window(d):
+    """The measurement window for one sub-run, best source first.
+
+    Returns ((t0, t1), source) or (None, None).
+    """
     summ = H.read_json(os.path.join(d, "replay.summary.json"), {}) or {}
-    t0 = summ.get("epoch_start")
-    t1 = summ.get("epoch_end")
+    t0, t1 = summ.get("epoch_start"), summ.get("epoch_end")
     if t0 and t1:
-        return float(t0), float(t1)
-    return None
+        return (float(t0), float(t1)), "summary epoch"
+
+    own = _pairs(os.path.join(d, "events.jsonl"))
+    if own:
+        # The last pair: a sub-run replays once, but a re-run into the same
+        # directory would append, and the most recent one is the live data.
+        return own[-1], "sub-run events.jsonl"
+    return None, None
 
 
 def main():
@@ -104,10 +128,6 @@ def main():
         print("\n=== %s" % root)
         subs = subrun_dirs(root)
         ev_windows = windows_from_events(root)
-        if len(ev_windows) != len(subs):
-            print("   note: %d sub-run dir(s) but %d replay window(s) in "
-                  "events.jsonl. Pairing by order for as many as match."
-                  % (len(subs), len(ev_windows)))
 
         for i, d in enumerate(subs):
             total += 1
@@ -118,15 +138,14 @@ def main():
                 skipped += 1
                 continue
 
-            win = anchored_window(d)
-            src = "summary epoch"
+            win, src = subrun_window(d)
             if win is None:
-                if i >= len(ev_windows):
+                if i < len(ev_windows):
+                    win, src = ev_windows[i], "run-root events.jsonl (by order)"
+                else:
                     print("   %-26s no window available, skipping" % name)
                     skipped += 1
                     continue
-                win = ev_windows[i]
-                src = "events.jsonl"
             t0, t1 = win
 
             age_d = (time.time() - t0) / 86400.0
