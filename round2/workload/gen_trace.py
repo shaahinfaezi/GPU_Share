@@ -40,8 +40,10 @@ SCENARIOS = {
     "llm-embed":   [("llm", 0.5, "chat"), ("embed", 0.5, "embed")],
     "llm-llm":     [("llm", 0.5, "chat"), ("llm2", 0.5, "chat")],
     "vl-rerank":   [("vl", 0.5, "chat"), ("rerank", 0.5, "rerank")],
-    "dense4":      [("llm", 0.3, "chat"), ("llm2", 0.3, "chat"),
-                    ("embed", 0.2, "embed"), ("rerank", 0.2, "rerank")],
+    # Must match render.py's SCENARIOS exactly: a trace naming a service that
+    # was never deployed fails at replay, after the deploy-and-warm cost.
+    "dense4":      [("llm2", 0.3, "chat"), ("embed", 0.3, "embed"),
+                    ("embed-small", 0.2, "embed"), ("rerank", 0.2, "rerank")],
 }
 
 FILLER = ("Explain the trade-off, list the failure modes, and give a concrete "

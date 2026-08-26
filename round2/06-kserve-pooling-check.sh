@@ -25,6 +25,7 @@ NS="${NS:-llm-demo}"
 ROLE="embed"
 KEEP=0
 DIAG_ONLY=0
+PIN="${PIN:-GPU-bc62f652-9fa4-7abf-2b0d-81a84f3a27cf}"   # device index 0
 WAIT_POD="${WAIT_POD:-180}"     # seconds for a pod to APPEAR
 WAIT_READY="${WAIT_READY:-600}" # seconds for it to become Ready
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
     --role) ROLE="${2:-embed}"; shift 2 ;;
     --keep) KEEP=1; shift ;;
     --diagnose) DIAG_ONLY=1; KEEP=1; shift ;;
+    --no-pin) PIN=""; shift ;;
     -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac

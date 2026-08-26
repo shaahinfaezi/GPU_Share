@@ -75,8 +75,8 @@ if os.path.exists(_AZ):
 ROLES = {
     "llm-only": ["llm"], "embed-only": ["embed"], "rerank-only": ["rerank"],
     "llm-embed": ["llm", "embed"], "llm-llm": ["llm", "llm2"],
-    "vl-rerank": ["vl", "rerank"], "dense4": ["llm-small", "llm2",
-                                              "embed-small", "rerank"],
+    "vl-rerank": ["vl", "rerank"],
+    "dense4": ["llm2", "embed", "embed-small", "rerank"],
 }
 
 # The matrix. Rates are offered load in requests/second, Poisson-distributed --
@@ -100,8 +100,10 @@ TESTS = {
                    "compute-bound, non-autoregressive neighbours. The case "
                    "where gpucores SHOULD matter most if it ever does."),
     "T4": dict(scenario="dense4", rate=8.0, duration=300, source="sharegpt",
-               why="Four tenants on one card. Requirement 1 asks for number "
-                   "of models as a variable; this is its top end."),
+               why="Four tenants on one card at 97.9% fill: one generative and "
+                   "three encoders. Requirement 1 asks for number of models as "
+                   "a variable; this is its top end. Quotas are tightened "
+                   "per-scenario -- see SCENARIO_QUOTAS in render.py."),
     "T5": dict(scenario="llm-embed", rate=12.0, duration=300, source="sharegpt",
                why="Same as T1 past the knee. Queue depth and preemptions "
                    "become the story; p99 separates from p50."),

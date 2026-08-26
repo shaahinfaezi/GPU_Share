@@ -88,6 +88,12 @@ MODELS = {
 
 # Roles per scenario, mirroring workload/gen_trace.py so a trace and a
 # deployment cannot disagree about which services exist.
+#
+# dense4 was ["llm-small", "llm2", "embed-small", "rerank"], which had two
+# faults an audit caught before it cost a run: it summed to 15872 MiB against a
+# 12288 MiB card (129%), and llm-small is Qwen2.5-0.5B, which was never
+# downloaded -- it belonged to round one's PVC, not this one. It now uses four
+# models that exist here.
 SCENARIOS = {
     "llm-only":    ["llm"],
     "embed-only":  ["embed"],
@@ -95,7 +101,24 @@ SCENARIOS = {
     "llm-embed":   ["llm", "embed"],
     "llm-llm":     ["llm", "llm2"],
     "vl-rerank":   ["vl", "rerank"],
-    "dense4":      ["llm-small", "llm2", "embed-small", "rerank"],
+    "dense4":      ["llm2", "embed", "embed-small", "rerank"],
+}
+
+# A model's quota is not a property of the model alone -- it depends on who it
+# is sharing with. The defaults in MODELS suit two tenants; packing four onto
+# one card needs each to give something back, and llm-llm pairs the 7B with a
+# 1.5B whose default quota assumes it is the only generative tenant.
+#
+# Every override below still clears the model's measured footprint with room to
+# spare. bge-m3 was measured at 1608 MiB resident inside a 3072 MiB quota, so
+# 2816 is not tight; Qwen2.5-1.5B is 2960 MiB of bf16 weights, so 4096 leaves
+# roughly 800 MiB of KV, about 29k tokens at 28 KiB/token.
+SCENARIO_QUOTAS = {
+    # 8192 + 5632 = 13824 (112.5%) at the defaults.
+    "llm-llm": {"llm2": 3840},
+    # four tenants: 4096 + 2816 + 2304 + 2816 = 12032, 97.9% of the card.
+    "dense4": {"llm2": 4096, "embed": 2816, "embed-small": 2304,
+               "rerank": 2816},
 }
 
 IMAGE = "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu"
@@ -350,6 +373,9 @@ def main():
     written, budget = [], 0
     for role in roles:
         m = dict(MODELS[role])
+        override = SCENARIO_QUOTAS.get(a.scenario, {}).get(role)
+        if override:
+            m["gpumem"] = override
         m["gpucores"] = share
         if a.arm == "dedicated" and a.dedicated_full_card:
             m["gpumem"] = CARD_MIB - 512
@@ -391,7 +417,10 @@ def main():
     print("gpumem requested %d of %d MiB = %.1f%% of the card"
           % (budget, CARD_MIB, budget / CARD_MIB * 100))
     if budget > CARD_MIB:
-        print("WARNING: over-subscribed; HAMi will refuse to place these together")
+        print("ERROR: over-subscribed by %d MiB. HAMi will refuse to place "
+              "these together, so this would fail at admission rather than "
+              "produce a result. Adjust SCENARIO_QUOTAS." % (budget - CARD_MIB))
+        sys.exit(3)
     print("apply with: kubectl apply -f %s" % a.out)
 
 

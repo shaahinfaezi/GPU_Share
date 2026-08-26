@@ -355,32 +355,69 @@ def placement(roles, ns=NS):
     return out
 
 
+def devices_in_use(floor_mib=500):
+    """Which physical devices actually hold a model right now.
+
+    Independent of HAMi's annotation format, and therefore the check that
+    cannot rot. The floor is well above the ~39 MiB the MPS server holds on an
+    idle card and well below any real model.
+    """
+    return sorted(idx for idx, mib in gpu_used_mib().items() if mib > floor_mib)
+
+
 def assert_colocated(roles, ns=NS, ev=None):
     """A sharing arm whose tenants are on different cards is not a sharing arm.
 
-    This node has two idle 3080 Tis and HAMi's default GPU policy is spread, so
-    this is the likely failure, not a paranoid one. It produces clean numbers
-    that mean nothing, which is worse than a crash. Returns (ok, detail).
+    NOT a paranoid check. Measured on this node: an unpinned single tenant was
+    placed by HAMi on GPU 1 while GPU 0 sat at 39 MiB. With two tenants and no
+    pin, landing on separate cards is the expected outcome, and it produces
+    clean numbers that mean nothing -- worse than a crash, because a crash
+    stops you.
+
+    Two independent verdicts, because they fail differently:
+
+      annotations  HAMi's own record of what it decided. Precise, but the key
+                   name has moved between versions, so absence proves nothing.
+      nvidia-smi   what the hardware says. Cannot be fooled by a renamed
+                   annotation, cannot attribute a device to a role.
+
+    The physical check is the one that can veto. Returns (ok, detail).
     """
     if len(roles) < 2:
-        return True, {}
+        return True, {"devices_in_use": devices_in_use()}
+
+    phys = devices_in_use()
     place = placement(roles, ns)
     unknown = [r for r, u in place.items() if not u]
-    if unknown:
+    ann_devices = sorted({u for us in place.values() for u in us})
+
+    detail = {"placement": place, "distinct_devices": ann_devices,
+              "devices_in_use": phys}
+
+    # Physical verdict first: more than one device holding a model means the
+    # tenants are not sharing anything, whatever the annotations say.
+    if len(phys) > 1:
+        detail["reason"] = ("nvidia-smi shows %d devices holding models (%s); "
+                            "the tenants are on separate cards"
+                            % (len(phys), phys))
         if ev:
-            ev.mark("placement_unknown", roles=",".join(unknown))
-        return True, {"warning": "no GPU UUID in annotations for %s; HAMi may "
-                                 "not be recording placement in this version. "
-                                 "Cross-check nvidia-smi per-device memory."
-                                 % ", ".join(unknown), "placement": place}
-    devices = set()
-    for u in place.values():
-        devices.update(u)
-    ok = len(devices) == 1
+            ev.mark("placement_SPLIT", devices=len(phys), detail=json.dumps(detail))
+        return False, detail
+
+    if unknown:
+        detail["warning"] = (
+            "no GPU UUID in annotations for %s -- HAMi may not record placement "
+            "under that key in this version. Falling back to nvidia-smi, which "
+            "shows %d device(s) in use." % (", ".join(unknown), len(phys)))
+        if ev:
+            ev.mark("placement_annotation_missing", devices=len(phys))
+        return len(phys) <= 1, detail
+
+    ok = len(ann_devices) == 1 and len(phys) <= 1
     if ev:
-        ev.mark("placement", colocated=ok, devices=len(devices),
-                detail=json.dumps(place))
-    return ok, {"placement": place, "distinct_devices": sorted(devices)}
+        ev.mark("placement", colocated=ok, ann_devices=len(ann_devices),
+                phys_devices=len(phys), detail=json.dumps(detail))
+    return ok, detail
 
 
 # -------------------------------------------------------------- gpu sampling
