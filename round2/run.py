@@ -84,11 +84,13 @@ ROLES = {
 # its own offered load the way a fixed-concurrency client does.
 TESTS = {
     "T1": dict(scenario="llm-embed", rate=6.0, duration=300, source="sharegpt",
-               why="Headline. 7B-AWQ + bge-m3 fills 91.7% of the card. Round "
-                   "one left the card two-thirds empty, so its +24.9% MPS "
-                   "result partly described the workload rather than the "
-                   "mechanism. Registered prediction: filling it widens the "
-                   "MPS advantage."),
+               why="Headline. 7B-AWQ + bge-m3 fills 91.7% of the card against "
+                   "round one's measured 62.7-69.3% (peak VRAM on GPU 0, from "
+                   "its own gpu-timeline.csv). The bigger gap is the workload: "
+                   "round one used 51-token prompts and fixed 256-token "
+                   "outputs at concurrency 4, which is decode-bound and never "
+                   "queues. Registered prediction: filling the card and "
+                   "letting it queue widens the MPS advantage."),
     "T2": dict(scenario="llm-llm", rate=6.0, duration=300, source="sharegpt",
                why="Two generative tenants. Both contend for decode, so ITL "
                    "should degrade symmetrically -- unlike T1, where one "
