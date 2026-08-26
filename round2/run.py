@@ -112,9 +112,15 @@ TESTS = {
                why="Same as T1 past the knee. Queue depth and preemptions "
                    "become the story; p99 separates from p50."),
     "T6": dict(scenario="llm-embed", rate=6.0, duration=300, source="azure",
-               why="Real production arrival trace rather than a synthetic "
-                   "Poisson process -- burstiness the generator cannot "
-                   "invent (requirement 4)."),
+               why="Real production TOKEN-LENGTH distribution from Azure's "
+                   "public inference traces. Arrivals stay Poisson at the "
+                   "requested rate -- gen_trace.load_azure keeps the (input, "
+                   "output) pairs and regenerates the arrival process on "
+                   "purpose, so offered load remains a controlled variable "
+                   "rather than whatever that particular day looked like. "
+                   "What differs from T1 is therefore the prefill/decode "
+                   "ratio and its variance, not burstiness. An earlier "
+                   "description of this test claimed the opposite."),
     "T7": dict(scenario="llm-only", rate=6.0, duration=300, source="sharegpt",
                fixed_output=32,
                why="Prefill-heavy, single tenant. Round one's second "
