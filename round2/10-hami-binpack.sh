@@ -31,15 +31,18 @@
 #   ./10-hami-binpack.sh            # show current policy, then set binpack
 #   ./10-hami-binpack.sh --check    # show only
 #   ./10-hami-binpack.sh --revert   # back to spread
+#   ./10-hami-binpack.sh --inspect  # what flags does this build take?
 set -uo pipefail
 
 NS="${NS:-kube-system}"
 DEP="${DEP:-hami-scheduler}"
 CHECK=0
+INSPECT=0
 POLICY="binpack"
 for a in "$@"; do
   case "$a" in
     --check) CHECK=1 ;;
+    --inspect) INSPECT=1 ;;
     --revert) POLICY="spread" ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "unknown option: $a" >&2; exit 2 ;;
@@ -74,6 +77,54 @@ for p in d.get("items", []):
 if not seen:
     print("  (no r2-* pods running right now)")
 '
+
+if [[ "${INSPECT:-0}" -eq 1 ]]; then
+  echo
+  echo "=== full extender container spec"
+  kubectl -n "${NS}" get deploy "${DEP}" -o json 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for c in d["spec"]["template"]["spec"]["containers"]:
+    if "extender" not in c["name"]:
+        continue
+    print("  image   %s" % c.get("image"))
+    print("  command %s" % (c.get("command") or "(entrypoint)"))
+    print("  args:")
+    for a in (c.get("args") or []):
+        print("    %s" % a)
+'
+  echo
+  echo "=== flags this build actually accepts"
+  POD="$(kubectl -n "${NS}" get pods -l app.kubernetes.io/component=hami-scheduler          -o jsonpath="{.items[0].metadata.name}" 2>/dev/null)"
+  if [[ -n "${POD}" ]]; then
+    for bin in /k8s-vgpu/bin/scheduler /usr/local/bin/scheduler scheduler; do
+      out="$(kubectl -n "${NS}" exec "${POD}" -c vgpu-scheduler-extender --              "${bin}" --help 2>&1)"
+      if grep -qi "policy" <<<"${out}"; then
+        grep -iE "policy" <<<"${out}" | sed 's/^/    /'
+        break
+      fi
+    done
+    grep -qi policy <<<"${out:-}" ||       echo "    (--help not reachable; the arg list above is the evidence)"
+  fi
+
+  echo
+  echo "=== rollout strategy -- why a rolling update stalls here"
+  kubectl -n "${NS}" get deploy "${DEP}" -o json 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+sp = d["spec"]
+print("    strategy: %s" % json.dumps(sp.get("strategy")))
+print("    replicas: %s" % sp.get("replicas"))
+print("    terminationGracePeriodSeconds: %s"
+      % sp["template"]["spec"].get("terminationGracePeriodSeconds"))
+'
+  echo
+  echo "    A surge-based rolling update needs the OLD replica to terminate."
+  echo "    HAMi elects a leader, and the first attempt here stalled with the"
+  echo "    new pod healthy and logging \"patched follower label\" while the old"
+  echo "    one refused to leave. This script now scales 0 -> 1 instead."
+  exit 0
+fi
 
 if [[ "${CHECK}" -eq 1 ]]; then
   echo
@@ -120,21 +171,65 @@ fi
 kubectl -n "${NS}" patch deploy "${DEP}" --type=strategic -p "${PATCHED}" || exit 1
 
 echo
-echo "--- waiting for the scheduler to roll out"
-# Auto-revert on failure. A wedged hami-scheduler blocks GPU scheduling for the
-# whole cluster, so leaving a bad rollout in place is far worse than not having
-# made the change. This script broke exactly that way once.
-if ! kubectl -n "${NS}" rollout status deploy/"${DEP}" --timeout=180s; then
+echo "--- restarting the scheduler (scale 0 -> 1, not a rolling update)"
+# A rolling update stalls here. The first attempt sat on "1 old replicas are
+# pending termination" while the NEW pod came up healthy and logged
+# "Successfully patched follower label" -- so the extender accepted the flags
+# and the blockage was the old replica refusing to leave, a leader-election
+# interaction rather than a bad argument.
+#
+# Scaling to zero and back sidesteps the surge entirely. It costs a few seconds
+# with no HAMi scheduler, during which GPU pods stay Pending rather than being
+# mis-scheduled, which is the safe direction.
+kubectl -n "${NS}" scale deploy/"${DEP}" --replicas=0 >/dev/null 2>&1
+for _ in $(seq 1 30); do
+  n="$(kubectl -n "${NS}" get pods -l app.kubernetes.io/component=hami-scheduler        --no-headers 2>/dev/null | wc -l)"
+  [[ "${n}" -eq 0 ]] && break
+  sleep 2
+done
+kubectl -n "${NS}" scale deploy/"${DEP}" --replicas=1 >/dev/null 2>&1
+
+echo "--- waiting for it to come back"
+ready=0
+for _ in $(seq 1 60); do
+  # Count Ready containers via -o json rather than a jsonpath filter: the
+  # filter needs nested quotes, and every attempt at escaping them through a
+  # patch produced a subtly wrong expression that matched nothing -- which
+  # would make this loop always time out and always revert, even on success.
+  if kubectl -n "${NS}" get pods -l app.kubernetes.io/component=hami-scheduler \
+       -o json 2>/dev/null | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+for p in d.get("items", []):
+    conds = {c["type"]: c["status"] for c in (p.get("status", {}).get("conditions") or [])}
+    if conds.get("Ready") == "True":
+        print("READY"); break
+' | grep -q READY; then ready=1; break; fi
+  sleep 3
+done
+
+if [[ "${ready}" -ne 1 ]]; then
+  # Diagnostics BEFORE the revert. The previous version reverted first and then
+  # dumped logs, which captured the healthy old pod and explained nothing.
   echo
-  echo "ROLLOUT FAILED -- reverting so the cluster can schedule GPU pods again."
+  echo "SCHEDULER DID NOT COME BACK. Capturing evidence before reverting:"
+  kubectl -n "${NS}" get pods -l app.kubernetes.io/component=hami-scheduler     -o wide 2>&1 | sed 's/^/      /'
+  BAD="$(kubectl -n "${NS}" get pods -l app.kubernetes.io/component=hami-scheduler          -o jsonpath="{.items[0].metadata.name}" 2>/dev/null)"
+  if [[ -n "${BAD}" ]]; then
+    kubectl -n "${NS}" describe pod "${BAD}" 2>&1       | sed -n "/Containers:/,/Events:/p" | head -40 | sed 's/^/      /'
+    echo "      --- extender logs:"
+    kubectl -n "${NS}" logs "${BAD}" -c vgpu-scheduler-extender --tail=40 2>&1       | sed 's/^/      /'
+    kubectl -n "${NS}" logs "${BAD}" -c vgpu-scheduler-extender --previous       --tail=20 2>&1 | sed 's/^/      prev: /'
+  fi
+  echo
+  echo "REVERTING so the cluster can schedule GPU pods again."
   kubectl -n "${NS}" rollout undo deploy/"${DEP}" >/dev/null 2>&1
-  kubectl -n "${NS}" rollout status deploy/"${DEP}" --timeout=180s     || echo "  revert also did not settle; inspect deploy/${DEP} by hand"
-  echo
-  echo "--- why the new replica would not start:"
-  kubectl -n "${NS}" get pods -l app.kubernetes.io/component=hami-scheduler     2>/dev/null | sed 's/^/      /'
-  kubectl -n "${NS}" logs deploy/"${DEP}" -c vgpu-scheduler-extender     --tail=30 2>&1 | sed 's/^/      /'
+  kubectl -n "${NS}" scale deploy/"${DEP}" --replicas=1 >/dev/null 2>&1
+  sleep 10
+  kubectl -n "${NS}" get pods -l app.kubernetes.io/component=hami-scheduler 2>&1     | sed 's/^/      /'
   exit 1
 fi
+echo "  scheduler is Ready"
 
 echo
 echo "=== after"
