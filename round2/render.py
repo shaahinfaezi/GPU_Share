@@ -98,7 +98,12 @@ MODELS = {
     "llm2": dict(
         repo="Qwen/Qwen2.5-1.5B-Instruct-AWQ", kind="chat", weights_mib=1540,
         gpumem=5632, util=0.92, max_model_len=4096, max_num_seqs=64,
-        outside_mib=664,          # measured, 18-vram-probe.sh at 11776 MiB
+        # 664 measured on the bf16 build at an 11776 MiB quota. The AWQ build
+        # then measured 558 at 3840 (3584 resident against a 3026 budget), so
+        # this is deliberately ~106 MiB conservative: the validated T2 config
+        # is util 0.788 with 256 MiB of slack, and tightening it to 0.816 for
+        # 107 MiB more KV is not worth re-validating.
+        outside_mib=664,
         extra=["--quantization=awq_marlin"],
     ),
     "llm-small": dict(

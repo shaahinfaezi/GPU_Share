@@ -27,7 +27,21 @@ ROLE=${1:?usage: 18-vram-probe.sh <role> [gpumem-mib] }
 QUOTA=${2:-11776}
 TIMEOUT=${TIMEOUT:-600}
 OUT=$(mktemp -d)
-trap 'kubectl -n "$NS" delete -f "$OUT" --ignore-not-found --wait=false >/dev/null 2>&1; rm -rf "$OUT"' EXIT
+# --wait=false returns before the pod releases its VRAM, so whatever runs next
+# sees the card still occupied. 15-calibrate.py reported exactly that:
+#     precondition: GPU 1 already holds 3624 MiB; something else is resident
+# Block until the pod is actually gone instead.
+cleanup() {
+  kubectl -n "$NS" delete -f "$OUT" --ignore-not-found --wait=false >/dev/null 2>&1
+  for _ in $(seq 1 30); do
+    n=$(kubectl -n "$NS" get pods -l "app.kubernetes.io/name=r2-${ROLE:-none}" \
+          --no-headers 2>/dev/null | wc -l)
+    [ "${n:-0}" -eq 0 ] && break
+    sleep 2
+  done
+  rm -rf "$OUT"
+}
+trap cleanup EXIT
 
 SCEN="${ROLE}-only"
 echo "=== probing ${ROLE} alone at ${QUOTA} MiB (scenario ${SCEN})"
