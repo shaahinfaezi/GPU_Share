@@ -81,11 +81,29 @@ for entry in "${ROLES[@]}"; do
     rc=1; continue
   fi
 
-  if [[ -f "${dest}/config.json" && "${FORCE}" -eq 0 ]]; then
+  # A flat directory is keyed on the ROLE, not the repo, so changing a role's
+  # repo in the table leaves the OLD model sitting at the same path. Skipping
+  # it because config.json exists is how llm2 kept serving Qwen2.5-1.5B-Instruct
+  # after the table moved to the -AWQ build: vLLM read a config.json with no
+  # quantization_config and died with
+  #     Cannot find the config file for awq_marlin
+  # which reads like a missing file and is really a stale directory. The marker
+  # makes the mismatch visible, and rebuilding is automatic.
+  built_from=""
+  [[ -f "${dest}/.source-repo" ]] && built_from="$(cat "${dest}/.source-repo")"
+  if [[ -f "${dest}/config.json" && "${FORCE}" -eq 0 && "${built_from}" == "${repo}" ]]; then
     sz="$(du -sh --dereference "${dest}" 2>/dev/null | cut -f1)"
-    n="$(find "${dest}" -maxdepth 1 -type f | wc -l)"
+    n="$(find "${dest}" -type f -not -name .source-repo | wc -l)"
     printf '%-13s %-34s %8s %6s  %s\n' "${role}" "${repo}" "${sz}" "${n}" "present"
     continue
+  fi
+  if [[ -f "${dest}/config.json" && "${FORCE}" -eq 0 ]]; then
+    if [[ -n "${built_from}" ]]; then
+      why="STALE, holds ${built_from}"
+    else
+      why="no marker, rebuilding to verify"
+    fi
+    printf '%-13s %-34s %8s %6s  %s\n' "${role}" "${repo}" "-" "-" "${why}"
   fi
   if [[ "${CHECK}" -eq 1 ]]; then
     printf '%-13s %-34s %8s %6s  %s\n' "${role}" "${repo}" "-" "-" "NOT BUILT"
@@ -136,6 +154,8 @@ for entry in "${ROLES[@]}"; do
   fi
 
   if [[ -f "${dest}/config.json" ]]; then
+    # Written AFTER the count check, so the marker cannot skew want vs got.
+    printf '%s' "${repo}" > "${dest}/.source-repo"
     sz="$(du -sh --dereference "${dest}" 2>/dev/null | cut -f1)"
     note="${linked} hardlinked"
     [[ "${copied}" -gt 0 ]] && note="${note}, ${copied} COPIED (cross-device)"
