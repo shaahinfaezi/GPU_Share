@@ -46,7 +46,7 @@ done
 # role|repo   -- must match render.py's MODELS table
 ROLES=(
   "llm|Qwen/Qwen2.5-7B-Instruct-AWQ"
-  "llm2|Qwen/Qwen2.5-1.5B-Instruct"
+  "llm2|Qwen/Qwen2.5-1.5B-Instruct-AWQ"
   "llm-mid|Qwen/Qwen2.5-3B-Instruct"
   "embed|BAAI/bge-m3"
   "rerank|BAAI/bge-reranker-v2-m3"

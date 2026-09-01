@@ -40,7 +40,7 @@ Usage: download-models.sh [options]
   -h, --help         this text
 
 TIERS
-  1  ~11 GiB  Qwen2.5-1.5B-Instruct, bge-m3, Qwen2.5-7B-Instruct-AWQ
+  1  ~9 GiB   Qwen2.5-1.5B-Instruct-AWQ, bge-m3, Qwen2.5-7B-Instruct-AWQ
               enough for tests T1, T2 and T3
   2  ~10 GiB  bge-reranker-v2-m3, Qwen2.5-3B-Instruct, bge-large-en-v1.5
   3  ~6 GiB   Qwen2-VL-2B-Instruct, whisper-large-v3-turbo
@@ -73,7 +73,7 @@ USAGE
 
 # tier | repo | extra ignore globs ("-" for none) | approx GiB after ignores
 MODELS=(
-  "1|Qwen/Qwen2.5-1.5B-Instruct|-|2.9"
+  "1|Qwen/Qwen2.5-1.5B-Instruct-AWQ|-|1.6"
   "1|BAAI/bge-m3|onnx/*,*.onnx,imgs/*|2.2"
   "1|Qwen/Qwen2.5-7B-Instruct-AWQ|-|5.3"
   "2|BAAI/bge-reranker-v2-m3|onnx/*,*.onnx,imgs/*|2.2"

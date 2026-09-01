@@ -57,15 +57,49 @@ import sys
 # --deep measured 2.14 GiB for the reranker against a 1090 MiB budget. They
 # carry --dtype=half so vLLM casts on load; without it each one needs twice the
 # VRAM assumed here and the card no longer fits two tenants.
+# outside_mib is the CUDA context plus the CUDA-graph pool. It is the number
+# that broke llm2, and it is worth stating plainly:
+#
+#   HAMi's nvidia.com/gpumem caps TOTAL device memory for the process.
+#   vLLM's --gpu-memory-utilization is a fraction of the device total, and it
+#   does NOT include the CUDA context or the graph pool.
+#
+# A generative model always grows its KV cache to fill vLLM's budget exactly,
+# so resident memory settles at (util x quota) + outside_mib regardless of how
+# big the weights are. The whole feasibility test is therefore:
+#
+#       util x quota + outside_mib <= quota      ->    util <= 1 - outside/quota
+#
+# Measured, not guessed: llm2 at an 11776 MiB quota reported a 10834 MiB budget
+# and sat at 11498 MiB resident -> outside = 664 MiB. The 7B AWQ in T1 budgeted
+# 7537 MiB and peaked at 7984 -> outside = 448 MiB.
+#
+# util is a CEILING here, not a setting. effective_util() clamps it to whatever
+# the quota can actually support, so a quota change cannot silently produce a
+# pod that crashloops in _dummy_sampler_run. Pooling models do not fill their
+# budget with KV, so the clamp does not apply to them.
+OUTSIDE_DEFAULT = 700   # unmeasured models; probe with 18-vram-probe.sh
+OUTSIDE_MARGIN = 150    # slack between predicted resident and the HAMi cap
+KV_FLOOR_MIB = 512      # below this a generative tenant thrashes rather than runs
+
 MODELS = {
     "llm": dict(
         repo="Qwen/Qwen2.5-7B-Instruct-AWQ", kind="chat", weights_mib=5370,
         gpumem=8192, util=0.92, max_model_len=4096, max_num_seqs=64,
+        outside_mib=448,          # measured, T1
         extra=["--quantization=awq_marlin"],
     ),
+    # Was Qwen2.5-1.5B-Instruct in bf16: 2938 MiB of weights, which put the
+    # floor to run at all at 4115 MiB and made T2's 3840 MiB quota impossible
+    # before a single KV block was allocated. The AWQ build is 1540 MiB, fits
+    # 3840 with ~34k tokens of KV, and has the side benefit of making T2 a
+    # comparison of MODEL SIZE rather than of size confounded with precision --
+    # the 7B it shares the card with is AWQ too.
     "llm2": dict(
-        repo="Qwen/Qwen2.5-1.5B-Instruct", kind="chat", weights_mib=2950,
-        gpumem=5632, util=0.92, max_model_len=4096, max_num_seqs=64, extra=[],
+        repo="Qwen/Qwen2.5-1.5B-Instruct-AWQ", kind="chat", weights_mib=1540,
+        gpumem=5632, util=0.92, max_model_len=4096, max_num_seqs=64,
+        outside_mib=664,          # measured, 18-vram-probe.sh at 11776 MiB
+        extra=["--quantization=awq_marlin"],
     ),
     "llm-small": dict(
         repo="Qwen/Qwen2.5-0.5B-Instruct", kind="chat", weights_mib=990,
@@ -122,10 +156,15 @@ SCENARIOS = {
 # one card needs each to give something back, and llm-llm pairs the 7B with a
 # 1.5B whose default quota assumes it is the only generative tenant.
 #
-# Every override below still clears the model's measured footprint with room to
-# spare. bge-m3 was measured at 1608 MiB resident inside a 3072 MiB quota, so
-# 2816 is not tight; Qwen2.5-1.5B is 2960 MiB of bf16 weights, so 4096 leaves
-# roughly 800 MiB of KV, about 29k tokens at 28 KiB/token.
+# The arithmetic here used to reason from weights alone -- "2960 MiB of bf16
+# weights, so 4096 leaves roughly 800 MiB of KV" -- and that is how llm2 came
+# to crashloop. It ignored both the 0.92 utilisation scaling and the 664 MiB of
+# CUDA context that HAMi charges but vLLM does not budget for. The real figure
+# was 82 MiB of KV against a cap the process exceeded by 357 MiB.
+#
+# effective_util() now derives the ceiling from the quota, and the KV_FLOOR_MIB
+# check refuses to render a tenant that would thrash, so a bad split fails at
+# render time instead of ten minutes into a run.
 SCENARIO_QUOTAS = {
     # 8192 + 5632 = 13824 (112.5%) at the defaults.
     "llm-llm": {"llm2": 3840},
@@ -138,6 +177,23 @@ IMAGE = "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu"
 PVC = "r2-models-pvc"
 NS = "llm-demo"
 CARD_MIB = 12288
+
+def effective_util(m):
+    """Clamp --gpu-memory-utilization to what the HAMi quota can support.
+
+    Returns (util, safe_cap, clamped). Pooling models are returned unchanged:
+    they do not allocate a KV cache to fill the budget, so the declared value
+    is never the binding constraint.
+    """
+    declared = m["util"]
+    if m["kind"] != "chat":
+        return declared, None, False
+    outside = m.get("outside_mib", OUTSIDE_DEFAULT) + OUTSIDE_MARGIN
+    cap = 1.0 - float(outside) / float(m["gpumem"])
+    if declared <= cap:
+        return declared, cap, False
+    return round(cap, 3), cap, True
+
 
 # HAMi reads these from the POD's annotations. use-gpuuuid pins the device;
 # the binpack policy is a second, independent lever towards the same outcome in
@@ -392,7 +448,7 @@ def main():
     share = max(1, 100 // max(1, len(SCENARIOS[a.scenario])))
 
     os.makedirs(a.out, exist_ok=True)
-    written, budget = [], 0
+    written, budget, clamps = [], 0, []
     for role in roles:
         m = dict(MODELS[role])
         override = SCENARIO_QUOTAS.get(a.scenario, {}).get(role)
@@ -403,6 +459,24 @@ def main():
             m["gpumem"] = CARD_MIB - 512
         if role in gpumem_over:
             m["gpumem"] = gpumem_over[role]
+
+        # The quota is final at this point, so the utilisation ceiling can be
+        # resolved against it. Doing this AFTER every override is the whole
+        # point: llm2 crashlooped because a scenario override cut its quota
+        # while util stayed at the value that suited a much larger one.
+        m["util"], cap, clamped = effective_util(m)
+        if clamped:
+            clamps.append((role, MODELS[role]["util"], m["util"], m["gpumem"]))
+        if m["kind"] == "chat":
+            kv = m["gpumem"] * m["util"] - m["weights_mib"]
+            if kv < KV_FLOOR_MIB:
+                sys.exit(
+                    "%s: a %d MiB quota leaves %d MiB for KV cache and "
+                    "activations after %d MiB of weights, below the %d MiB "
+                    "floor. It will either crashloop or thrash. Raise the "
+                    "quota in SCENARIO_QUOTAS, or use a smaller build of the "
+                    "model." % (role, m["gpumem"], kv, m["weights_mib"],
+                                KV_FLOOR_MIB))
         pct = pcts.get(role, 100)
         as_kserve = m["kind"] == "chat" or a.pooling_via == "kserve"
         body = (render_llm(role, m, a.arm, pct, a.pin_gpu, a.router) if as_kserve
@@ -412,9 +486,15 @@ def main():
             fh.write(body)
         written.append(path)
         budget += m["gpumem"]
-        print("%-10s %-32s gpumem %5d  util %.2f  cores %3d  mps %3d%%  -> %s"
+        print("%-10s %-34s gpumem %5d  util %.3f  cores %3d  mps %3d%%  -> %s"
               % (role, m["repo"], m["gpumem"], m["util"], m["gpucores"], pct,
                  os.path.basename(path)))
+
+    for role, was, now, q in clamps:
+        print("  util clamped for %s: %.2f -> %.3f, because %.2f x %d plus %d "
+              "MiB of CUDA context exceeds the %d MiB HAMi cap"
+              % (role, was, now, was, q,
+                 MODELS[role].get("outside_mib", OUTSIDE_DEFAULT), q))
 
     manifest = dict(scenario=a.scenario, arm=a.arm, roles=roles,
                     pooling_via=a.pooling_via, pin_gpu=a.pin_gpu,
