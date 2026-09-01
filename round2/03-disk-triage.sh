@@ -176,8 +176,16 @@ echo "kubelet eviction threshold   : ${THRESH_GIB} GiB${THRESH_BYTES:+  (configz
 echo "margin before eviction       : ${margin} GiB"
 echo
 
+# Capture FIRST, then match. `... | grep -q` lets grep exit on the first hit
+# and close the pipe, which SIGPIPEs the producer; under `set -o pipefail`
+# that makes the whole pipeline non-zero and a resident image reads as absent.
+# It did exactly that on 2026-09-01, printing "TOO TIGHT to pull the serving
+# image" three lines under its own listing showing the image resident at
+# 9.5GB -- an hour after T2 had run four sub-runs on it.
 img_resident=no
-(k3s crictl images 2>/dev/null || crictl images 2>/dev/null)   | grep -qi huggingfaceserver && img_resident=yes
+_imgs="$(k3s crictl images 2>/dev/null)"
+[[ -z "${_imgs}" ]] && _imgs="$(crictl images 2>/dev/null)"
+case "${_imgs}" in *huggingfaceserver*) img_resident=yes ;; esac
 echo "serving image resident       : ${img_resident}"
 if [[ "${img_resident}" == "no" ]]; then
   echo
