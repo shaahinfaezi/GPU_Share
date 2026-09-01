@@ -111,11 +111,29 @@ TESTS = {
                    "utilisation and 1,665 MHz. A 1.5B alone will already hold "
                    "clocks near peak, so there is nothing for a neighbour to "
                    "recover. T4 is the opposite extreme and the real test of "
-                   "the power hypothesis."),
+                   "the power hypothesis. "
+                   "OUTCOME: all three held. MPS -0.010% at 346.4 W (3.6 W "
+                   "headroom). 7B e2e p99 +33.8% vs T1's +3.1%. llm2 alone "
+                   "holds 1922 MHz -- HIGHER than the 7B's 1809 -- and sharing "
+                   "drops it to 1780, so it got slower on every measure. The "
+                   "unregistered finding is bigger than all three: ITL "
+                   "CONVERGES. The 7B:1.5B per-token ratio goes 2.29x "
+                   "dedicated to 1.03x shared, so the small model pays e2e p50 "
+                   "+189% while the big one pays +38%, on total throughput "
+                   "that moved -0.59%. Zero preemptions, KV 1.5-14.3%: "
+                   "contention, not queueing. FINDINGS 2.11."),
     "T3": dict(scenario="vl-rerank", rate=4.0, duration=300, source="sharegpt",
                why="Vision encoder plus a cross-encoder reranker: two "
                    "compute-bound, non-autoregressive neighbours. The case "
-                   "where gpucores SHOULD matter most if it ever does."),
+                   "where gpucores SHOULD matter most if it ever does. "
+                   "Registered after T2: (a) power lands BELOW the 343-346 W "
+                   "both previous tiers hit, because neither tenant is a 7B -- "
+                   "if it does not, the power hypothesis is in trouble before "
+                   "T4 even runs. (b) The ITL-convergence result does NOT "
+                   "transfer: it is a property of two autoregressive decoders "
+                   "interleaving token by token, and rerank does not decode at "
+                   "all. Expect the T1 shape (small throughput cost, tail "
+                   "latency cost) rather than the T2 shape."),
     "T4": dict(scenario="dense4", rate=8.0, duration=300, source="sharegpt",
                why="THE POWER TEST. Four small models and no 7B, so this should "
                    "draw far less than the 343 W ceiling T1 and T2 run into. If "
@@ -125,7 +143,16 @@ TESTS = {
                    "a T1 footnote. Four tenants on one card at 97.9% fill: one generative and "
                    "three encoders. Requirement 1 asks for number of models as "
                    "a variable; this is its top end. Quotas are tightened "
-                   "per-scenario -- see SCENARIO_QUOTAS in render.py."),
+                   "per-scenario -- see SCENARIO_QUOTAS in render.py. "
+                   "Sharpened after T2, which reproduced the power ceiling at "
+                   "346.4 W and returned -0.010%: T4 is now the only scenario "
+                   "left that can falsify the hypothesis. If MPS returns ~0% "
+                   "here TOO, on a card with real headroom, then power was "
+                   "never the mechanism and the honest conclusion is that MPS "
+                   "does nothing on this hardware outside round one's "
+                   "conditions. Second prediction: the T2 convergence penalty "
+                   "distributes EVENLY here, because llm2 is the only decoder "
+                   "-- no large neighbour exists to set the cadence."),
     "T5": dict(scenario="llm-embed", rate=12.0, duration=300, source="sharegpt",
                why="Same as T1 past the knee. Queue depth and preemptions "
                    "become the story; p99 separates from p50."),
