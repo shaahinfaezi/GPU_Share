@@ -350,6 +350,10 @@ def main():
                     help="render just this role (dedicated baselines run one at a time)")
     ap.add_argument("--dedicated-full-card", action="store_true",
                     help="give the dedicated arm the whole card instead of the shared quota")
+    ap.add_argument("--gpumem", default="",
+                    help="override a role's VRAM quota, e.g. llm2=11776. For "
+                         "18-vram-probe.sh, which measures what a model needs "
+                         "instead of inferring it from weights on disk.")
     ap.add_argument("--router", action="store_true",
                     help="also create the KServe router/scheduler. Off by "
                          "default: its image (ghcr.io/llm-d/llm-d-inference-"
@@ -378,6 +382,11 @@ def main():
         k, v = kv.split("=")
         pcts[k] = int(v)
 
+    gpumem_over = {}
+    for kv in filter(None, a.gpumem.split(",")):
+        k, v = kv.split("=")
+        gpumem_over[k] = int(v)
+
     # gpucores is the scheduler's packing token: split the card between the
     # co-tenants so HAMi's admission arithmetic reflects the intended density.
     share = max(1, 100 // max(1, len(SCENARIOS[a.scenario])))
@@ -392,6 +401,8 @@ def main():
         m["gpucores"] = share
         if a.arm == "dedicated" and a.dedicated_full_card:
             m["gpumem"] = CARD_MIB - 512
+        if role in gpumem_over:
+            m["gpumem"] = gpumem_over[role]
         pct = pcts.get(role, 100)
         as_kserve = m["kind"] == "chat" or a.pooling_via == "kserve"
         body = (render_llm(role, m, a.arm, pct, a.pin_gpu, a.router) if as_kserve
