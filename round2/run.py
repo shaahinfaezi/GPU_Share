@@ -96,15 +96,33 @@ TESTS = {
                    "queues. Registered prediction: filling the card and "
                    "letting it queue widens the MPS advantage."),
     "T2": dict(scenario="llm-llm", rate=6.0, duration=300, source="sharegpt",
-               why="Two generative tenants. Both contend for decode, so ITL "
-                   "should degrade symmetrically -- unlike T1, where one "
-                   "tenant is prefill-dominated."),
+               why="Two generative tenants, and the HIGHEST-POWER scenario in "
+                   "the matrix. T1 established that MPS is bounded by power, "
+                   "not contention: every arm holding the 7B sat at 343 W of a "
+                   "350 W board limit and MPS returned +0.0%, where round one "
+                   "at 249-256 W returned +24.9%. Three predictions registered "
+                   "before the run. (a) MPS again returns ~0%: adding a 1.5B "
+                   "to a card already at its ceiling cannot create headroom. "
+                   "(b) Sharing costs MORE than T1's +3.1% e2e p99, because "
+                   "the neighbour is a steady decode consumer rather than a "
+                   "bursty encoder. (c) The clock-residency gain that made "
+                   "bge-m3 7.4% FASTER will NOT appear for llm2 -- it only "
+                   "existed because the embedder alone left the card at 3.5% "
+                   "utilisation and 1,665 MHz. A 1.5B alone will already hold "
+                   "clocks near peak, so there is nothing for a neighbour to "
+                   "recover. T4 is the opposite extreme and the real test of "
+                   "the power hypothesis."),
     "T3": dict(scenario="vl-rerank", rate=4.0, duration=300, source="sharegpt",
                why="Vision encoder plus a cross-encoder reranker: two "
                    "compute-bound, non-autoregressive neighbours. The case "
                    "where gpucores SHOULD matter most if it ever does."),
     "T4": dict(scenario="dense4", rate=8.0, duration=300, source="sharegpt",
-               why="Four tenants on one card at 97.9% fill: one generative and "
+               why="THE POWER TEST. Four small models and no 7B, so this should "
+                   "draw far less than the 343 W ceiling T1 and T2 run into. If "
+                   "MPS shows a real gain here it confirms that its benefit is "
+                   "bounded by power headroom rather than by contention, which "
+                   "would make it the central finding of round two rather than "
+                   "a T1 footnote. Four tenants on one card at 97.9% fill: one generative and "
                    "three encoders. Requirement 1 asks for number of models as "
                    "a variable; this is its top end. Quotas are tightened "
                    "per-scenario -- see SCENARIO_QUOTAS in render.py."),
