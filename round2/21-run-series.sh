@@ -26,6 +26,18 @@ if ! sudo -n true 2>/dev/null; then
   exit 1
 fi
 
+# And sudo working is not the same as the toggle working. It was printed as a
+# separate command once, failed, and the series was launched anyway -- 105
+# minutes of 0/4 sub-runs. A gate that has to be run by hand is not a gate.
+echo "=== gate: MPS daemon toggle"
+if ! ./22-mps-check.sh; then
+  echo
+  echo "REFUSING TO LAUNCH. The harness cannot move the MPS daemon, so every"
+  echo "arm would run as an MPS client and hami-vs-hami-mps would measure"
+  echo "nothing. This is the exact defect that voided T1 and T2."
+  exit 1
+fi
+
 mkdir -p logs
 STAMP=$(date +%Y%m%d-%H%M%S)
 SERIES="$(pwd)/logs/series-${STAMP}.log"
