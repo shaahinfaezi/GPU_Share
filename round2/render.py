@@ -204,11 +204,15 @@ SCENARIOS = {
 SCENARIO_QUOTAS = {
     # 8192 + 5632 = 13824 (112.5%) at the defaults.
     "llm-llm": {"llm2": 3840},
-    # vl's 6656 default cannot hold its 6755 MiB profiling peak, let alone a KV
-    # cache on top. 8192 clears the peak with 1437 MiB to spare and still
-    # leaves ~2700 MiB of KV. rerank ran fine at 4608 and is a pooling model
-    # with no KV cache to give up, so it absorbs the difference.
-    "vl-rerank": {"vl": 8192, "rerank": 3840},
+    # vl is sized by its PROFILING PEAK, not its weights. Measured twice:
+    #   quota 11776, util 0.900 -> budget 10598, KV 3768  => peak 6830
+    #   quota  8192, util 0.847 -> budget  6939, KV  133  => peak 6806
+    # so KV = util x quota - 6830. 8192 started but gave 1.21x concurrency,
+    # which would have thrashed through the tier and produced numbers that
+    # looked like a sharing cost. 9216 gives ~46k tokens and 11.3x, against
+    # roughly 2 req/s of vl traffic at T3's rate. rerank measured 1568 MiB
+    # resident at a 3840 quota, so 2816 leaves it comfortable room.
+    "vl-rerank": {"vl": 9216, "rerank": 2816},
     # four tenants: 4096 + 2816 + 2304 + 2816 = 12032, 97.9% of the card.
     "dense4": {"llm2": 4096, "embed": 2816, "embed-small": 2304,
                "rerank": 2816},
@@ -518,15 +522,27 @@ def main():
                 "SCENARIO_QUOTAS, or reduce max_num_seqs / max_model_len / "
                 "the multimodal limits." % (role, peak, m["gpumem"], peak))
         if m["kind"] == "chat":
-            kv = m["gpumem"] * m["util"] - m["weights_mib"]
+            # vLLM sizes KV as (util x quota) MINUS the peak it measured during
+            # profiling -- not minus the weights. For a text model those are
+            # close enough that subtracting weights works. For vl they are not:
+            # at an 8192 MiB quota this check saw 6939 - 4220 = 2719 MiB and
+            # passed, while vLLM actually allocated 133 MiB, giving 1.21x
+            # concurrency. The pod came up healthy and would have thrashed
+            # through the entire tier, and the resulting numbers would have
+            # been reported as a cost of sharing.
+            floor_against = max(m["weights_mib"], m.get("profile_peak_mib") or 0)
+            kv = m["gpumem"] * m["util"] - floor_against
             if kv < KV_FLOOR_MIB:
+                what = ("a %d MiB profiling peak" % floor_against
+                        if floor_against != m["weights_mib"]
+                        else "%d MiB of weights" % floor_against)
                 sys.exit(
-                    "%s: a %d MiB quota leaves %d MiB for KV cache and "
-                    "activations after %d MiB of weights, below the %d MiB "
-                    "floor. It will either crashloop or thrash. Raise the "
-                    "quota in SCENARIO_QUOTAS, or use a smaller build of the "
-                    "model." % (role, m["gpumem"], kv, m["weights_mib"],
-                                KV_FLOOR_MIB))
+                    "%s: a %d MiB quota leaves %d MiB of KV cache after %s, "
+                    "below the %d MiB floor. It will start and then thrash, "
+                    "which is worse than crashing because the run completes "
+                    "and the numbers look real. Raise the quota in "
+                    "SCENARIO_QUOTAS." % (role, m["gpumem"], kv, what,
+                                          KV_FLOOR_MIB))
         pct = pcts.get(role, 100)
         as_kserve = m["kind"] == "chat" or a.pooling_via == "kserve"
         body = (render_llm(role, m, a.arm, pct, a.pin_gpu, a.router) if as_kserve
