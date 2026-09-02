@@ -370,8 +370,22 @@ MPS_UNIT = os.environ.get("R2_MPS_UNIT", "nvidia-mps")
 
 
 def mps_daemon_running():
-    rc, out = sh(["bash", "-lc", "pgrep -f %s || true" % MPS_CONTROL], timeout=30)
-    return bool(out.strip())
+    """Is the MPS control daemon up?
+
+    Called WITHOUT a shell, deliberately. `sh(["bash","-lc","pgrep -f X"])`
+    spawns a bash whose own argv contains X, and `pgrep -f` matches it --
+    pgrep excludes its own pid, not its parent's. That made this function
+    return True unconditionally, so set_mps_daemon could never observe a stop
+    and every non-MPS arm aborted after burning both retries, while the
+    hami-mps arm skipped its start as a no-op and then found no clients.
+    0/4 sub-runs, three tiers.
+
+    pgrep -x cannot be used instead: /proc/PID/comm truncates to 15 chars and
+    "nvidia-cuda-mps-control" is 23, so the exact-name match never fires.
+    """
+    rc, out = sh(["pgrep", "-f", MPS_CONTROL], timeout=30)
+    pids = [ln.strip() for ln in out.splitlines() if ln.strip().isdigit()]
+    return bool(pids)
 
 
 def mps_client_pids():
