@@ -438,7 +438,23 @@ def _patch_mps_ds(disable):
                     "-p", json.dumps(body)], timeout=60)
 
 
-def set_mps_daemon(want, ev=None, timeout=120):
+def _clear_stale_socket():
+    """Delete a control socket with nothing behind it.
+
+    The supervisor's self-heal tests `[ ! -S /tmp/nvidia-mps/control ]` -- file
+    EXISTENCE, not reachability. A daemon that dies while leaving its socket
+    behind is therefore never restarted: the DaemonSet reads 1/1 ready, the
+    socket is present, and MPS is dead. Observed on this node.
+
+    Removing the socket is what fires the supervisor's own recovery, on its
+    next 15s poll. Only ever called once mps_daemon_running() has already shown
+    the daemon unreachable, so there is nothing live to break.
+    """
+    return sh(["sudo", "-n", "rm", "-f", os.path.join(MPS_PIPE, "control")],
+              timeout=30)
+
+
+def set_mps_daemon(want, ev=None, timeout=150):
     """Put MPS into the state this arm requires, and verify it took.
 
     THIS IS THE FIX FOR THE ROUND-TWO INVALIDATION. Round one stopped the host
@@ -447,32 +463,47 @@ def set_mps_daemon(want, ev=None, timeout=120):
     60-90s before each replay window, in the dedicated and hami arms too.
     The arms were identical, so +0.0% and -0.008% compared MPS with itself.
     """
-    if mps_daemon_running() == want:
-        if ev:
-            ev.mark("mps_daemon", want=want, changed=False)
-        return True, "already %s" % ("up" if want else "down")
-
+    # The SUPERVISOR is converged first and unconditionally, even when the
+    # daemon already reads the way this arm wants.
+    #
+    # Returning "already down" on an unreachable daemon while leaving the
+    # DaemonSet running is a 15-second time bomb: its loop restarts MPS the
+    # moment the socket goes, mid-run, and a dedicated or hami arm silently
+    # becomes an MPS arm. That is the exact defect this function exists to
+    # prevent, so the fast path is not available.
     rc, out = _patch_mps_ds(disable=not want)
     if rc != 0:
         return False, ("could not patch daemonset %s/%s: %s"
                        % (MPS_DS_NS, MPS_DS, out[-400:]))
 
-    # The supervisor retries every 15s, so a stop only sticks once its pod is
-    # gone. Poll the thing we actually care about rather than the pod.
     t0 = time.time()
+    nudged = False
     while time.time() - t0 < timeout:
         if mps_daemon_running() == want:
             if ev:
-                ev.mark("mps_daemon", want=want, changed=True,
-                        after_s=round(time.time() - t0, 1))
+                ev.mark("mps_daemon", want=want,
+                        after_s=round(time.time() - t0, 1), nudged=nudged)
             time.sleep(3)     # let the server settle before pods start
-            return True, "daemonset patched, took %.0fs" % (time.time() - t0)
+            return True, ("supervisor %s, MPS %s after %.0fs%s"
+                          % ("parked" if not want else "released",
+                             "up" if want else "down", time.time() - t0,
+                             ", cleared a stale socket" if nudged else ""))
+        # Bringing MPS back up on a node whose supervisor is wedged on a stale
+        # socket needs exactly one nudge; its own loop takes over after that.
+        if want and not nudged and time.time() - t0 > 25:
+            _clear_stale_socket()
+            nudged = True
         time.sleep(2)
 
-    return False, ("MPS daemon did not go %s within %ds after patching "
-                   "daemonset %s/%s. Check that the DaemonSet name is right "
-                   "(R2_MPS_DS) and that nothing else restarts the daemon."
-                   % ("up" if want else "down", timeout, MPS_DS_NS, MPS_DS))
+    extra = ""
+    if want:
+        extra = (" A stale socket was cleared and it still did not come back, "
+                 "so check that the DaemonSet's pod is actually running and "
+                 "that passwordless sudo works." if nudged else "")
+    return False, ("MPS did not go %s within %ds after patching daemonset "
+                   "%s/%s.%s Check R2_MPS_DS if it is named differently here."
+                   % ("up" if want else "down", timeout, MPS_DS_NS, MPS_DS,
+                      extra))
 
 
 def assert_mps_matches_arm(arm, roles, ev=None):
