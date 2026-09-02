@@ -366,26 +366,40 @@ def devices_in_use(floor_mib=500):
 
 
 MPS_CONTROL = "nvidia-cuda-mps-control"
-MPS_UNIT = os.environ.get("R2_MPS_UNIT", "nvidia-mps")
+MPS_PIPE = os.environ.get("CUDA_MPS_PIPE_DIRECTORY", "/tmp/nvidia-mps")
+# The daemon on this node is NOT systemd's -- nvidia-mps.service has been
+# failed and disabled since 2026-08-16, which is why `systemctl stop` returned
+# rc=0 and changed nothing. It is a DaemonSet, and it self-heals: its
+# supervisor loop restarts nvidia-cuda-mps-control within 15s of the control
+# socket disappearing. Killing the process is therefore useless; the workload
+# has to be moved off the node.
+MPS_DS = os.environ.get("R2_MPS_DS", "qwen-benchmark-mps-daemon")
+MPS_DS_NS = os.environ.get("R2_MPS_DS_NS", "llm-demo")
+MPS_OFF_SELECTOR = {"r2-mps": "disabled-by-harness"}
 
 
 def mps_daemon_running():
-    """Is the MPS control daemon up?
+    """Can a CUDA client attach to MPS right now?
 
-    Called WITHOUT a shell, deliberately. `sh(["bash","-lc","pgrep -f X"])`
-    spawns a bash whose own argv contains X, and `pgrep -f` matches it --
-    pgrep excludes its own pid, not its parent's. That made this function
-    return True unconditionally, so set_mps_daemon could never observe a stop
-    and every non-MPS arm aborted after burning both retries, while the
-    hami-mps arm skipped its start as a no-op and then found no clients.
-    0/4 sub-runs, three tiers.
+    NOT pgrep. Two different processes on this node carry the string
+    "nvidia-cuda-mps-control" in their command line without being the daemon:
+    a `bash -lc` wrapper around pgrep itself, and the DaemonSet's supervisor
+    loop. Both matched, so the check returned True unconditionally and every
+    non-MPS arm aborted -- 0/4 sub-runs across three tiers.
 
-    pgrep -x cannot be used instead: /proc/PID/comm truncates to 15 chars and
-    "nvidia-cuda-mps-control" is 23, so the exact-name match never fires.
+    The control socket is the signal the DaemonSet's own self-heal loop uses,
+    and a stale socket is possible after a hard kill, so confirm by actually
+    talking to the daemon. That is exactly what a CUDA client does at init,
+    which makes it the right question to ask.
     """
-    rc, out = sh(["pgrep", "-f", MPS_CONTROL], timeout=30)
-    pids = [ln.strip() for ln in out.splitlines() if ln.strip().isdigit()]
-    return bool(pids)
+    sock = os.path.join(MPS_PIPE, "control")
+    if not os.path.exists(sock):
+        return False
+    rc, _ = sh(["bash", "-lc",
+                "CUDA_MPS_PIPE_DIRECTORY=%s; export CUDA_MPS_PIPE_DIRECTORY; "
+                "echo get_server_list | timeout 10 %s >/dev/null 2>&1"
+                % (MPS_PIPE, MPS_CONTROL)], timeout=25)
+    return rc == 0
 
 
 def mps_client_pids():
@@ -394,7 +408,8 @@ def mps_client_pids():
     nvidia-smi tags a process that reaches the GPU through the MPS server as
     type M+C rather than plain C. That is the only direct observable for
     "is this process actually multiplexed", and nothing in the pod spec
-    substitutes for it.
+    substitutes for it -- a container with no MPS mount and no MPS env still
+    attaches, because the runtime injects the pipe after the spec is written.
     """
     rc, out = sh(["nvidia-smi"], timeout=60)
     pids = []
@@ -407,52 +422,57 @@ def mps_client_pids():
     return sorted(set(pids))
 
 
-def set_mps_daemon(want, ev=None, timeout=45):
-    """Put the host MPS daemon into the state this arm requires.
+def _patch_mps_ds(disable):
+    """Park the MPS DaemonSet on a node selector nothing satisfies, or release it.
+
+    Scaling is not available for a DaemonSet, and deleting it would lose the
+    manifest. An unsatisfiable nodeSelector is the standard way to take one to
+    zero, and it is reversible in one patch.
+    """
+    if disable:
+        body = {"spec": {"template": {"spec":
+                {"nodeSelector": MPS_OFF_SELECTOR}}}}
+    else:
+        body = {"spec": {"template": {"spec": {"nodeSelector": None}}}}
+    return kubectl(["-n", MPS_DS_NS, "patch", "daemonset", MPS_DS,
+                    "-p", json.dumps(body)], timeout=60)
+
+
+def set_mps_daemon(want, ev=None, timeout=120):
+    """Put MPS into the state this arm requires, and verify it took.
 
     THIS IS THE FIX FOR THE ROUND-TWO INVALIDATION. Round one stopped the host
     daemon for its non-MPS arms; round two left it running, and every T1 and T2
-    pod became an MPS client regardless of arm. Confirmed in
-    /tmp/nvidia-mps/control.log: one NEW CLIENT per tenant, 60-90s before each
-    replay window, in the dedicated and hami arms too -- 1, 1, 2, 2 clients
-    against 1, 1, 2, 2 tenants. The arms were identical, so +0.0% and -0.008%
-    were a comparison of MPS against itself.
-
-    A container without the pipe mounted still attaches, because the container
-    runtime and HAMi's device plugin can inject it after the pod spec is
-    written. The spec proves nothing. Only the daemon's absence does.
+    pod became an MPS client regardless of arm -- one NEW CLIENT per tenant,
+    60-90s before each replay window, in the dedicated and hami arms too.
+    The arms were identical, so +0.0% and -0.008% compared MPS with itself.
     """
     if mps_daemon_running() == want:
         if ev:
             ev.mark("mps_daemon", want=want, changed=False)
-        return True, "already %s" % ("running" if want else "stopped")
+        return True, "already %s" % ("up" if want else "down")
 
-    if want:
-        attempts = [["sudo", "-n", "systemctl", "start", MPS_UNIT],
-                    ["sudo", "-n", "bash", "-lc",
-                     "%s -d" % MPS_CONTROL]]
-    else:
-        attempts = [["sudo", "-n", "systemctl", "stop", MPS_UNIT],
-                    ["sudo", "-n", "bash", "-lc",
-                     "echo quit | %s" % MPS_CONTROL]]
+    rc, out = _patch_mps_ds(disable=not want)
+    if rc != 0:
+        return False, ("could not patch daemonset %s/%s: %s"
+                       % (MPS_DS_NS, MPS_DS, out[-400:]))
 
-    tried = []
-    for cmd in attempts:
-        rc, out = sh(cmd, timeout=60)
-        tried.append(" ".join(cmd[2:]) + (" -> rc=%d" % rc))
-        t0 = time.time()
-        while time.time() - t0 < timeout:
-            if mps_daemon_running() == want:
-                if ev:
-                    ev.mark("mps_daemon", want=want, changed=True,
-                            via=" ".join(cmd[2:]))
-                time.sleep(2)   # let the server settle before pods start
-                return True, " ".join(cmd[2:])
-            time.sleep(1)
-    return False, ("could not set the MPS daemon to %s. Tried: %s. This needs "
-                   "passwordless sudo; without it the arms are not isolated "
-                   "and the run measures nothing."
-                   % ("running" if want else "stopped", "; ".join(tried)))
+    # The supervisor retries every 15s, so a stop only sticks once its pod is
+    # gone. Poll the thing we actually care about rather than the pod.
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        if mps_daemon_running() == want:
+            if ev:
+                ev.mark("mps_daemon", want=want, changed=True,
+                        after_s=round(time.time() - t0, 1))
+            time.sleep(3)     # let the server settle before pods start
+            return True, "daemonset patched, took %.0fs" % (time.time() - t0)
+        time.sleep(2)
+
+    return False, ("MPS daemon did not go %s within %ds after patching "
+                   "daemonset %s/%s. Check that the DaemonSet name is right "
+                   "(R2_MPS_DS) and that nothing else restarts the daemon."
+                   % ("up" if want else "down", timeout, MPS_DS_NS, MPS_DS))
 
 
 def assert_mps_matches_arm(arm, roles, ev=None):

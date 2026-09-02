@@ -9,8 +9,18 @@ cd "$(dirname "$0")"
 python3 - <<'PY'
 import harness as H
 print("=== detection")
-print("  daemon running     : %s" % H.mps_daemon_running())
+print("  control socket     : %s/control" % H.MPS_PIPE)
+print("  daemon reachable   : %s" % H.mps_daemon_running())
 print("  MPS client pids    : %s" % H.mps_client_pids())
+print("  supervisor         : daemonset %s/%s" % (H.MPS_DS_NS, H.MPS_DS))
+rc, out = H.kubectl(["-n", H.MPS_DS_NS, "get", "daemonset", H.MPS_DS,
+                     "-o", "jsonpath={.status.numberReady}/"
+                           "{.status.desiredNumberScheduled} ready"])
+print("                       %s" % (out.strip() or "NOT FOUND -- set R2_MPS_DS"))
+if rc != 0:
+    print("
+  Cannot see the DaemonSet, so the toggle cannot work.")
+    raise SystemExit(1)
 
 print("\n=== toggle (this is what every sub-run does)")
 for want in (False, True):
