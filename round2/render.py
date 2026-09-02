@@ -64,9 +64,16 @@ import sys
 #   vLLM's --gpu-memory-utilization is a fraction of the device total, and it
 #   does NOT include the CUDA context or the graph pool.
 #
-# A generative model always grows its KV cache to fill vLLM's budget exactly,
-# so resident memory settles at (util x quota) + outside_mib regardless of how
-# big the weights are. The whole feasibility test is therefore:
+# A generative model grows its KV cache to fill vLLM's budget -- but only UP TO
+# what `max_num_seqs x max_model_len` can actually use. llm and llm2 ask for
+# 64 x 4096 = 262k tokens, far more than their budgets hold, so they do fill it.
+# vl asks for 32 x 4096 = 131k, and on the whole card vLLM allocated exactly
+# 137,920 tokens (that figure rounded up to block boundaries) and left 1586 MiB
+# of its budget UNUSED. So the rule below is the worst case, not the typical
+# one, which is the right side to be wrong on: it reserves for a full budget.
+#
+# In the filling case, resident settles at (util x quota) + outside_mib
+# regardless of how big the weights are. The feasibility test is therefore:
 #
 #       util x quota + outside_mib <= quota      ->    util <= 1 - outside/quota
 #
@@ -129,9 +136,17 @@ MODELS = {
         gpumem=2816, util=0.90, max_model_len=512, max_num_seqs=64,
         extra=["--runner=pooling", "--convert=embed", "--dtype=half"],
     ),
+    # Multimodal init is the most expensive in the matrix: a vision encoder AND
+    # a language model compiled, then 11 cudagraph sizes captured. T3 died here
+    # with the default outside_mib of 700. The OOM gave the real number: budget
+    # 5804 MiB, process at 6595 asking for 160 more, against a cap the process
+    # correctly saw as 6.50 GiB -- so outside is at least 951. 1100 leaves ~300
+    # MiB of genuine slack rather than the ~0 that killed it.
     "vl": dict(
         repo="Qwen/Qwen2-VL-2B-Instruct", kind="chat", weights_mib=4220,
-        gpumem=6656, util=0.90, max_model_len=4096, max_num_seqs=32, extra=[],
+        gpumem=6656, util=0.90, max_model_len=4096, max_num_seqs=32,
+        outside_mib=1100,         # measured from T3's OOM; >=951
+        extra=[],
     ),
 }
 

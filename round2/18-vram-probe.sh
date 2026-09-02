@@ -85,7 +85,7 @@ done
 echo
 echo "=== vLLM memory arithmetic"
 printf '%s\n' "$LOG" | grep -iE \
-  "total_gpu_memory|model weights take|non_torch|activation peak|KV cache|Maximum concurrency|Available KV" \
+  "total_gpu_memory|model weights|non_torch|activation peak|KV cache|Maximum concurrency|Available KV|memory profiling|GPU memory utilization|free memory|capacity of" \
   | sed 's/^/  /' | tail -20
 
 echo
