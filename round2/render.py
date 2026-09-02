@@ -85,6 +85,21 @@ import sys
 # the quota can actually support, so a quota change cannot silently produce a
 # pod that crashloops in _dummy_sampler_run. Pooling models do not fill their
 # budget with KV, so the clamp does not apply to them.
+# THE PROFILING PEAK IS A SECOND, LARGER CONSTRAINT, and util does not touch it.
+#
+# vLLM runs a dummy forward pass at max batch and max sequence -- for a
+# multimodal model, at max image/video tokens too -- BEFORE it sizes the KV
+# cache, precisely in order to measure the peak. That run is bounded by the
+# HAMi cap and by nothing else. Lowering --gpu-memory-utilization cannot help,
+# because it only shrinks the KV cache that gets allocated afterwards.
+#
+# vl proved it. Two probes at 6656 MiB, util 0.872 and 0.812, produced a
+# BYTE-IDENTICAL OOM: same 160 MiB request, same 6.44 GiB in use, same 137.87
+# MiB free. PyTorch had allocated 6021 MiB, which is ABOVE the 5804 MiB budget
+# at the higher util -- so it cannot be the KV cache, which is sized to fit.
+#
+# So a quota must clear TWO bars: the profiling peak, and then steady state.
+# profile_peak_mib records the first where it has been measured.
 OUTSIDE_DEFAULT = 700   # unmeasured models; probe with 18-vram-probe.sh
 OUTSIDE_MARGIN = 150    # slack between predicted resident and the HAMi cap
 KV_FLOOR_MIB = 512      # below this a generative tenant thrashes rather than runs
@@ -146,6 +161,7 @@ MODELS = {
         repo="Qwen/Qwen2-VL-2B-Instruct", kind="chat", weights_mib=4220,
         gpumem=6656, util=0.90, max_model_len=4096, max_num_seqs=32,
         outside_mib=1100,         # measured from T3's OOM; >=951
+        profile_peak_mib=6755,    # measured; util cannot reduce this
         extra=[],
     ),
 }
@@ -188,6 +204,11 @@ SCENARIOS = {
 SCENARIO_QUOTAS = {
     # 8192 + 5632 = 13824 (112.5%) at the defaults.
     "llm-llm": {"llm2": 3840},
+    # vl's 6656 default cannot hold its 6755 MiB profiling peak, let alone a KV
+    # cache on top. 8192 clears the peak with 1437 MiB to spare and still
+    # leaves ~2700 MiB of KV. rerank ran fine at 4608 and is a pooling model
+    # with no KV cache to give up, so it absorbs the difference.
+    "vl-rerank": {"vl": 8192, "rerank": 3840},
     # four tenants: 4096 + 2816 + 2304 + 2816 = 12032, 97.9% of the card.
     "dense4": {"llm2": 4096, "embed": 2816, "embed-small": 2304,
                "rerank": 2816},
@@ -487,6 +508,15 @@ def main():
         m["util"], cap, clamped = effective_util(m)
         if clamped:
             clamps.append((role, MODELS[role]["util"], m["util"], m["gpumem"]))
+        peak = m.get("profile_peak_mib")
+        if peak and peak >= m["gpumem"]:
+            sys.exit(
+                "%s: vLLM's profiling run peaks at %d MiB and the quota is "
+                "%d. That run happens BEFORE the KV cache is sized and is not "
+                "bounded by --gpu-memory-utilization, so no utilisation value "
+                "can make this fit. Raise the quota above %d in "
+                "SCENARIO_QUOTAS, or reduce max_num_seqs / max_model_len / "
+                "the multimodal limits." % (role, peak, m["gpumem"], peak))
         if m["kind"] == "chat":
             kv = m["gpumem"] * m["util"] - m["weights_mib"]
             if kv < KV_FLOOR_MIB:
