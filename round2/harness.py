@@ -365,6 +365,115 @@ def devices_in_use(floor_mib=500):
     return sorted(idx for idx, mib in gpu_used_mib().items() if mib > floor_mib)
 
 
+MPS_CONTROL = "nvidia-cuda-mps-control"
+MPS_UNIT = os.environ.get("R2_MPS_UNIT", "nvidia-mps")
+
+
+def mps_daemon_running():
+    rc, out = sh(["bash", "-lc", "pgrep -f %s || true" % MPS_CONTROL], timeout=30)
+    return bool(out.strip())
+
+
+def mps_client_pids():
+    """PIDs nvidia-smi reports as MPS clients.
+
+    nvidia-smi tags a process that reaches the GPU through the MPS server as
+    type M+C rather than plain C. That is the only direct observable for
+    "is this process actually multiplexed", and nothing in the pod spec
+    substitutes for it.
+    """
+    rc, out = sh(["nvidia-smi"], timeout=60)
+    pids = []
+    for line in out.splitlines():
+        if "M+C" not in line:
+            continue
+        m = re.search(r"(\d+)\s+M\+C", line)
+        if m:
+            pids.append(int(m.group(1)))
+    return sorted(set(pids))
+
+
+def set_mps_daemon(want, ev=None, timeout=45):
+    """Put the host MPS daemon into the state this arm requires.
+
+    THIS IS THE FIX FOR THE ROUND-TWO INVALIDATION. Round one stopped the host
+    daemon for its non-MPS arms; round two left it running, and every T1 and T2
+    pod became an MPS client regardless of arm. Confirmed in
+    /tmp/nvidia-mps/control.log: one NEW CLIENT per tenant, 60-90s before each
+    replay window, in the dedicated and hami arms too -- 1, 1, 2, 2 clients
+    against 1, 1, 2, 2 tenants. The arms were identical, so +0.0% and -0.008%
+    were a comparison of MPS against itself.
+
+    A container without the pipe mounted still attaches, because the container
+    runtime and HAMi's device plugin can inject it after the pod spec is
+    written. The spec proves nothing. Only the daemon's absence does.
+    """
+    if mps_daemon_running() == want:
+        if ev:
+            ev.mark("mps_daemon", want=want, changed=False)
+        return True, "already %s" % ("running" if want else "stopped")
+
+    if want:
+        attempts = [["sudo", "-n", "systemctl", "start", MPS_UNIT],
+                    ["sudo", "-n", "bash", "-lc",
+                     "%s -d" % MPS_CONTROL]]
+    else:
+        attempts = [["sudo", "-n", "systemctl", "stop", MPS_UNIT],
+                    ["sudo", "-n", "bash", "-lc",
+                     "echo quit | %s" % MPS_CONTROL]]
+
+    tried = []
+    for cmd in attempts:
+        rc, out = sh(cmd, timeout=60)
+        tried.append(" ".join(cmd[2:]) + (" -> rc=%d" % rc))
+        t0 = time.time()
+        while time.time() - t0 < timeout:
+            if mps_daemon_running() == want:
+                if ev:
+                    ev.mark("mps_daemon", want=want, changed=True,
+                            via=" ".join(cmd[2:]))
+                time.sleep(2)   # let the server settle before pods start
+                return True, " ".join(cmd[2:])
+            time.sleep(1)
+    return False, ("could not set the MPS daemon to %s. Tried: %s. This needs "
+                   "passwordless sudo; without it the arms are not isolated "
+                   "and the run measures nothing."
+                   % ("running" if want else "stopped", "; ".join(tried)))
+
+
+def assert_mps_matches_arm(arm, roles, ev=None):
+    """Verify MPS is on exactly in the arm that is supposed to have it.
+
+    Parallel to assert_colocated, and earned the same way: a sharing arm whose
+    tenants are on separate cards measures nothing, and an MPS arm that is
+    indistinguishable from its control measures nothing either. Both produce
+    clean numbers. Both are worse than a crash.
+    """
+    want = (arm == "hami-mps")
+    running = mps_daemon_running()
+    clients = mps_client_pids()
+    detail = {"arm": arm, "want_mps": want, "daemon_running": running,
+              "mps_client_pids": clients, "tenants": len(roles)}
+
+    if want:
+        ok = running and len(clients) >= len(roles)
+        if not ok:
+            detail["reason"] = (
+                "arm hami-mps expects the daemon up and >=%d MPS clients; "
+                "daemon_running=%s, clients=%s. The arm would be identical to "
+                "its control." % (len(roles), running, clients))
+    else:
+        ok = (not running) and not clients
+        if not ok:
+            detail["reason"] = (
+                "arm %s must have NO MPS: daemon_running=%s, M+C clients=%s. "
+                "This is exactly what invalidated T1 and T2." % (arm, running,
+                                                                 clients))
+    if ev:
+        ev.mark("mps_state", ok=ok, **detail)
+    return ok, detail
+
+
 def assert_colocated(roles, ns=NS, ev=None):
     """A sharing arm whose tenants are on different cards is not a sharing arm.
 

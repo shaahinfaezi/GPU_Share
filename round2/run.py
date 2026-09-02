@@ -239,6 +239,19 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
             H.teardown()
             H.wait_gpu_idle(ev=ev)
 
+            # 1b. MPS state, set BEFORE any pod starts ---------------------
+            # Attachment happens at CUDA init, so this cannot be done later.
+            # And it has to be the daemon, not the pod spec: a container with
+            # no MPS mount and no MPS env still attached in T1 and T2, because
+            # the container runtime and HAMi's device plugin can inject the
+            # pipe after the spec is written. Only the daemon's absence is a
+            # real control.
+            ok, how = H.set_mps_daemon(arm == "hami-mps", ev=ev)
+            if not ok:
+                raise RuntimeError(how)
+            print("      mps daemon: %s (%s)"
+                  % ("up" if arm == "hami-mps" else "down", how))
+
         # 2. render -------------------------------------------------------
         rdir = os.path.join(d, "rendered")
         cmd = [PY, "render.py", "--scenario", cfg["scenario"], "--arm", arm,
@@ -282,6 +295,19 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
                 % json.dumps(detail))
         if detail.get("warning"):
             print("      NOTE: " + detail["warning"])
+
+        # 4b. MPS state -- the check that protects the OTHER comparison ---
+        # assert_colocated protects dedicated-vs-shared. This protects
+        # hami-vs-hami-mps, and it is the one whose absence cost T1 and T2:
+        # every arm ran as an MPS client, so the two sharing arms were the
+        # same configuration and returned +0.0% and -0.008%.
+        mps_ok, mps_detail = H.assert_mps_matches_arm(arm, roles, ev=ev)
+        rec["mps"] = mps_detail
+        print("      mps check: %s  daemon=%s clients=%s"
+              % ("OK" if mps_ok else "FAILED",
+                 mps_detail["daemon_running"], mps_detail["mps_client_pids"]))
+        if not mps_ok:
+            raise RuntimeError(mps_detail.get("reason", "MPS state mismatch"))
 
         # 5. endpoints and model names -----------------------------------
         eps = H.endpoints(roles, ev=ev)
@@ -463,10 +489,18 @@ def main():
         print("  %-10s %s" % (arm, "+".join(rs)))
 
     results = []
-    for arm, rs in plan:
-        results.append(subrun(run_dir, ev, a.test, cfg, arm, rs, trace_path,
-                              trace_id, a.pin_gpu, a.pooling_via,
-                              a.mps_percent, a.warmup, a.dry_run))
+    try:
+        for arm, rs in plan:
+            results.append(subrun(run_dir, ev, a.test, cfg, arm, rs, trace_path,
+                                  trace_id, a.pin_gpu, a.pooling_via,
+                                  a.mps_percent, a.warmup, a.dry_run))
+    finally:
+        # Leave the daemon up however the run ended. 13-validate.py requires
+        # it, and the next run sets it per arm anyway -- but a series that
+        # aborts mid-dedicated would otherwise leave the node in a state its
+        # own gate rejects.
+        if not a.dry_run:
+            H.set_mps_daemon(True, ev=ev)
 
     # ---- the fairness assertion, made loudly ---------------------------
     seen = {r["tag"]: r.get("trace_id_seen") for r in results

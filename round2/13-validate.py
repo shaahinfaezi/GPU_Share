@@ -198,6 +198,26 @@ def check_node():
     else:
         bad("no MPS control daemon: the hami-mps arm cannot work")
 
+    # The daemon being present is not enough -- the harness has to be able to
+    # STOP it for the non-MPS arms. Without that, every arm runs as an MPS
+    # client and the sharing comparison is a comparison with itself, which is
+    # precisely what invalidated T1 and T2 (FINDINGS 2.11). It fails silently
+    # and produces clean numbers, so it is checked before the run, not after.
+    rc, _ = H.sh(["sudo", "-n", "true"], timeout=20)
+    if rc == 0:
+        ok("passwordless sudo available (harness can toggle the MPS daemon)")
+    else:
+        bad("no passwordless sudo: the harness cannot stop the MPS daemon for "
+            "the dedicated and hami arms, so every arm would run as an MPS "
+            "client and hami-vs-hami-mps would measure nothing")
+
+    clients = H.mps_client_pids()
+    if clients:
+        warn("MPS clients resident right now: %s (stale pods from a previous "
+             "run?)" % clients)
+    else:
+        ok("no MPS clients resident")
+
 
 # --------------------------------------------------------------- smoke test
 def check_smoke(role="llm"):
