@@ -170,7 +170,7 @@ HOST_HEADROOM_MIB = 1024      # kernel, the harness itself, and its kubectl fork
 # T2, T3) pass the guard and the four-tenant tier that died does not. Replace
 # it with real numbers from host.csv -- see 24-host-calibrate below.
 HOST_RSS_MIB = {}
-HOST_RSS_DEFAULT = 2800
+HOST_RSS_DEFAULT = 2400   # provisional: passes 2 tenants, refuses 3+
 
 
 def host_mem_mib():
