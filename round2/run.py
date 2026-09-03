@@ -282,6 +282,33 @@ def gen_trace(test, cfg, out_path, seed, warmup):
     return tid, n
 
 
+# Failure text that means "the node cannot run this, and will not be able to
+# run the next one either". Everything here was observed on this cluster.
+_NODE_LEVEL = (
+    "node unregistered",          # HAMi's scheduler extender lost the node
+    "nodes are available",        # generic FailedScheduling preamble
+    "no available node",          # HAMi FilteringFailed
+    "Insufficient nvidia.com",    # device plugin not advertising
+    "node(s) had untolerated taint",
+)
+
+
+def _abort_reason(rec):
+    """Is this sub-run's failure one that will simply repeat?"""
+    err = rec.get("error") or ""
+    if "host RAM:" in err:
+        # The guard refused this arm. A wider arm will be refused too, but a
+        # NARROWER one (the dedicated arm, one tenant at a time) still fits,
+        # so this is not on its own a reason to stop the run.
+        return None
+    blob = err + "\n" + "\n".join(
+        (rec.get("ready_diag") or {}).values())
+    for needle in _NODE_LEVEL:
+        if needle in blob:
+            return "node cannot schedule GPU pods (%r). Run ./25-node-check.sh --fix" % needle
+    return None
+
+
 def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
            pin_uuid, pooling_via, mps_percent, warmup, dry):
     """Deploy, measure, tear down -- one arm, one set of co-resident roles."""
@@ -363,6 +390,7 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
         if not ok:
             for role, text in diag.items():
                 print("      %s did not become ready:\n%s" % (role, text[:2500]))
+            rec["ready_diag"] = {k: v[:4000] for k, v in diag.items()}
             raise RuntimeError("roles never became ready: %s" % ", ".join(diag))
 
         # 4. placement -- the check that protects the whole comparison ----
@@ -585,11 +613,40 @@ def main():
         print("  %-10s %s" % (arm, "+".join(rs)))
 
     results = []
+    aborted = None
     try:
+        consecutive = 0
         for arm, rs in plan:
-            results.append(subrun(run_dir, ev, a.test, cfg, arm, rs, trace_path,
-                                  trace_id, a.pin_gpu, a.pooling_via,
-                                  a.mps_percent, a.warmup, a.dry_run))
+            if aborted:
+                print("\n--- %s__%s  SKIPPED (%s)"
+                      % (arm, "+".join(rs), aborted))
+                continue
+            r = subrun(run_dir, ev, a.test, cfg, arm, rs, trace_path,
+                       trace_id, a.pin_gpu, a.pooling_via,
+                       a.mps_percent, a.warmup, a.dry_run)
+            results.append(r)
+
+            if r.get("status") == "ok":
+                consecutive = 0
+                continue
+            consecutive += 1
+
+            # A node that cannot place a GPU pod will not place the next one
+            # either. After T4's OOM cascade the node came back Ready with a
+            # clean nvidia-smi but HAMi had lost its registration, so every
+            # pod sat Pending -- and this loop was about to spend four times
+            # 900 seconds discovering that four times. Node-level faults abort
+            # at once; anything else gets one more chance, because a single
+            # arm can fail for reasons the next arm does not share.
+            why = _abort_reason(r)
+            if why:
+                aborted = why
+                print("\n!!! ABORTING the remaining sub-runs: %s" % why)
+                ev.mark("aborted", reason=why, after_tag=r.get("tag"))
+            elif consecutive >= 2:
+                aborted = "two consecutive sub-run failures"
+                print("\n!!! ABORTING the remaining sub-runs: %s" % aborted)
+                ev.mark("aborted", reason=aborted, after_tag=r.get("tag"))
     finally:
         # Leave the daemon up however the run ended. 13-validate.py requires
         # it, and the next run sets it per arm anyway -- but a series that
@@ -607,7 +664,8 @@ def main():
                trace_id=trace_id, requests=n_req,
                pin_gpu=a.pin_gpu, pooling_via=a.pooling_via,
                mps_percent=a.mps_percent, warmup=a.warmup,
-               subruns=results, trace_id_mismatch=mismatched)
+               subruns=results, trace_id_mismatch=mismatched,
+               aborted=aborted, planned_subruns=len(plan))
     H.write_json(os.path.join(run_dir, "run.json"), doc)
 
     print("\n=== summary")

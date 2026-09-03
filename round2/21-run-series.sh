@@ -44,6 +44,19 @@ if ! ./22-mps-check.sh; then
   exit 1
 fi
 
+# And none of the above notices that the scheduler cannot place a GPU pod at
+# all. After T4's OOM cascade HAMi lost the node's registration; the node was
+# Ready, nvidia-smi was clean, every gate above passed, and every pod sat
+# Pending through a 900s ready timeout. --fix restarts the device plugin,
+# which is non-destructive and does not touch running workloads.
+echo "=== gate: node can schedule GPU pods"
+if ! ./25-node-check.sh --fix; then
+  echo
+  echo "REFUSING TO LAUNCH. The scheduler cannot place a GPU pod on this node,"
+  echo "so every sub-run would sit Pending until its ready timeout expired."
+  exit 1
+fi
+
 mkdir -p logs
 STAMP=$(date +%Y%m%d-%H%M%S)
 SERIES="$(pwd)/logs/series-${STAMP}.log"
@@ -69,6 +82,8 @@ TESTS="$*"
     echo "=== ${T} finished rc=${RC} $(date -Is)"
     echo "    run dir : $(pwd)/${DIR:-UNKNOWN}"
     echo "    sub-runs: ${OKN:-unknown}"
+    ABORT=$(grep -m1 -oE "ABORTING the remaining sub-runs: .*" "$LOG" 2>/dev/null)
+    [ -n "$ABORT" ] && echo "    ABORTED : ${ABORT#ABORTING the remaining sub-runs: }"
     echo "    mps      : $(grep -c 'mps check: OK' "$LOG" 2>/dev/null) OK, $(grep -c 'mps check: FAILED' "$LOG" 2>/dev/null) FAILED"
   done
   echo
