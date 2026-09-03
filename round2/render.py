@@ -296,16 +296,28 @@ def gpu_resources(m, arm, pct):
     """The resource block. gpucores is requested in both HAMi arms because it is
     what the scheduler packs against -- round one established it is a placement
     token, not a compute bound, and that is exactly how it is used here."""
-    # Requested in EVERY arm, including dedicated. It used to be omitted there,
-    # which meant every dedicated-versus-shared number blended neighbour
-    # contention with HAMi's core limiter being switched on, and made all the
-    # co-location costs in T1-T3 upper bounds rather than measurements. The
-    # effect is expected to be nil -- hami_cores and hami_limit both read 100
-    # in the co-located arms, consistent with gpucores being a placement token
-    # rather than a compute bound -- but "expected to be nil" is not a control.
+    # DEDICATED MEANS THE WHOLE CARD: no gpucores annotation at all, which is
+    # how HAMi expresses "no core allocation" (hami_gpu_core_allocated_ratio
+    # reads 0). This is a deliberate choice of CROSS-TIER COMPARABILITY over
+    # removing a confound.
+    #
+    # The confound is real: dedicated-versus-shared then differs in two ways at
+    # once -- co-tenancy AND whether a core token was requested -- so every
+    # co-location cost is an upper bound rather than a measurement. T1 through
+    # T3 are reported that way and T4 onward must match them, because comparing
+    # a tier's dedicated baseline across tiers is worth more than tightening one
+    # comparison inside a tier.
+    #
+    # The confound is also almost certainly inert: hami_cores and hami_limit
+    # both read 100 in the co-located arms despite those pods requesting 50, so
+    # gpucores is a placement token and not a compute bound on this build.
+    #
+    # --dedicated-cores share  gives the tight control instead, at the cost of
+    # comparability with T1-T3. Use it for a within-tier study, not the matrix.
     lines = ['            nvidia.com/gpu: "1"',
-             '            nvidia.com/gpumem: "%d"' % m["gpumem"],
-             '            nvidia.com/gpucores: "%d"' % m["gpucores"]]
+             '            nvidia.com/gpumem: "%d"' % m["gpumem"]]
+    if arm in ("hami", "hami-mps") or m.get("dedicated_cores") == "share":
+        lines.append('            nvidia.com/gpucores: "%d"' % m["gpucores"])
     return "\n".join(lines)
 
 
@@ -473,6 +485,13 @@ def main():
                     help="render just this role (dedicated baselines run one at a time)")
     ap.add_argument("--dedicated-full-card", action="store_true",
                     help="give the dedicated arm the whole card instead of the shared quota")
+    ap.add_argument("--dedicated-cores", choices=("whole", "share"),
+                    default="whole",
+                    help="whole (default): the dedicated arm requests no "
+                         "gpucores, i.e. the whole card, matching T1-T3. "
+                         "share: it requests the same gpucores as the sharing "
+                         "arms, which removes the two-variable confound but "
+                         "breaks comparability with T1-T3.")
     ap.add_argument("--gpumem", default="",
                     help="override a role's VRAM quota, e.g. llm2=11776. For "
                          "18-vram-probe.sh, which measures what a model needs "
@@ -522,6 +541,7 @@ def main():
         if override:
             m["gpumem"] = override
         m["gpucores"] = share
+        m["dedicated_cores"] = a.dedicated_cores
         if a.arm == "dedicated" and a.dedicated_full_card:
             m["gpumem"] = CARD_MIB - 512
         if role in gpumem_over:
