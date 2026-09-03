@@ -44,6 +44,7 @@ import threading
 import time
 
 import harness as H
+from render import MODELS, SCENARIO_QUOTAS, effective_util
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PY = sys.executable
@@ -53,7 +54,11 @@ PY = sys.executable
 os.environ.setdefault("HF_HOME", "/data2/hf-cache")
 
 # gpumem budgets from render.py, in MiB, against a 12288 MiB card:
-#   llm 8192 | embed 3072 | llm2 5632 | llm-mid 11264 | rerank 4608
+#   llm 8192 | embed 3072 | llm2 3840 (SCENARIO_QUOTAS) | rerank 4608
+# The newcomer is blocked for TWO reasons, and HAMi reports whichever
+# it hits first: memory (1024 MiB free vs 3840 needed) and gpucores
+# (the two incumbents already hold 100 of 100). Read arrival_reasons
+# before describing this as a memory-admission result.
 # The default pairing leaves 11264 of 12288 allocated, so the 5632 MiB newcomer
 # cannot be admitted without the incumbent leaving. That is the whole setup.
 DEFAULT_INCUMBENTS = ["llm", "embed"]
@@ -145,8 +150,13 @@ class Traffic(threading.Thread):
 
     def run(self):
         trace, arm, out_dir, roles, eps, models, note = self.args
+        # --timeout 60, not the 600 s default: after eviction the endpoint is
+        # a pod IP that no longer exists, and a hung request holds a worker for
+        # ten minutes. The refusal IS the measurement here, so it needs to
+        # arrive promptly.
         cmd = [PY, os.path.join("workload", "replay.py"), "--trace", trace,
-               "--arm", arm, "--out-dir", out_dir, "--note", note]
+               "--arm", arm, "--out-dir", out_dir, "--note", note,
+               "--timeout", "60"]
         for r in roles:
             cmd += ["--only", r]
         for r, u in eps.items():
@@ -176,7 +186,10 @@ def main():
                     help="extra seconds of traffic after the newcomer is up")
     ap.add_argument("--rate", type=float, default=4.0)
     ap.add_argument("--seed", type=int, default=20260826)
-    ap.add_argument("--pin-gpu", default=H.GPU_UUIDS[0])
+    # Default empty, matching run.py. A UUID default pins the Deployment
+    # tenants while binpack sends the KServe tenants wherever it likes -- a
+    # guaranteed split, caused by the flag meant to prevent one.
+    ap.add_argument("--pin-gpu", default="")
     ap.add_argument("--pooling-via", choices=("kserve", "vllm"), default="kserve")
     ap.add_argument("--mps-percent", default="")
     ap.add_argument("--out", default=os.path.join(HERE, "results"))
@@ -207,9 +220,12 @@ def main():
             print("REFUSING TO START:")
             for p in problems:
                 print("  - %s" % p)
+            ev.close()
             return 2
 
-    rec = dict(test="T9", arm=a.arm, incumbents=incumbents, arrival=a.arrival,
+    rec = dict(test="T9", arm=a.arm, tag="%s__scaledown" % a.arm,
+               scenario=SCENARIO, roles=list(incumbents),
+               incumbents=incumbents, arrival=a.arrival,
                evict=evict, wait=a.wait, rate=a.rate, seed=a.seed,
                run_dir=run_dir, stamp=stamp, status="started")
     sampler = None
@@ -219,6 +235,19 @@ def main():
         ev.mark("teardown_begin")
         H.teardown()
         H.wait_gpu_idle(ev=ev)
+
+        # MPS state is set BEFORE any pod starts, because attachment happens at
+        # CUDA init and cannot be changed afterwards. Skipping this is what
+        # voided T1 and T2: the host daemon rests in the UP state, a container
+        # attaches to it even with no pipe mount and no MPS environment, and
+        # both the hami and dedicated arms silently ran THROUGH MPS while
+        # reporting clean numbers. The pod spec proves nothing here.
+        ok, how = H.set_mps_daemon(a.arm == "hami-mps", ev=ev)
+        if not ok:
+            raise RuntimeError(how)
+        rec["mps_daemon"] = how
+        print("    mps daemon: %s (%s)"
+              % ("up" if a.arm == "hami-mps" else "down", how))
 
         # ---- 1. a trace long enough to cover the whole experiment --------
         total = a.wait + a.admit_timeout + a.ready_timeout * 0.5 + a.drain
@@ -251,9 +280,28 @@ def main():
         if not colo:
             raise RuntimeError("incumbents on different GPUs: %s" % detail)
 
+        mps_ok, mps_detail = H.assert_mps_matches_arm(a.arm, incumbents, ev=ev)
+        rec["mps_incumbent"] = mps_detail
+        print("    mps check (incumbents): %s  daemon=%s clients=%s"
+              % ("OK" if mps_ok else "FAILED", mps_detail["daemon_running"],
+                 mps_detail["mps_client_pids"]))
+        if not mps_ok:
+            raise RuntimeError(mps_detail.get("reason", "MPS state mismatch"))
+
         eps = H.endpoints(incumbents, ev=ev)
         models = {r: H.served_model(u) for r, u in eps.items()}
         models = {r: m for r, m in models.items() if m}
+
+        # Serve one real request before spending the measurement window. T1's
+        # first attempt ran four arms to completion with 0/885 successful
+        # requests because readiness was taken as proof of service.
+        kinds = {r: MODELS[r]["kind"] for r in incumbents if r in MODELS}
+        smoke = H.smoke_test(eps, models, kinds, ev=ev)
+        rec["smoke_incumbent"] = smoke
+        bad = [r for r, v in smoke.items() if "ok" not in str(v).lower()]
+        if bad:
+            raise RuntimeError("incumbent smoke test failed for %s: %s"
+                               % (bad, json.dumps(smoke)))
 
         # ---- 3. traffic + sampling start --------------------------------
         sampler = H.GpuSampler(os.path.join(d, "gpu.csv"))
@@ -311,16 +359,43 @@ def main():
             # ---- 6. evict to zero --------------------------------------
             marks["t_evict"] = ev.mark("evict_begin", role=evict)
             rec["evict_via"] = scale_to_zero(evict)
-            # replicas:0 returning is NOT the memory being free -- the vLLM
-            # process holds its allocation until it exits.
-            freed = H.wait_gpu_idle(baseline_mib=_incumbent_floor(incumbents, evict),
-                                    timeout=300, ev=ev)
-            marks["t_freed"] = ev.mark("vram_released", ok=freed)
+            # A patch returning 0 is not an eviction -- the KServe controller
+            # may reconcile replicas back to 1 -- and replicas:0 is not the
+            # memory being free, because the vLLM process holds its allocation
+            # until it exits. Wait for BOTH, and measure the drop rather than
+            # comparing against a hardcoded floor.
+            gone, freed, released = _wait_release(evict, SCENARIO, ev=ev)
+            rec["evict_pods_gone"] = gone
+            rec["vram_released_mib"] = released
+            marks["t_freed"] = ev.mark("vram_released", ok=freed,
+                                       released_mib=released)
+            if not gone:
+                raise RuntimeError(
+                    "%s still has pods after scale-to-zero; the controller "
+                    "reconciled it back. Nothing measured after this point "
+                    "would mean anything." % evict)
 
             # ---- 7. admission ------------------------------------------
             ok, diag = H.wait_ready([a.arrival], timeout=a.ready_timeout, ev=ev)
             marks["t_admitted"] = ev.mark("arrival_ready", ok=ok)
             rec["arrival_ready"] = ok
+            if ok:
+                # Ready is /health, not a token. The timeline claims to report
+                # the gap to the newcomer SERVING, so serve something.
+                aeps = H.endpoints([a.arrival], ev=ev)
+                amodels = {r: H.served_model(u) or r for r, u in aeps.items()}
+                akinds = {a.arrival: MODELS.get(a.arrival, {}).get("kind", "chat")}
+                asmoke = H.smoke_test(aeps, amodels, akinds, ev=ev)
+                rec["smoke_arrival"] = asmoke
+                marks["t_serving"] = ev.mark("arrival_serving",
+                                             ok="ok" in str(asmoke).lower())
+                # And the MPS state must still hold with the new tenant set.
+                survivors = [r for r in incumbents if r != evict] + [a.arrival]
+                m2_ok, m2 = H.assert_mps_matches_arm(a.arm, survivors, ev=ev)
+                rec["mps_after_admission"] = m2
+                if not m2_ok:
+                    raise RuntimeError(m2.get("reason", "MPS state mismatch "
+                                              "after admission"))
             if not ok:
                 rec["arrival_diag"] = {k: v[:1200] for k, v in diag.items()}
                 print("    newcomer STILL not ready after eviction:")
@@ -338,8 +413,18 @@ def main():
         print("\nERROR %s" % rec["error"])
     finally:
         if traffic is not None:
-            traffic.join(timeout=180)
+            # The trace is `total` seconds long and the main thread reaches
+            # here well before that. replay.py writes replay.summary.json only
+            # after its pool drains, so a short join loses the per-request data
+            # this whole test exists to capture -- and the timeline still
+            # renders, so the run LOOKS fine.
+            spent = time.time() - marks.get("t_traffic", time.time())
+            wait_for = max(300.0, total - spent + 300.0)
+            print("    waiting up to %.0fs for the traffic thread to finish"
+                  % wait_for)
+            traffic.join(timeout=wait_for)
             rec["traffic_rc"] = traffic.rc
+            rec["traffic_finished"] = not traffic.is_alive()
         if sampler is not None:
             sampler.stop()
         t0 = marks.get("t_traffic", time.time() - 60)
@@ -347,13 +432,19 @@ def main():
         H.prom_collect(os.path.join(d, "prom.json"), t0, t1, ev=ev)
         rec["summary"] = H.read_json(os.path.join(d, "replay.summary.json"), {})
         rec["marks"] = marks
+        rec["t0"] = t0
+        rec["t1"] = t1
         rec["timeline"] = _timeline(marks)
         if rec["status"] == "started":
             rec["status"] = "ok"
         H.write_json(os.path.join(d, "subrun.json"), rec)
         H.write_json(os.path.join(run_dir, "run.json"),
                      dict(test="T9", config=rec, subruns=[rec],
-                          run_dir=run_dir, trace_id=rec.get("trace_id")))
+                          run_dir=run_dir, trace_id=rec.get("trace_id"),
+                          pin_gpu=a.pin_gpu, pooling_via=a.pooling_via,
+                          trace_id_mismatch={}, arms=[a.arm],
+                          roles=list(incumbents) + [a.arrival]))
+        H.set_mps_daemon(True, ev=ev)
         ev.mark("teardown_end")
         H.teardown(quiet=True)
         ev.close()
@@ -363,21 +454,62 @@ def main():
         print("  %-34s %s" % (k, v))
     print("\n  results: %s" % run_dir)
     print("  render with: python render_results.py %s" % run_dir)
+    if rec.get("admitted_without_eviction"):
+        print("\n  EXIT 3: the newcomer was admitted without eviction, so the "
+              "premise of this test -- a full card -- did not hold. Nothing "
+              "here measures scale-down.")
+        return 3
     return 0 if rec["status"] == "ok" else 1
 
 
-def _incumbent_floor(incumbents, evicted):
-    """VRAM we expect to REMAIN after evicting one tenant.
+def _rendered_footprint(scenario, role):
+    """What the role actually occupies, from render.py's own numbers.
 
-    wait_gpu_idle waits for the card to fall to a floor. Here the floor is not
-    idle -- the other incumbents are still serving -- so it is their combined
-    budget plus headroom. Getting this wrong makes the wait either instant
-    (useless) or eternal (a hang that looks like a bug).
+    The previous version retyped a budget table into this file, and it had
+    already drifted: it said llm2 was 5632 MiB when SCENARIO_QUOTAS overrides
+    it to 3840 under llm-llm. A second copy of a number is a copy that goes
+    stale.
     """
-    budgets = {"llm": 8192, "llm2": 5632, "llm-small": 2816, "llm-mid": 11264,
-               "embed": 3072, "embed-small": 2816, "rerank": 4608, "vl": 6656}
-    remaining = sum(budgets.get(r, 3072) for r in incumbents if r != evicted)
-    return remaining + 700
+    m = dict(MODELS[role])
+    over = SCENARIO_QUOTAS.get(scenario, {}).get(role)
+    if over:
+        m["gpumem"] = over
+    util, _cap, _clamped = effective_util(m)
+    return int(m["gpumem"] * util)
+
+
+def _wait_release(role, scenario, timeout=300, ev=None, poll=3.0):
+    """Wait for the evicted tenant's pods to go AND its VRAM to come back.
+
+    Returns (pods_gone, released_enough, mib_released).
+
+    Measuring the DROP rather than waiting for an absolute floor is the point.
+    The old code compared against a hardcoded remaining-budget figure, which
+    for some --evict choices sat above what the survivors actually hold, so
+    wait_gpu_idle returned True on its first poll and the headline
+    "VRAM release after replicas=0" was reported as roughly zero seconds --
+    a measurement produced by not waiting.
+    """
+    want = _rendered_footprint(scenario, role)
+    before = sum(H.gpu_used_mib().values())
+    t0 = time.time()
+    gone = False
+    released = 0
+    while time.time() - t0 < timeout:
+        if not gone:
+            gone = not H.pods_for(role)
+        released = before - sum(H.gpu_used_mib().values())
+        if gone and released >= 0.7 * want:
+            if ev:
+                ev.mark("vram_release_detail", role=role, expected_mib=want,
+                        released_mib=released,
+                        after_s=round(time.time() - t0, 1))
+            return True, True, released
+        time.sleep(poll)
+    if ev:
+        ev.mark("vram_release_timeout", role=role, expected_mib=want,
+                released_mib=released, pods_gone=gone)
+    return gone, False, released
 
 
 def _timeline(m):

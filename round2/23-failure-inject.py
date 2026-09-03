@@ -213,10 +213,13 @@ def main():
           (a.fault, a.arm, a.victim, a.at))
     print("    out %s" % d)
 
-    problems = H.preconditions(ev=ev)
+    problems = H.preconditions(ev)          # returns a LIST of strings
     if problems:
         print("  preconditions reported %d problem(s); continuing anyway -- a "
-              "failure test is allowed to start from a scuffed state" % problems)
+              "failure test is allowed to start from a scuffed state"
+              % len(problems))
+        for pr in problems:
+            print("    - %s" % pr)
 
     ev.mark("teardown_begin")
     H.teardown()
