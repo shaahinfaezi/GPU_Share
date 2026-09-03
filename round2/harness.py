@@ -28,6 +28,7 @@ Nothing here is round-2 specific enough to belong in run.py alone -- the
 scale-down test in 09-scaledown.py uses the same primitives.
 """
 import csv
+import errno
 import json
 import os
 import re
@@ -55,8 +56,25 @@ GPU_UUIDS = [
 def sh(cmd, timeout=120, check=False):
     """Run a command, return (rc, stdout+stderr). Never raises on non-zero
     unless asked -- most callers want to inspect the failure, not unwind."""
-    p = subprocess.run(cmd if isinstance(cmd, list) else shlex.split(cmd),
-                       capture_output=True, text=True, timeout=timeout)
+    argv = cmd if isinstance(cmd, list) else shlex.split(cmd)
+    p = None
+    for attempt in (0, 1, 2):
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True,
+                               timeout=timeout)
+            break
+        except OSError as exc:
+            # When the node is out of memory, fork() itself fails with ENOMEM
+            # and EVERY subprocess call raises -- kubectl, nvidia-smi, all of
+            # it. T4 died exactly here: the OSError unwound out of the polling
+            # loop inside wait_ready and aborted the run with a traceback that
+            # said nothing about memory, 325 seconds into a 900 second wait.
+            # Back off and retry: whatever is eating the RAM is usually about
+            # to be OOM-killed, and a transient fork failure should not cost a
+            # multi-hour run.
+            if exc.errno != errno.ENOMEM or attempt == 2:
+                raise
+            time.sleep(5)
     out = (p.stdout or "") + (p.stderr or "")
     if check and p.returncode != 0:
         raise RuntimeError("command failed (%d): %s\n%s"
@@ -129,9 +147,149 @@ def teardown(ns=NS, timeout=300, quiet=False):
             break
         time.sleep(3)
     else:
-        if not quiet:
-            print("  WARNING: pods with r2-role still present after %ds" % timeout)
+        # NOT suppressed by quiet. Leftover pods poison every later arm and
+        # every later tier: T4's crash left four vLLM engines running after
+        # the harness exited, and they kept OOM-thrashing the node for four
+        # hours. A teardown that did not tear down is not a quiet event.
+        left = [p["metadata"]["name"] for p in all_r2_pods(ns)]
+        print("  WARNING: teardown left %d pod(s) after %ds: %s"
+              % (len(left), timeout, ", ".join(left[:6])))
+        teardown.pods_left = left
+        return time.time() - t0
+    teardown.pods_left = []
     return time.time() - t0
+
+
+HOST_HEADROOM_MIB = 1024      # kernel, the harness itself, and its kubectl forks
+
+# Per-tenant host RSS. PROVISIONAL -- these are not yet measured per role, they
+# are read off the OOM killer's own accounting during T4:
+#     VLLM::EngineCor  anon-rss 3,033,212 kB .. 3,368,392 kB
+#     vllm             anon-rss   941,244 kB
+# The default is set so that the two-tenant tiers that are known to work (T1,
+# T2, T3) pass the guard and the four-tenant tier that died does not. Replace
+# it with real numbers from host.csv -- see 24-host-calibrate below.
+HOST_RSS_MIB = {}
+HOST_RSS_DEFAULT = 2800
+
+
+def host_mem_mib():
+    """MemTotal / MemAvailable / SwapFree, straight from /proc/meminfo.
+
+    MemAvailable, not MemFree: page cache is reclaimable and MemFree wildly
+    understates what a new process can actually get.
+    """
+    out = {}
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as fh:
+            for line in fh:
+                k, _, v = line.partition(":")
+                m = re.match(r"\s*(\d+)", v)
+                if m:
+                    out[k] = int(m.group(1)) // 1024
+    except Exception:
+        return {}
+    return {"total": out.get("MemTotal", 0),
+            "available": out.get("MemAvailable", 0),
+            "free": out.get("MemFree", 0),
+            "swap_total": out.get("SwapTotal", 0),
+            "swap_free": out.get("SwapFree", 0)}
+
+
+def vllm_rss_mib():
+    """Total resident memory of the vLLM process trees, and how many there are.
+
+    Matches the comm names the OOM killer reported: 'VLLM::EngineCor' for the
+    engine and 'vllm' for the API server.
+    """
+    rc, out = sh(["ps", "-eo", "rss=,comm="], timeout=30)
+    if rc != 0:
+        return 0, 0
+    tot = n = 0
+    for line in out.splitlines():
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        rss, comm = parts
+        if comm.startswith("VLLM") or comm.strip() == "vllm":
+            try:
+                tot += int(rss)
+            except ValueError:
+                continue
+            n += 1
+    return tot // 1024, n
+
+
+def host_memory_problems(roles, ev=None):
+    """Would these tenants fit in RAM? Ask before deploying, not after.
+
+    The VRAM side of this has been modelled since section 2.10 -- gpumem quota
+    minus CUDA context and graph pool. The host side had nothing at all, which
+    is why a scenario whose GPU arithmetic was correct to 97.9% of the card
+    still could not run.
+    """
+    mem = host_mem_mib()
+    if not mem:
+        return [], {}
+    need = sum(HOST_RSS_MIB.get(r, HOST_RSS_DEFAULT) for r in roles)
+    need += HOST_HEADROOM_MIB
+    detail = {"roles": list(roles), "need_mib": need,
+              "available_mib": mem["available"], "total_mib": mem["total"],
+              "swap_total_mib": mem["swap_total"],
+              "measured": sorted(r for r in roles if r in HOST_RSS_MIB)}
+    problems = []
+    if need > mem["available"]:
+        problems.append(
+            "host RAM: %d tenants need about %d MiB but only %d MiB is "
+            "available (total %d MiB, swap %d MiB). This is what killed T4 -- "
+            "the OOM killer took two vLLM engines and Prometheus. Use fewer "
+            "tenants, or measure real per-role RSS into HOST_RSS_MIB."
+            % (len(roles), need, mem["available"], mem["total"],
+               mem["swap_total"]))
+    if ev:
+        ev.mark("host_memory", ok=not problems, **detail)
+    return problems, detail
+
+
+class HostSampler(threading.Thread):
+    """1 Hz host memory sampling into host.csv, running from apply to teardown.
+
+    Deliberately wider than GpuSampler's window. GpuSampler starts at replay,
+    but the host memory peak is during INITIALISATION -- four engines loading
+    weights at once -- which is where T4 actually died, minutes before any
+    replay would have started.
+    """
+
+    def __init__(self, path, interval=1.0):
+        super().__init__(daemon=True)
+        self.path = path
+        self.interval = interval
+        self._halt = threading.Event()
+        self.rows = 0
+        self.min_available = None
+
+    def run(self):
+        cols = ["t", "mem_total", "mem_available", "mem_free",
+                "swap_total", "swap_free", "vllm_rss", "vllm_procs"]
+        with open(self.path, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(cols)
+            while not self._halt.is_set():
+                m = host_mem_mib()
+                rss, n = vllm_rss_mib()
+                if m:
+                    w.writerow([round(time.time(), 3), m["total"],
+                                m["available"], m["free"], m["swap_total"],
+                                m["swap_free"], rss, n])
+                    self.rows += 1
+                    if self.min_available is None or m["available"] < self.min_available:
+                        self.min_available = m["available"]
+                    fh.flush()
+                self._halt.wait(self.interval)
+
+    def stop(self):
+        self._halt.set()
+        self.join(timeout=10)
 
 
 def gpu_used_mib():
@@ -920,6 +1078,16 @@ def preconditions(ev=None):
     if not prometheus_url():
         problems.append("Prometheus ClusterIP not resolvable; server-side "
                         "metrics would be lost")
+    mem = host_mem_mib()
+    if mem and mem["available"] < 4096:
+        problems.append("only %d MiB of host RAM available; a single vLLM "
+                        "engine needs roughly %d MiB resident"
+                        % (mem["available"], HOST_RSS_DEFAULT))
+    if mem and mem["swap_total"] == 0:
+        # Not fatal, but it is why an overshoot becomes a kill rather than a
+        # slowdown, and worth stating once at the top of a multi-hour run.
+        print("  NOTE: no swap configured -- host memory overshoot goes "
+              "straight to the OOM killer.")
     if ev:
         ev.mark("preconditions", ok=not problems, problems=len(problems))
     return problems

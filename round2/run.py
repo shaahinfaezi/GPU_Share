@@ -293,6 +293,7 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
                scenario=cfg["scenario"], test=test, status="started")
 
     print("\n--- %s" % tag)
+    hsampler = None
     try:
         # 1. clean slate, verified rather than assumed --------------------
         # Skipped under --dry-run: both of these shell out to the cluster, and
@@ -335,6 +336,23 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
             return rec
 
         # 3. apply and wait ----------------------------------------------
+        # Host RAM is checked here, not in preconditions, because it depends on
+        # how many tenants THIS arm deploys: the dedicated arm runs one at a
+        # time and always fits, the shared arm runs all of them at once and is
+        # where T4 was killed.
+        hprob, hdetail = H.host_memory_problems(roles, ev=ev)
+        rec["host_memory"] = hdetail
+        if hprob:
+            raise RuntimeError("; ".join(hprob))
+        print("      host ram: need ~%d MiB, %d MiB available%s"
+              % (hdetail.get("need_mib", 0), hdetail.get("available_mib", 0),
+                 "" if hdetail.get("measured") else " (per-role RSS unmeasured)"))
+
+        # Sampling starts BEFORE the pods do. The host memory peak is during
+        # model load, not during replay.
+        hsampler = H.HostSampler(os.path.join(d, "host.csv"))
+        hsampler.start()
+
         ev.mark("apply")
         rc, out = H.kubectl(["apply", "-f", rdir], timeout=180)
         if rc != 0:
@@ -429,6 +447,9 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
         # 7. server-side metrics, saved as data not as a dashboard link ---
         H.prom_collect(os.path.join(d, "prom.json"), t0, t1, ev=ev)
 
+        if hsampler is not None:
+            rec["host_min_available_mib"] = hsampler.min_available
+
         summ = H.read_json(os.path.join(d, "replay.summary.json"), {})
         rec["summary"] = summ
         got = summ.get("trace_id") or summ.get("meta", {}).get("trace_id")
@@ -441,9 +462,21 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
         rec["error"] = "%s: %s" % (type(exc).__name__, exc)
         print("    ERROR %s" % rec["error"])
     finally:
-        ev.mark("teardown_end")
+        if hsampler is not None:
+            hsampler.stop()
+            rec.setdefault("host_min_available_mib", hsampler.min_available)
         if not dry:
-            H.teardown(quiet=True)
+            # teardown_end used to be marked BEFORE the teardown ran, so a
+            # teardown that timed out looked instantaneous in the event log.
+            # T4's hami arm "ended" at 13:39:28 and the process did not exit
+            # until 13:43:58, with the pods still up.
+            waited = H.teardown(quiet=True)
+            rec["teardown_s"] = round(waited, 1)
+            rec["teardown_left"] = list(getattr(H.teardown, "pods_left", []))
+            ev.mark("teardown_end", waited_s=round(waited, 1),
+                    left=len(rec["teardown_left"]))
+        else:
+            ev.mark("teardown_end")
         ev.close()
         H.write_json(os.path.join(d, "subrun.json"), rec)
     return rec
