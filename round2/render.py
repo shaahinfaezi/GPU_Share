@@ -100,7 +100,8 @@ import sys
 #
 # So a quota must clear TWO bars: the profiling peak, and then steady state.
 # profile_peak_mib records the first where it has been measured.
-OUTSIDE_DEFAULT = 700   # unmeasured models; probe with 18-vram-probe.sh
+OUTSIDE_DEFAULT = 700   # unmeasured generative models; probe with 18-vram-probe.sh
+OUTSIDE_POOLING = 450   # pooling models: no KV cache, no cudagraph pool of note
 OUTSIDE_MARGIN = 150    # slack between predicted resident and the HAMi cap
 KV_FLOOR_MIB = 512      # below this a generative tenant thrashes rather than runs
 
@@ -139,16 +140,19 @@ MODELS = {
     "embed": dict(
         repo="BAAI/bge-m3", kind="embed", weights_mib=1090,
         gpumem=3072, util=0.90, max_model_len=8192, max_num_seqs=64,
+        outside_mib=450,        # bge-m3
         extra=["--runner=pooling", "--convert=embed", "--dtype=half"],
     ),
     "rerank": dict(
         repo="BAAI/bge-reranker-v2-m3", kind="rerank", weights_mib=1090,
         gpumem=4608, util=0.88, max_model_len=8192, max_num_seqs=64,
+        outside_mib=450,        # bge-reranker-v2-m3
         extra=["--runner=pooling", "--convert=classify", "--dtype=half"],
     ),
     "embed-small": dict(
         repo="BAAI/bge-large-en-v1.5", kind="embed", weights_mib=640,
         gpumem=2816, util=0.90, max_model_len=512, max_num_seqs=64,
+        outside_mib=450,        # bge-large-en-v1.5, measured 246 MiB at startup
         extra=["--runner=pooling", "--convert=embed", "--dtype=half"],
     ),
     # Multimodal init is the most expensive in the matrix: a vision encoder AND
@@ -226,14 +230,26 @@ CARD_MIB = 12288
 def effective_util(m):
     """Clamp --gpu-memory-utilization to what the HAMi quota can support.
 
-    Returns (util, safe_cap, clamped). Pooling models are returned unchanged:
-    they do not allocate a KV cache to fill the budget, so the declared value
-    is never the binding constraint.
+    Returns (util, safe_cap, clamped).
+
+    THIS APPLIES TO EVERY MODEL KIND. An earlier version exempted pooling
+    models, reasoning that they never fill their budget with KV cache so the
+    declared value could not bind. That reasoning was wrong, and embed-small
+    proved it: BEFORE allocating anything, vLLM checks
+
+        free_memory >= gpu_memory_utilization x total_memory
+
+    and raises ValueError if it fails -- for every model kind, KV cache or not.
+    At a 2304 MiB quota with a 246 MiB CUDA context already resident, util 0.90
+    asks for 2074 MiB against 2058 MiB free and dies 15 MiB short.
+
+    The check is exactly the inequality this function already enforces, so the
+    fix is only to stop skipping it. Left unfixed it would also have taken out
+    T4: embed at a 2816 MiB quota had 36 MiB of slack on the same check.
     """
     declared = m["util"]
-    if m["kind"] != "chat":
-        return declared, None, False
-    outside = m.get("outside_mib", OUTSIDE_DEFAULT) + OUTSIDE_MARGIN
+    default = OUTSIDE_POOLING if m["kind"] != "chat" else OUTSIDE_DEFAULT
+    outside = m.get("outside_mib", default) + OUTSIDE_MARGIN
     cap = 1.0 - float(outside) / float(m["gpumem"])
     if declared <= cap:
         return declared, cap, False
@@ -280,10 +296,16 @@ def gpu_resources(m, arm, pct):
     """The resource block. gpucores is requested in both HAMi arms because it is
     what the scheduler packs against -- round one established it is a placement
     token, not a compute bound, and that is exactly how it is used here."""
+    # Requested in EVERY arm, including dedicated. It used to be omitted there,
+    # which meant every dedicated-versus-shared number blended neighbour
+    # contention with HAMi's core limiter being switched on, and made all the
+    # co-location costs in T1-T3 upper bounds rather than measurements. The
+    # effect is expected to be nil -- hami_cores and hami_limit both read 100
+    # in the co-located arms, consistent with gpucores being a placement token
+    # rather than a compute bound -- but "expected to be nil" is not a control.
     lines = ['            nvidia.com/gpu: "1"',
-             '            nvidia.com/gpumem: "%d"' % m["gpumem"]]
-    if arm in ("hami", "hami-mps"):
-        lines.append('            nvidia.com/gpucores: "%d"' % m["gpucores"])
+             '            nvidia.com/gpumem: "%d"' % m["gpumem"],
+             '            nvidia.com/gpucores: "%d"' % m["gpucores"]]
     return "\n".join(lines)
 
 

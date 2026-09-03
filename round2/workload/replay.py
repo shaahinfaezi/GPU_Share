@@ -266,6 +266,19 @@ def summarize(rows, meta, wall, epoch_start=None, epoch_end=None):
             per[svc] = dict(requests=0)
             continue
         e2e = [r["t_last"] - r["t_sent"] for r in rs]
+        # PER-TOKEN, not per-chunk. rec["itl"] holds gaps between streamed
+        # CHUNKS, and len(itl) == chunks-1 for every record -- so a chunk
+        # carrying two tokens reports one gap twice as long as the truth.
+        # Tokens-per-chunk also differs by arm (measured: dedicated 1.018 vs
+        # co-located 1.008 for the 7B), which biased every dedicated-versus-
+        # shared ITL comparison in T1-T3 by up to 2.7%. This derives the real
+        # figure from the two timestamps and the server's own token count.
+        tpot = [(r["t_last"] - r["t_first"]) / (r["output_tokens"] - 1)
+                for r in rs
+                if r["t_first"] is not None and r["t_last"] is not None
+                and (r["output_tokens"] or 0) > 1]
+        tpc = [r["chunks"] / float(r["output_tokens"])
+               for r in rs if (r["output_tokens"] or 0) > 0 and r["chunks"]]
         ttft = [r["t_first"] - r["t_sent"] for r in rs if r["t_first"] is not None]
         ttlt = e2e                                    # last token == end of stream
         itl = [g for r in rs for g in r["itl"]]
@@ -281,6 +294,8 @@ def summarize(rows, meta, wall, epoch_start=None, epoch_end=None):
             requests_per_second=(len(rs) / span if span else 0),
             latency_e2e=stat_block(e2e), ttft=stat_block(ttft),
             ttlt=stat_block(ttlt), itl=stat_block(itl),
+            tpot=stat_block(tpot),
+            tokens_per_chunk=(sum(tpc) / len(tpc)) if tpc else None,
             client_delay=stat_block(delay),
         )
     out["per_service"] = per
