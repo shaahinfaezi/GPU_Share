@@ -3,6 +3,12 @@
 #
 #   ./21-run-series.sh T1 T2 T3
 #   SKIP_VALIDATE=1 ./21-run-series.sh T1 T2 T3
+#   ./21-run-series.sh T2@4 T2@5 T4      # TEST@RATE overrides the tier's rate
+#
+# The @RATE form exists to sweep one scenario across offered load without
+# defining a new tier. T2@4 and T2@5 put the two-decoder scenario at roughly
+# 107% and 130% combined demand, filling the gap between T1 (100.5%, null) and
+# T2 (155%, -26.7%) that nothing else in the matrix covers.
 #
 # Each tier is about 35 minutes. The series keeps going if one tier fails --
 # a tier that aborts on the MPS or co-location assertion should not cost the
@@ -46,12 +52,19 @@ TESTS="$*"
 {
   echo "=== series ${TESTS}  started $(date -Is)"
   for T in $TESTS; do
-    LOG="$(pwd)/logs/${T}-${STAMP}.log"
+    NAME="${T%%@*}"
+    RATEARG=""
+    TAG="${NAME}"
+    if [ "$T" != "$NAME" ]; then
+      RATEARG="--rate ${T#*@}"
+      TAG="${NAME}r${T#*@}"
+    fi
+    LOG="$(pwd)/logs/${TAG}-${STAMP}.log"
     echo
     echo "=== ${T} starting $(date -Is)  -> ${LOG}"
-    python3 -u run.py --test "$T" > "$LOG" 2>&1
+    python3 -u run.py --test "$NAME" $RATEARG > "$LOG" 2>&1
     RC=$?
-    DIR=$(grep -m1 -oE "results/${T}-[0-9]{8}-[0-9]{6}" "$LOG" 2>/dev/null | head -1)
+    DIR=$(grep -m1 -oE "results/${NAME}-[0-9]{8}-[0-9]{6}" "$LOG" 2>/dev/null | head -1)
     OKN=$(grep -oE "[0-9]+/[0-9]+ sub-runs ok" "$LOG" 2>/dev/null | tail -1)
     echo "=== ${T} finished rc=${RC} $(date -Is)"
     echo "    run dir : $(pwd)/${DIR:-UNKNOWN}"
@@ -69,7 +82,7 @@ echo
 echo "=== series launched: ${TESTS}"
 echo "  pid      ${PID}"
 echo "  summary  ${SERIES}"
-echo "  per-tier $(pwd)/logs/<TEST>-${STAMP}.log"
+echo "  per-tier $(pwd)/logs/<TEST>-${STAMP}.log   (TEST@RATE logs as TESTrRATE)"
 echo
 echo "  follow   tail -f ${SERIES}"
 echo "  detail   tail -f $(pwd)/logs/$(echo $TESTS | awk '{print $1}')-${STAMP}.log"
