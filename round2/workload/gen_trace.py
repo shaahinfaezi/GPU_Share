@@ -135,6 +135,23 @@ def build(a, rng, pool, lengths):
     mix = SCENARIOS[a.scenario]
     roles = [r for r, _, _ in mix]
     weights = [s for _, s, _ in mix]
+
+    # Per-role share override. A scenario's weights describe a balanced mix;
+    # the noisy-neighbour tier needs a deliberately unbalanced one, and
+    # inventing a whole scenario for that would duplicate the role list and
+    # invite it to drift out of step with render.py.
+    if getattr(a, "mix", ""):
+        over = {}
+        for kv in filter(None, a.mix.split(",")):
+            k, v = kv.split("=")
+            over[k.strip()] = float(v)
+        unknown = [k for k in over if k not in roles]
+        if unknown:
+            sys.exit("--mix names role(s) %s not in scenario %s (%s)"
+                     % (unknown, a.scenario, roles))
+        weights = [over.get(r, w) for r, w in zip(roles, weights)]
+        print("mix override  %s"
+              % ", ".join("%s=%.3g" % (r, w) for r, w in zip(roles, weights)))
     kind_of = dict((r, k) for r, _, k in mix)
 
     reqs = []
@@ -185,6 +202,12 @@ def main():
     ap.add_argument("--rate", type=float, default=6.0,
                     help="aggregate requests/second (Poisson)")
     ap.add_argument("--duration", type=float, default=300.0, help="seconds of traffic")
+    ap.add_argument("--mix", default="",
+                    help="override the scenario's per-role request share, e.g. "
+                         "llm=0.1,llm2=0.9. Used by the noisy-neighbour tier "
+                         "to drive one tenant far past its knee while the "
+                         "other stays inside its capacity. Weights are "
+                         "relative, not required to sum to 1.")
     ap.add_argument("--source", choices=("sharegpt", "azure", "synthetic"),
                     default="sharegpt")
     ap.add_argument("--seed", type=int, default=20260825)

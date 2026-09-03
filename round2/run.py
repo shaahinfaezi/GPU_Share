@@ -150,29 +150,93 @@ TESTS = {
                    "cost of sharing stays flat going from two tenants to "
                    "four. Requirement 1 asks for number of models as a "
                    "variable; this is its top end."),
-    "T5": dict(scenario="llm-embed", rate=12.0, duration=300, source="sharegpt",
-               why="Same as T1 past the knee. Queue depth and preemptions "
-                   "become the story; p99 separates from p50."),
-    "T6": dict(scenario="llm-embed", rate=6.0, duration=300, source="azure",
-               why="Real production TOKEN-LENGTH distribution from Azure's "
-                   "public inference traces. Arrivals stay Poisson at the "
-                   "requested rate -- gen_trace.load_azure keeps the (input, "
-                   "output) pairs and regenerates the arrival process on "
-                   "purpose, so offered load remains a controlled variable "
-                   "rather than whatever that particular day looked like. "
-                   "What differs from T1 is therefore the prefill/decode "
-                   "ratio and its variance, not burstiness. An earlier "
-                   "description of this test claimed the opposite."),
+    # T5 is the ONLY tier that can produce a throughput number, and it took
+    # until 2026-09-02 to understand why. Every other tier replays open-loop at
+    # a rate all three arms serve completely (1753/1753, zero queueing), so
+    # tokens/s is set by the load generator and cannot respond to anything.
+    # Round one reported "+24.9% throughput" only because it was CLOSED-loop
+    # with fixed work, where tokens/s is algebraically 1/latency.
+    #
+    # Here the offered rate deliberately EXCEEDS what the pair can serve. Once
+    # the queue is permanently non-empty, achieved tokens/s IS the service
+    # rate, so the hami-vs-hami-mps delta answers the question the client
+    # actually has: how much more work fits on the cards they already own.
+    #
+    # Read ONLY throughput from this tier. End-to-end latency is meaningless
+    # here -- the queue grows without bound by design, so p99 measures the
+    # backlog, not the system.
+    #
+    # llm-llm, not llm-embed: the embedder pairing measured null twice (T1, and
+    # T3's equivalent), and a null pairing cannot show a capacity gain.
+    # Dedicated llm alone already reaches 96% duty at 2.93 req/s, so 5 req/s
+    # per tenant is deep saturation for the pair. Duration is cut to 240 s to
+    # keep the client-side backlog bounded.
+    "T5": dict(scenario="llm-llm", rate=10.0, duration=240, source="sharegpt",
+               why="CAPACITY. The only tier whose offered rate exceeds what "
+                   "the pair can serve, and therefore the only one where "
+                   "achieved tokens/s equals the service rate rather than the "
+                   "load generator's setting (FINDINGS 6.1). Answers 'how much "
+                   "more work fits on the existing cards'. READ ONLY "
+                   "THROUGHPUT: the queue grows unbounded by design, so e2e "
+                   "latency here measures backlog, not the system. Prediction: "
+                   "MPS delivers a real aggregate throughput gain, because T2 "
+                   "showed a 26.7% service-rate increase that the open-loop "
+                   "harness could not express as tokens. If throughput is FLAT "
+                   "here while T2's latency gain was real, then the T2 result "
+                   "is a scheduling reallocation with no capacity behind it, "
+                   "and the practical value of MPS is much smaller than T2 "
+                   "suggests."),
+    # T6 repurposed from llm-embed. Pointing a robustness check at a pairing
+    # that measured null twice would have tested nothing.
+    "T6": dict(scenario="llm-llm", rate=6.0, duration=300, source="azure",
+               why="ROBUSTNESS OF THE HEADLINE. Same two decoders and same "
+                   "offered rate as T2, with real production TOKEN-LENGTH "
+                   "distributions from Azure's public inference traces. "
+                   "Arrivals stay Poisson at the requested rate on purpose -- "
+                   "gen_trace.load_azure keeps the (input, output) pairs and "
+                   "regenerates the arrival process -- so what differs from T2 "
+                   "is the prefill/decode ratio and its variance, not "
+                   "burstiness. Question: does the -26.7% survive production "
+                   "length distributions, or was it an artifact of ShareGPT's "
+                   "particular output-length spread? T2's gain was flat across "
+                   "output-length buckets (-38.0% at <=32 tokens to -45.0% "
+                   "above 512), which predicts it survives."),
     "T7": dict(scenario="llm-only", rate=6.0, duration=300, source="sharegpt",
-               fixed_output=32,
                why="Prefill-heavy, single tenant. Round one's second "
                    "registered prediction: the sub-linear SM-to-throughput "
-                   "mapping straightens under prefill-dominated load."),
-    "T8": dict(scenario="llm-embed", rate=6.0, duration=300, source="synthetic",
-               fixed_output=128,
-               why="Round-one control. Fixed output length and synthetic "
-                   "prompts reproduce the old conditions, so the two rounds "
-                   "can be compared directly instead of by assertion."),
+                   "mapping straightens under prefill-dominated load. Also the "
+                   "clean single-tenant control -- the only tier where no "
+                   "co-tenancy exists at all."),
+    # T8 REMOVED 2026-09-03. It was the round-one control, meant to let the two
+    # rounds be compared directly. Its configuration could not do that job: it
+    # was llm-embed, and round one was TWO DECODERS (2x Qwen2.5-0.5B). Varying
+    # the corpus on a pairing that measured null twice tests nothing. The
+    # reconciliation between the rounds is established algebraically instead
+    # (FINDINGS 6.1) and the run time is better spent on T10-T12.
+    "T11": dict(scenario="llm-llm", rate=12.0, duration=300, source="sharegpt",
+                mix="llm=0.1,llm2=0.9",
+                why="NOISY NEIGHBOUR. T2 measured fairness under MATCHED load "
+                    "and found MPS more than doubles the imbalance (1.05 -> "
+                    "2.19) in favour of the larger tenant. Nothing has tested "
+                    "ADVERSARIAL load. Here llm2 takes 90% of a 12 req/s trace "
+                    "-- about 10.8 req/s against its own knee of roughly 6 -- "
+                    "while llm receives 1.2 req/s, well inside its capacity. "
+                    "Question: can a hammering small tenant damage a "
+                    "well-behaved large one, and does MPS make that better or "
+                    "worse? Given T2, the prediction is that MPS PROTECTS the "
+                    "large tenant, because it reallocates toward size rather "
+                    "than toward demand -- which would make MPS a crude "
+                    "isolation mechanism as well as a density one."),
+    "T12": dict(scenario="llm-llm", rate=6.0, duration=14400, source="sharegpt",
+                why="SOAK, four hours. Every other run is 300 seconds, which "
+                    "is long enough for a latency distribution and far too "
+                    "short for anything operational. Watching for: KV cache "
+                    "fragmentation, memory growth in either tenant, thermal "
+                    "steady state versus the 60-90 s ramp seen in every short "
+                    "run, clock drift, and whether the MPS daemon survives "
+                    "four hours of continuous multiplexing. A tenant that "
+                    "degrades at hour three is invisible to the rest of this "
+                    "matrix."),
 }
 
 ARMS = ["dedicated", "hami", "hami-mps"]
@@ -194,6 +258,8 @@ def gen_trace(test, cfg, out_path, seed, warmup):
            "--seed", seed, "--warmup", warmup, "--out", out_path]
     if cfg.get("fixed_output"):
         cmd += ["--fixed-output", cfg["fixed_output"]]
+    if cfg.get("mix"):
+        cmd += ["--mix", cfg["mix"]]
     rc, out = run(cmd)
     if rc != 0:
         raise RuntimeError("gen_trace failed:\n" + out[-3000:])
