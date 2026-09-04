@@ -169,8 +169,26 @@ HOST_HEADROOM_MIB = 1024      # kernel, the harness itself, and its kubectl fork
 # The default is set so that the two-tenant tiers that are known to work (T1,
 # T2, T3) pass the guard and the four-tenant tier that died does not. Replace
 # it with real numbers from host.csv -- see 24-host-calibrate below.
-HOST_RSS_MIB = {}
-HOST_RSS_DEFAULT = 2400   # provisional: passes 2 tenants, refuses 3+
+# MEASURED, T4-20260904-100610, each role alone on the node. Value is
+# max(load peak, steady state) of the MemAvailable drop, because the guard has
+# to survive both. The load peak exceeds steady state only for embed; for the
+# other three the cost is resident, so staggering starts buys nothing.
+#
+# The result worth carrying into the report: a pooling model is NOT cheaper
+# than a generative one. embed (no KV cache, no cudagraph pool, one forward
+# pass) costs 2,936 MiB steady against llm2's 3,045 -- within 4%. Host RAM is
+# the Python/torch/CUDA runtime, not the model.
+HOST_RSS_MIB = {
+    "embed-small": 2400,
+    "embed":       4000,   # load peak 3,966 > steady 2,936
+    "llm2":        3100,
+    "rerank":      3100,
+}
+# llm and vl are still unmeasured and fall back to this. It is very likely an
+# UNDER-estimate for both -- llm2 measured 3,045 -- but raising it would refuse
+# the two-decoder tiers that demonstrably run, so it stays until T5/T7 give us
+# llm's real figure from their own host.csv.
+HOST_RSS_DEFAULT = 2400
 
 
 def host_mem_mib():
