@@ -31,6 +31,19 @@ FAULTS
                 so the survivor is expected to degrade DURING the recovery,
                 not during the outage.
 
+  vram-escape   Ask a tenant HAMi IS managing to allocate past its own
+                nvidia.com/gpumem grant, from a second process inside that
+                tenant's own container. This is the isolation test proper.
+                vram-hog below asks whether an outsider can hurt the tenants;
+                this asks whether the partitioning is real at all. If a tenant
+                can exceed its grant, then every quota in the study is advisory
+                and one leaking tenant takes its neighbour down with it -- which
+                would make co-location unsafe regardless of any latency result.
+                Records what the tenant's own CUDA runtime reports as total
+                device memory (HAMi is supposed to virtualise this to the
+                grant, not the physical 12288 MiB), how much the probe got
+                before being refused, and how far the card's real usage moved.
+
   vram-hog      Start a pod that allocates raw VRAM outside HAMi's accounting.
                 Answers the question HAMi's memory partitioning is supposed to
                 make unaskable: can a workload that is not playing by the rules
@@ -71,7 +84,64 @@ FAULTS = {
     "mps-kill": "park the MPS DaemonSet under two attached clients",
     "tenant-kill": "delete one tenant's pod, survivor serves through re-init",
     "vram-hog": "allocate raw VRAM outside HAMi's accounting",
+    "vram-escape": "make a MANAGED tenant try to exceed its own gpumem grant",
 }
+
+# Runs inside the tenant's container, as a second process sharing that
+# container's HAMi quota. Deliberately not a pod: the whole question is whether
+# the cap binds a process HAMi has already admitted and is already policing.
+ESCAPE_PROBE = r"""
+import json, torch
+out = {}
+try:
+    free, total = torch.cuda.mem_get_info()
+    out["sees_free_mib"] = free // 1048576
+    out["sees_total_mib"] = total // 1048576
+except Exception as exc:
+    out["mem_get_info_error"] = "%s: %s" % (type(exc).__name__, exc)
+held, step = [], 256
+try:
+    while True:
+        held.append(torch.empty(step * 1024 * 1024, dtype=torch.uint8,
+                                device="cuda"))
+        # Runaway guard at twice the physical card. If we ever reach this the
+        # answer is already "no cap at all" and there is no point continuing.
+        if len(held) * step >= 24576:
+            out["stopped"] = "GUARD: reached 24576 MiB without refusal"
+            break
+except Exception as exc:
+    out["stopped"] = "%s: %s" % (type(exc).__name__, str(exc)[:180])
+out["grabbed_mib"] = len(held) * step
+print("R2ESCAPE " + json.dumps(out), flush=True)
+"""
+
+
+def _exec_python(pod, ns, src, timeout=240):
+    """Run a python snippet inside a running pod, via stdin.
+
+    stdin rather than -c so the snippet never passes through a shell and no
+    quoting can corrupt it.
+    """
+    try:
+        pr = subprocess.run(["kubectl", "exec", "-i", "-n", ns, pod, "--",
+                             "python3", "-"],
+                            input=src, capture_output=True, text=True,
+                            timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return 124, "timeout after %ds" % timeout
+    return pr.returncode, (pr.stdout or "") + (pr.stderr or "")
+
+
+def _granted_gpumem(pod, ns):
+    """The gpumem limit actually on the pod, read from the API rather than
+    recomputed from render.py -- what was granted is what matters here."""
+    rc, out = H.kubectl(["-n", ns, "get", "pod", pod, "-o",
+                         r"jsonpath={.spec.containers[0].resources.limits"
+                         r".nvidia\.com/gpumem}"], timeout=30)
+    try:
+        return int(out.strip())
+    except Exception:
+        return None
 
 # A pod that grabs VRAM without asking HAMi for any. It requests no
 # nvidia.com/* resource at all, so HAMi's admission never sees it -- which is
@@ -133,6 +203,31 @@ def inject(fault, ns, image, hold, ev, outdir):
         rc, out = H.kubectl(["-n", ns, "delete", "pod"] + names +
                             ["--wait=false"], timeout=60)
         detail = {"rc": rc, "deleted": names, "out": out[-300:]}
+    elif fault == "vram-escape":
+        role = ESCAPE_ROLE[0]
+        pods = H.pods_for(role, ns)
+        if not pods:
+            raise SystemExit("no pod for role %s -- nothing to test" % role)
+        pod = pods[0]["metadata"]["name"]
+        quota = _granted_gpumem(pod, ns)
+        before = H.gpu_used_mib()
+        rc, out = _exec_python(pod, ns, ESCAPE_PROBE)
+        after = H.gpu_used_mib()
+        probe = {}
+        for line in out.splitlines():
+            if line.startswith("R2ESCAPE "):
+                try:
+                    probe = json.loads(line[len("R2ESCAPE "):])
+                except Exception:
+                    pass
+        rise = None
+        if before and after:
+            rise = max(after.values()) - max(before.values())
+        detail = {"escaper_role": role, "escaper_pod": pod,
+                  "granted_gpumem_mib": quota, "probe": probe, "rc": rc,
+                  "card_before_mib": before, "card_after_mib": after,
+                  "card_rise_mib": rise, "out_tail": out[-400:]}
+        detail["verdict"] = _escape_verdict(detail)
     elif fault == "vram-hog":
         path = os.path.join(outdir, "r2-vram-hog.yaml")
         with open(path, "w", encoding="utf-8") as fh:
@@ -144,6 +239,50 @@ def inject(fault, ns, image, hold, ev, outdir):
     ev.mark("fault_injected", fault=fault, at=t, **{
         k: v for k, v in detail.items() if isinstance(v, (int, float, str, bool))})
     return t, detail
+
+
+# Set from --escaper in main(); a list so inject() can read it without
+# threading another argument through a signature the other faults do not need.
+ESCAPE_ROLE = ["llm2"]
+
+
+def _escape_verdict(d):
+    """Did HAMi's cap hold? Three independent checks, reported separately.
+
+    They can disagree, and the disagreement is informative: HAMi can virtualise
+    what the tenant SEES without enforcing what it GETS, or enforce without
+    virtualising. Only the third check is about safety.
+    """
+    q = d.get("granted_gpumem_mib")
+    p = d.get("probe") or {}
+    seen_total = p.get("sees_total_mib")
+    seen_free = p.get("sees_free_mib")
+    grabbed = p.get("grabbed_mib")
+    rise = d.get("card_rise_mib")
+    v = {}
+
+    if q and seen_total:
+        # HAMi is supposed to rewrite the device's reported size to the grant.
+        v["view_virtualised"] = abs(seen_total - q) <= max(256, 0.1 * q)
+        v["sees_total_mib"] = seen_total
+        v["physical_card_mib"] = H.CARD_MIB
+
+    if seen_free is not None and grabbed is not None:
+        # Did the allocator refuse near the free figure it advertised?
+        v["stopped_near_advertised_free"] = grabbed <= seen_free + 512
+
+    if q is not None and rise is not None and seen_free is not None:
+        # THE SAFETY CHECK. The card's real usage must not rise by more than
+        # the tenant had left inside its own grant. If it does, the tenant has
+        # taken memory that belongs to its neighbour.
+        v["card_rise_mib"] = rise
+        v["headroom_in_grant_mib"] = seen_free
+        v["ESCAPED"] = rise > seen_free + 512
+
+    if p.get("stopped", "").startswith("GUARD"):
+        v["ESCAPED"] = True
+        v["note"] = "probe reached 24 GiB on a 12 GiB card without refusal"
+    return v
 
 
 def windows(csv_path, t_fault, role, pre=60, during=60, post=120):
@@ -190,6 +329,10 @@ def main():
                          "needs something to blast")
     ap.add_argument("--victim", default="llm",
                     help="the tenant whose experience is measured")
+    ap.add_argument("--escaper", default="llm2",
+                    help="vram-escape only: the tenant that tries to exceed "
+                         "its own grant. Must not be --victim, or the blast "
+                         "radius and the perpetrator are the same pod.")
     ap.add_argument("--at", type=float, default=90.0,
                     help="seconds into the replay to inject")
     ap.add_argument("--rate", type=float, default=6.0)
@@ -198,6 +341,10 @@ def main():
     ap.add_argument("--out", default=os.path.join(HERE, "results"))
     ap.add_argument("--list", action="store_true")
     a = ap.parse_args()
+    ESCAPE_ROLE[0] = a.escaper
+    if a.fault == "vram-escape" and a.escaper == a.victim:
+        raise SystemExit("--escaper and --victim are both %r; the point is to "
+                         "measure what the NEIGHBOUR suffers" % a.victim)
 
     if a.list or not a.fault:
         print("faults:")
@@ -354,6 +501,34 @@ def main():
             print("  no victim requests failed")
     else:
         print("  no windows computed -- fault may not have fired")
+    if a.fault == "vram-escape" and detail[0]:
+        dd = detail[0]
+        v = dd.get("verdict") or {}
+        pr = dd.get("probe") or {}
+        print("\n  --- VRAM isolation")
+        print("  escaper            : %s (%s)"
+              % (dd.get("escaper_role"), dd.get("escaper_pod")))
+        print("  granted gpumem     : %s MiB" % dd.get("granted_gpumem_mib"))
+        print("  tenant sees        : %s MiB total, %s MiB free"
+              % (pr.get("sees_total_mib"), pr.get("sees_free_mib")))
+        print("  probe grabbed      : %s MiB" % pr.get("grabbed_mib"))
+        print("  refused with       : %s" % pr.get("stopped"))
+        print("  card usage rose by : %s MiB" % dd.get("card_rise_mib"))
+        if v.get("view_virtualised") is not None:
+            print("  view virtualised   : %s  (HAMi rewrites the device size "
+                  "to the grant)" % v["view_virtualised"])
+        if "ESCAPED" in v:
+            if v["ESCAPED"]:
+                print("  VERDICT            : *** ESCAPED *** the tenant took "
+                      "memory outside its grant.")
+                print("                       Every quota in this study is "
+                      "advisory and co-location is unsafe without a second "
+                      "mechanism.")
+            else:
+                print("  VERDICT            : contained -- the cap held.")
+        else:
+            print("  VERDICT            : inconclusive (see t10.json)")
+
     if recovered is not None:
         print("  neighbour recovered: %s" % recovered)
     print("\n  results: %s" % d)
