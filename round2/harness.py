@@ -162,33 +162,46 @@ def teardown(ns=NS, timeout=300, quiet=False):
 
 HOST_HEADROOM_MIB = 1024      # kernel, the harness itself, and its kubectl forks
 
-# Per-tenant host RSS. PROVISIONAL -- these are not yet measured per role, they
-# are read off the OOM killer's own accounting during T4:
-#     VLLM::EngineCor  anon-rss 3,033,212 kB .. 3,368,392 kB
-#     vllm             anon-rss   941,244 kB
-# The default is set so that the two-tenant tiers that are known to work (T1,
-# T2, T3) pass the guard and the four-tenant tier that died does not. Replace
-# it with real numbers from host.csv -- see 24-host-calibrate below.
-# MEASURED, T4-20260904-100610, each role alone on the node. Value is
-# max(load peak, steady state) of the MemAvailable drop, because the guard has
-# to survive both. The load peak exceeds steady state only for embed; for the
-# other three the cost is resident, so staggering starts buys nothing.
+# MEASURED: steady-state MemAvailable drop with the role alone on the node.
+# embed, embed-small, llm2 and rerank from T4-20260904-100610; llm from
+# T7-20260904-111030.
 #
-# The result worth carrying into the report: a pooling model is NOT cheaper
-# than a generative one. embed (no KV cache, no cudagraph pool, one forward
-# pass) costs 2,936 MiB steady against llm2's 3,045 -- within 4%. Host RAM is
-# the Python/torch/CUDA runtime, not the model.
+#     role          load peak   steady   used here
+#     embed-small       2,278    2,358       2,400
+#     llm (7B AWQ)      2,465    2,570       2,700
+#     embed             3,966    2,936       3,000
+#     llm2 (1.5B AWQ)   2,584    3,045       3,100
+#     rerank            2,683    3,049       3,100
+#
+# Two findings worth carrying into the report.
+#
+# HOST RAM DOES NOT TRACK MODEL SIZE. The 7B costs LESS than the 1.5B, and a
+# pooling model -- no KV cache, no cudagraph pool, one forward pass -- costs
+# the same as a generative one. The whole spread is 1.29x across a 4.6x
+# parameter range and two different model kinds. What is resident is the
+# Python/torch/CUDA runtime; the model rides on top as a few hundred MiB.
+#
+# THE COST IS RESIDENT, NOT A LOADING TRANSIENT. Steady state exceeds the load
+# peak for four of the five roles, so staggering tenant starts -- proposed when
+# T4 first died -- buys nothing.
+#
+# STEADY, not max(load, steady): budgeting embed at its 3,966 load peak made
+# the guard refuse llm+embed, which is T1, a tier that has run cleanly twice.
+# The load peaks do not coincide in practice because tenants become ready at
+# different times, and calibrating against configurations known to work beats
+# calibrating against a worst case that has never been observed.
 HOST_RSS_MIB = {
     "embed-small": 2400,
-    "embed":       4000,   # load peak 3,966 > steady 2,936
+    "llm":         2700,
+    "embed":       3000,
     "llm2":        3100,
     "rerank":      3100,
 }
-# llm and vl are still unmeasured and fall back to this. It is very likely an
-# UNDER-estimate for both -- llm2 measured 3,045 -- but raising it would refuse
-# the two-decoder tiers that demonstrably run, so it stays until T5/T7 give us
-# llm's real figure from their own host.csv.
-HOST_RSS_DEFAULT = 2400
+# Only vl still falls back to this. 3,100 (the highest measured role) left
+# vl+rerank -- which is T3, run cleanly twice -- with 76 MiB of margin, close
+# enough that a slightly heavier Prometheus would refuse it. Same principle as
+# above: calibrate against what is known to work.
+HOST_RSS_DEFAULT = 2800
 
 
 def host_mem_mib():
