@@ -308,9 +308,17 @@ def gpu_resources(m, arm, pct):
     # a tier's dedicated baseline across tiers is worth more than tightening one
     # comparison inside a tier.
     #
-    # The confound is also almost certainly inert: hami_cores and hami_limit
-    # both read 100 in the co-located arms despite those pods requesting 50, so
-    # gpucores is a placement token and not a compute bound on this build.
+    # The confound is also inert, and T5 proved it properly. The reasoning that
+    # used to sit here -- that hami_cores reads 100 while pods request 50 -- was
+    # not evidence of anything: 100 is simply the SUM of the two 50s, which is
+    # what a device-level allocation gauge is supposed to report.
+    #
+    # The real proof is throughput. In T5's hami arm both tenants held
+    # gpucores=50, and the 7B produced 626.27 tok/s against 728.79 solo -- 85.9%
+    # of a card it nominally owned half of. A 50% compute cap would have held it
+    # near 364. So gpucores does not bound compute on HAMi 2.9.0 here; it is a
+    # placement token, and the only open question is whether the SUM is
+    # admission-controlled. See FINDINGS 5.14 and 26-gpucores-probe.sh.
     #
     # --dedicated-cores share  gives the tight control instead, at the cost of
     # comparability with T1-T3. Use it for a within-tier study, not the matrix.
@@ -496,6 +504,15 @@ def main():
                     help="override a role's VRAM quota, e.g. llm2=11776. For "
                          "18-vram-probe.sh, which measures what a model needs "
                          "instead of inferring it from weights on disk.")
+    ap.add_argument("--gpucores", default="",
+                    help="override a role's gpucores, e.g. llm=80,llm2=80. "
+                         "Normally 100/len(scenario) so the co-tenants sum to "
+                         "exactly 100. This exists to offer HAMi MORE than 100 "
+                         "and find out whether it refuses -- see "
+                         "26-gpucores-probe.sh. T5 showed the value is not a "
+                         "compute bound (gpucores=50 still returned 85.9%% of "
+                         "solo throughput), so whether the SUM is admission-"
+                         "controlled is the only open question about it.")
     ap.add_argument("--router", action="store_true",
                     help="also create the KServe router/scheduler. Off by "
                          "default: its image (ghcr.io/llm-d/llm-d-inference-"
@@ -529,6 +546,11 @@ def main():
         k, v = kv.split("=")
         gpumem_over[k] = int(v)
 
+    gpucores_over = {}
+    for kv in filter(None, a.gpucores.split(",")):
+        k, v = kv.split("=")
+        gpucores_over[k] = int(v)
+
     # gpucores is the scheduler's packing token: split the card between the
     # co-tenants so HAMi's admission arithmetic reflects the intended density.
     share = max(1, 100 // max(1, len(SCENARIOS[a.scenario])))
@@ -546,6 +568,8 @@ def main():
             m["gpumem"] = CARD_MIB - 512
         if role in gpumem_over:
             m["gpumem"] = gpumem_over[role]
+        if role in gpucores_over:
+            m["gpucores"] = gpucores_over[role]
 
         # The quota is final at this point, so the utilisation ceiling can be
         # resolved against it. Doing this AFTER every override is the whole
