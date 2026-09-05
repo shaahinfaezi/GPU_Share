@@ -269,6 +269,19 @@ def pin_annotations(uuid, indent):
     return ('%snvidia.com/use-gpuuuid: "%s"'
             '%shami.io/gpu-scheduler-policy: "binpack"' % (pad, uuid, pad))
 
+# HAMi's core limiter is policy-gated and its DEFAULT is "default", whose
+# behaviour HAMi does not document. Only "force" is documented to "always limit
+# the core utilization below nvidia.com/gpucores". Round one set force on every
+# pod; round two set nothing at all, so the two rounds ran different
+# configurations and their numbers are not comparable. FINDINGS 5.14b / 5.14c.
+CORE_POLICY_ENV = """
+          - name: GPU_CORE_UTILIZATION_POLICY
+            value: "{policy}\""""
+
+# Set from --core-policy in main(). A list so both render functions can read it
+# without adding a parameter to two signatures and every call site.
+CORE_POLICY = [""]
+
 MPS_ENV = """
           - name: CUDA_MPS_PIPE_DIRECTORY
             value: /tmp/nvidia-mps
@@ -361,6 +374,8 @@ def render_llm(role, m, arm, pct, pin="", router=False):
     # either way. Pass --router if external ingress is ever wanted.
     router = ROUTER_BLOCK if router else ""
     env = '          - name: HF_HOME\n            value: /mnt/models'
+    if CORE_POLICY[0] and arm in ("hami", "hami-mps"):
+        env += CORE_POLICY_ENV.format(policy=CORE_POLICY[0])
     if arm == "hami-mps":
         env += MPS_ENV.format(pct=pct)
     args = ["--gpu-memory-utilization=%.2f" % m["util"],
@@ -411,6 +426,8 @@ def render_pooling(role, m, arm, pct, pin=""):
     pin_ann = pin_annotations(pin, 8)
     env = ('          - name: HF_HOME\n            value: /mnt/models\n'
            '          - name: VLLM_LOGGING_LEVEL\n            value: INFO')
+    if CORE_POLICY[0] and arm in ("hami", "hami-mps"):
+        env += CORE_POLICY_ENV.format(policy=CORE_POLICY[0])
     if arm == "hami-mps":
         env += MPS_ENV.format(pct=pct)
     args = ["serve", m["repo"],
@@ -520,6 +537,15 @@ def main():
                          "compute bound (gpucores=50 still returned 85.9%% of "
                          "solo throughput), so whether the SUM is admission-"
                          "controlled is the only open question about it.")
+    ap.add_argument("--core-policy", default="",
+                    choices=("", "default", "force", "disable"),
+                    help="GPU_CORE_UTILIZATION_POLICY on the HAMi arms. Empty "
+                         "(the default here) sets nothing, which is what every "
+                         "round-two tier ran, so HAMi applies its own default "
+                         "policy. 'force' is the only value documented to "
+                         "always limit core utilisation below gpucores, and is "
+                         "what ROUND ONE used -- so the rounds are not "
+                         "comparable until this is matched. See FINDINGS 5.14c.")
     ap.add_argument("--router", action="store_true",
                     help="also create the KServe router/scheduler. Off by "
                          "default: its image (ghcr.io/llm-d/llm-d-inference-"
@@ -552,6 +578,8 @@ def main():
     for kv in filter(None, a.gpumem.split(",")):
         k, v = kv.split("=")
         gpumem_over[k] = int(v)
+
+    CORE_POLICY[0] = a.core_policy
 
     gpucores_over = {}
     for kv in filter(None, a.gpucores.split(",")):

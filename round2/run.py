@@ -310,7 +310,8 @@ def _abort_reason(rec):
 
 
 def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
-           pin_uuid, pooling_via, mps_percent, warmup, dry, gpucores=""):
+           pin_uuid, pooling_via, mps_percent, warmup, dry, gpucores="",
+           core_policy=""):
     """Deploy, measure, tear down -- one arm, one set of co-resident roles."""
     tag = "%s__%s" % (arm, "+".join(roles))
     d = os.path.join(run_dir, tag)
@@ -353,6 +354,8 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
             cmd += ["--pin-gpu", pin_uuid]
         if gpucores:
             cmd += ["--gpucores", gpucores]
+        if core_policy:
+            cmd += ["--core-policy", core_policy]
         if mps_percent:
             cmd += ["--mps-percent", mps_percent]
         rc, out = run(cmd)
@@ -534,6 +537,13 @@ def main():
                          "KServe ignores it and binpack handles co-location. "
                          "Only useful when every tenant is a plain Deployment.")
     ap.add_argument("--pooling-via", choices=("kserve", "vllm"), default="kserve")
+    ap.add_argument("--core-policy", default="",
+                    choices=("", "default", "force", "disable"),
+                    help="GPU_CORE_UTILIZATION_POLICY on the HAMi arms. Round "
+                         "one ran 'force'; every round-two tier so far ran "
+                         "nothing. Pair with --gpucores to test whether the "
+                         "limiter binds: T7 is one tenant, so any throughput "
+                         "delta is the limiter and not a neighbour.")
     ap.add_argument("--gpucores", default="",
                     help="override gpucores per role, e.g. llm=25. Exists to "
                          "test ENFORCEMENT: run T7 (one tenant, no neighbour) "
@@ -630,7 +640,8 @@ def main():
                 continue
             r = subrun(run_dir, ev, a.test, cfg, arm, rs, trace_path,
                        trace_id, a.pin_gpu, a.pooling_via,
-                       a.mps_percent, a.warmup, a.dry_run, a.gpucores)
+                       a.mps_percent, a.warmup, a.dry_run, a.gpucores,
+                       a.core_policy)
             results.append(r)
 
             if r.get("status") == "ok":
@@ -671,6 +682,7 @@ def main():
                trace_id=trace_id, requests=n_req,
                pin_gpu=a.pin_gpu, pooling_via=a.pooling_via,
                mps_percent=a.mps_percent, warmup=a.warmup, gpucores=a.gpucores,
+               core_policy=a.core_policy,
                subruns=results, trace_id_mismatch=mismatched,
                aborted=aborted, planned_subruns=len(plan))
     H.write_json(os.path.join(run_dir, "run.json"), doc)
