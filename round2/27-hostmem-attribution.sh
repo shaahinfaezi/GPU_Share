@@ -37,13 +37,43 @@ warn() { printf '  \033[33mWARN\033[0m  %s\n' "$1"; }
 
 avail() { awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo; }
 
+# KServe does NOT copy an LLMInferenceService's labels onto its pods --
+# spec.template is a bare PodSpec with no metadata -- so a selector on r2-role
+# matches NOTHING and a wait built on it returns instantly. The first version of
+# this script did exactly that: teardown never waited, pass B measured its
+# baseline while pass A's engine was still resident, and the run reported a
+# 2,121 MiB saving that was pass A's own memory. Two tells gave it away -- the
+# two passes returned byte-identical vLLM logs, and EngineCore RSS differed by
+# 0.8% when removing 2 GiB of swap space should have collapsed it.
+#
+# The pods carry app.kubernetes.io/name=r2-<role>. Wait on that, and then wait
+# for the memory to actually come back, which is the thing being measured.
 teardown() {
   kubectl -n "$NS" delete llminferenceservice --all --ignore-not-found --wait=false >/dev/null 2>&1
-  for i in $(seq 1 40); do
-    [ "$(kubectl -n "$NS" get pods -l r2-role -o name 2>/dev/null | wc -l)" = "0" ] && return 0
+  local i n
+  for i in $(seq 1 60); do
+    n=$(kubectl -n "$NS" get pods -l "app.kubernetes.io/name=r2-${ROLE}"         -o name 2>/dev/null | wc -l)
+    [ "$n" = "0" ] && break
     sleep 3
   done
-  warn "pods still present after teardown wait"
+  [ "${n:-0}" = "0" ] || warn "pod still present after 180s"
+}
+
+# Block until MemAvailable stops climbing, so a baseline is never taken while a
+# previous tenant is still releasing. Without this the second pass is measured
+# against a floor the first pass dug.
+settle() {
+  local last=0 now i
+  for i in $(seq 1 40); do
+    now=$(avail)
+    if [ "$now" -le "$((last + 40))" ] && [ "$i" -gt 3 ]; then
+      echo "  MemAvailable settled at ${now} MiB after $((i * 5))s"
+      return 0
+    fi
+    last=$now
+    sleep 5
+  done
+  warn "MemAvailable never settled; baseline may be low"
 }
 
 # $1 = label, $2 = 1 to inject --swap-space=0
@@ -54,7 +84,7 @@ measure() {
 
   say "[$LABEL] clean slate"
   teardown
-  sleep 5
+  settle
   local BASE; BASE=$(avail)
   ok "MemAvailable before deploy: ${BASE} MiB"
 
@@ -86,6 +116,15 @@ measure() {
   done
   if [ -z "$POD" ]; then warn "no pod appeared"; return 1; fi
   ok "pod ready: $POD"
+  echo "$POD" > "$D/pod_name.txt"
+  # If both passes report the same pod name, the second measured the first.
+  if [ -f "$OUT/A-stock/pod_name.txt" ] && [ "$LABEL" != "A-stock" ]; then
+    if [ "$POD" = "$(cat "$OUT/A-stock/pod_name.txt")" ]; then
+      warn "SAME POD as pass A -- this run measures nothing. Aborting."
+      return 1
+    fi
+    ok "distinct pod from pass A"
+  fi
   sleep 20   # let it settle past the load transient
 
   local STEADY; STEADY=$(avail)
@@ -133,6 +172,12 @@ if [ -n "$B" ]; then
   echo "  pass B (--swap-space=0) MemAvailable drop: ${B} MiB"
   D=$((A - B))
   echo "  difference:             ${D} MiB"
+  echo
+  echo
+  echo "  Cross-check before believing either number: the two passes must show"
+  echo "  DIFFERENT pod names and DIFFERENT EngineCore RSS in ps.txt. If RSS is"
+  echo "  within a few percent, no swap space was removed and the drop figures"
+  echo "  are measuring baseline contamination, not the flag."
   echo
   if [ "$D" -gt 500 ]; then
     echo "  >>> vLLM's CPU swap space accounts for ${D} MiB of the per-tenant cost."
