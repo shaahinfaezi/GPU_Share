@@ -308,17 +308,24 @@ def gpu_resources(m, arm, pct):
     # a tier's dedicated baseline across tiers is worth more than tightening one
     # comparison inside a tier.
     #
-    # The confound is also inert, and T5 proved it properly. The reasoning that
-    # used to sit here -- that hami_cores reads 100 while pods request 50 -- was
-    # not evidence of anything: 100 is simply the SUM of the two 50s, which is
-    # what a device-level allocation gauge is supposed to report.
+    # THE CONFOUND IS STILL OPEN. Two previous versions of this comment claimed
+    # it was inert. Both were wrong:
     #
-    # The real proof is throughput. In T5's hami arm both tenants held
-    # gpucores=50, and the 7B produced 626.27 tok/s against 728.79 solo -- 85.9%
-    # of a card it nominally owned half of. A 50% compute cap would have held it
-    # near 364. So gpucores does not bound compute on HAMi 2.9.0 here; it is a
-    # placement token, and the only open question is whether the SUM is
-    # admission-controlled. See FINDINGS 5.14 and 26-gpucores-probe.sh.
+    #   1. "hami_cores reads 100 while pods request 50" -- not evidence. 100 is
+    #      the SUM of the two 50s, which is what a device gauge should report.
+    #   2. "T5's 7B got 85.9% of solo throughput at gpucores=50, so 50 does not
+    #      bind" -- not evidence either. LLM decode is memory-bandwidth-bound,
+    #      so a tenant held to 50% of SM time can keep far more than 50% of its
+    #      tokens/s. And HAMi documents compute limiting as a CONVERGING RATE
+    #      LIMITER (spin-wait before kernel submission), not a hard cap, so the
+    #      percentage does not predict a throughput ratio at all.
+    #
+    # T7 does not settle it either: its hami arm runs gpucores=100, where there
+    # is nothing to limit. So no run has exercised the limiter at a binding
+    # setting, and every dedicated-vs-shared figure remains an upper bound.
+    #
+    # To settle it:  run.py --test T7 --gpucores llm=50   (one tenant, no
+    # neighbour, so any delta IS the limiter). See FINDINGS 5.14.
     #
     # --dedicated-cores share  gives the tight control instead, at the cost of
     # comparability with T1-T3. Use it for a within-tier study, not the matrix.

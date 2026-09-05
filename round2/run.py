@@ -310,7 +310,7 @@ def _abort_reason(rec):
 
 
 def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
-           pin_uuid, pooling_via, mps_percent, warmup, dry):
+           pin_uuid, pooling_via, mps_percent, warmup, dry, gpucores=""):
     """Deploy, measure, tear down -- one arm, one set of co-resident roles."""
     tag = "%s__%s" % (arm, "+".join(roles))
     d = os.path.join(run_dir, tag)
@@ -351,6 +351,8 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
             cmd += ["--only", r]
         if pin_uuid:
             cmd += ["--pin-gpu", pin_uuid]
+        if gpucores:
+            cmd += ["--gpucores", gpucores]
         if mps_percent:
             cmd += ["--mps-percent", mps_percent]
         rc, out = run(cmd)
@@ -532,6 +534,11 @@ def main():
                          "KServe ignores it and binpack handles co-location. "
                          "Only useful when every tenant is a plain Deployment.")
     ap.add_argument("--pooling-via", choices=("kserve", "vllm"), default="kserve")
+    ap.add_argument("--gpucores", default="",
+                    help="override gpucores per role, e.g. llm=25. Exists to "
+                         "test ENFORCEMENT: run T7 (one tenant, no neighbour) "
+                         "at 25/50/100 and any throughput difference is HAMi's "
+                         "rate limiter, with contention held out of it.")
     ap.add_argument("--mps-percent", default="",
                     help="per-role CUDA_MPS_ACTIVE_THREAD_PERCENTAGE, e.g. "
                          "llm=75,embed=25. Default 100 for every role, which "
@@ -623,7 +630,7 @@ def main():
                 continue
             r = subrun(run_dir, ev, a.test, cfg, arm, rs, trace_path,
                        trace_id, a.pin_gpu, a.pooling_via,
-                       a.mps_percent, a.warmup, a.dry_run)
+                       a.mps_percent, a.warmup, a.dry_run, a.gpucores)
             results.append(r)
 
             if r.get("status") == "ok":
@@ -663,7 +670,7 @@ def main():
                run_dir=run_dir, stamp=stamp, seed=a.seed,
                trace_id=trace_id, requests=n_req,
                pin_gpu=a.pin_gpu, pooling_via=a.pooling_via,
-               mps_percent=a.mps_percent, warmup=a.warmup,
+               mps_percent=a.mps_percent, warmup=a.warmup, gpucores=a.gpucores,
                subruns=results, trace_id_mismatch=mismatched,
                aborted=aborted, planned_subruns=len(plan))
     H.write_json(os.path.join(run_dir, "run.json"), doc)
