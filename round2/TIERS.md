@@ -138,6 +138,45 @@ opposite sign on size. FINDINGS 8.5.
 
 ---
 
+## Corrections that are settled (tracked here so they travel with the repo)
+
+**`GPU_CORE_UTILIZATION_POLICY`: `default` and `force` are NOT the same.** An
+earlier source review claimed they were identical in code and that our
+835.72-vs-548.42 measurement was unexplained. Withdrawn. T7 ran all three
+policies on one identical trace, one tenant, `gpucores: 50`:
+`default` 835.72 / `disable` 835.90 / **`force` 548.42**. `force` limits
+unconditionally; `default` limits only under contention; `disable` never
+limits. Behaviour, not source reading, settles it.
+
+**The compute limiter never bound in any co-tenancy tier.** `render.py` uses
+`share = 100 // len(roles)`, so two tenants get 50 each -- which is what they
+would take anyway. T5 re-run with `--core-policy disable` moved throughput by
+-0.20%. Every co-tenancy number in this study is contention, not throttling.
+
+**MPS reallocates toward IN-FLIGHT DEPTH, not model size.** The round-two claim
+that MPS favours the larger tenant is retired. T5's 7B ran 11.11 concurrent
+against the 1.5B's 2.84 and won; T11's hammered 1.5B ran 8.47 against the 7B's
+1.51 and won. Measure `arrival rate x mean latency` per tenant, not parameters.
+
+**The ~3 GiB per-tenant host RAM is NOT recoverable by configuration.** The
+`--swap-space` A/B test was invalid (KServe never sets `r2-role`, so the
+teardown selector matched nothing) and was never redone. It does not need to
+be: `--swap-space` defaults to 4 GiB, and a stock tenant's total resident
+footprint is 3,276 MiB. A 4 GiB buffer cannot fit inside a 3.3 GiB RSS, so it
+was never allocated. Upstream agrees -- `num_cpu_blocks` is hard-coded to zero
+in vLLM V1 (vllm#27984), which preempts by RECOMPUTE, never SWAP.
+
+**What `source: sharegpt` actually means.** The corpus does load -- all 13 run
+dirs record it, and `run.py` raises if a tier asks for it and gets synthetic.
+But `load_sharegpt` fills `pool` and leaves `lengths` None, so **ShareGPT
+supplies prompt TEXT only**: both the prompt-length target and the output
+length come from a lognormal. The filler fraction rises with length -- 33.2%
+below 500 chars, 98.0% above 4,000, 100% above 12,000 (the corpus cap), 58.3%
+overall in T5's trace. This cannot bias an arm-versus-arm comparison, since
+every arm replays one trace byte for byte. It does mean any conclusion that
+depends on prompt or output LENGTH is untested against real text, which is
+what T14 is for.
+
 ## Answered, no tier needed
 
 **RAM offloading / vLLM `swap_space`** — **done, negative result.**
