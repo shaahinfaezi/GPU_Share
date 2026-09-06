@@ -164,15 +164,31 @@ is absent. Within the clamped run MPS is worth +18.9% throughput and -95.2%
 pooled time. **There is no configuration on this stack giving both a per-tenant
 compute guarantee and efficient use of the card.**
 
-**NEITHER advertised compute control constrains anything under MPS.**
-`nvidia.com/gpucores` is void because MPS hides per-PID utilisation from
-HAMi's sampler (T7, T2@25/25). And T8 moved
-`CUDA_MPS_ACTIVE_THREAD_PERCENTAGE` from 100 to 50 on T11's exact trace: the
-aggressor returned 1,401.15 tok/s against 1,399.72, combined throughput +0.08%,
-pooled +0.76% -- all inside the reproducibility band. Halving a greedy tenant's
-permitted SM share cost it nothing. Unresolved whether the knob is ignored on
-GeForce or merely non-binding for a bandwidth-bound decode; `T8@mps=25`
-discriminates. The operational answer is the same either way.
+**CORRECTED 2026-09-06. `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE` IS enforced on
+this GeForce.** An earlier version of this section claimed neither compute
+control constrains anything under MPS, and left open whether the MPS knob is
+ignored on consumer silicon. **The study's own round-one archive refutes it.**
+`BenchLOGS_B1b/asym-mpsonly`, same node, `CUDA_DEVICE_SM_LIMIT=0` on both pods
+so no HAMi core limit is involved, MPS set to 75 and 25:
+
+| MPS % | svc-01 | svc-02 | ratio |
+|---|---|---|---|
+| 75 / 25 | 1117.4 / 1112.1 / 1083.6 | **624.3 / 622.2 / 614.1** | **1.79:1** |
+| 100 / 100 | 916.9 / 914.3 / 913.0 | 915.2 / 912.1 / 909.0 | 1.00:1 |
+
+Three passes each. The knob binds, and it binds hard when set asymmetrically.
+
+**What T8 actually showed** is narrower and still useful: a SYMMETRIC 50/50 cap
+did not bind, on a card that was only 99.2% saturated, running a
+bandwidth-bound decode. Restricting a tenant to half the SMs does not halve its
+tokens/s when the bottleneck is HBM and nobody is competing for SMs anyway.
+
+**So the honest statement is:** `nvidia.com/gpucores` is void under MPS (T7,
+T2@25/25 -- mechanism confirmed in HAMi-core source). The MPS thread percentage
+is NOT void; it is a real ceiling that does nothing until it is set below what
+the tenant would actually use, and then it strands capacity the same way HAMi's
+`force` does. `T7@mps=50` cannot test this -- 50 symmetric is precisely the
+non-binding case. Test asymmetrically, or at 25.
 
 **MPS creates no winner when in-flight depth is equal (T13).** Two identical
 1.5B instances, solo depth 3.04 against 3.14: degradation spread is 1.019 under
