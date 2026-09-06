@@ -116,6 +116,57 @@ print("R2ESCAPE " + json.dumps(out), flush=True)
 """
 
 
+# HAMi's own documented verification of memory hard isolation, from
+# https://project-hami.io/blog/kai-scheduler-hami-gpu-memory-hard-isolation
+#
+# Our probe alone proves only the BEHAVIOUR -- an allocation was refused. These
+# prove the MECHANISM: that the quota reached the container, that HAMi-core is
+# present, that it is actually preloaded, and that it has rewritten the device
+# size the tenant sees. Without them "contained" could equally mean the card was
+# full, or torch's allocator gave up, or the probe stopped politely at the
+# virtualised free figure.
+#
+# This matters more than it looks. HAMi's COMPUTE limiter is silently void under
+# MPS -- configured, inert, reporting nothing (FINDINGS 5.14d). So whether the
+# chain is intact is exactly the question to ask of the memory limiter too, and
+# it is the one thing our own probe cannot answer.
+CHAIN_CHECK = r"""
+echo "CUDA_DEVICE_MEMORY_LIMIT=${CUDA_DEVICE_MEMORY_LIMIT:-<unset>}"
+echo "CUDA_DEVICE_SM_LIMIT=${CUDA_DEVICE_SM_LIMIT:-<unset>}"
+echo "GPU_CORE_UTILIZATION_POLICY=${GPU_CORE_UTILIZATION_POLICY:-<unset>}"
+if [ -f /usr/local/vgpu/libvgpu.so ]; then
+  echo "libvgpu.so=present $(stat -c%s /usr/local/vgpu/libvgpu.so) bytes"
+else
+  echo "libvgpu.so=MISSING"
+fi
+echo "ld.so.preload=$(cat /etc/ld.so.preload 2>/dev/null || echo '<absent>')"
+echo "nvidia-smi-total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | head -1)"
+"""
+
+
+def _exec_sh(pod, ns, src, timeout=120):
+    """Run a shell snippet inside a pod, via stdin."""
+    try:
+        pr = subprocess.run(["kubectl", "exec", "-i", "-n", ns, pod, "--",
+                             "sh", "-s"],
+                            input=src, capture_output=True, text=True,
+                            timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return 124, "timeout"
+    return pr.returncode, (pr.stdout or "") + (pr.stderr or "")
+
+
+def _chain(pod, ns):
+    """Parse HAMi's official chain checks into a dict."""
+    rc, out = _exec_sh(pod, ns, CHAIN_CHECK)
+    d = {"rc": rc, "raw": out[-800:]}
+    for line in out.splitlines():
+        if "=" in line:
+            k, _, v = line.partition("=")
+            d[k.strip()] = v.strip()
+    return d
+
+
 def _exec_python(pod, ns, src, timeout=240):
     """Run a python snippet inside a running pod, via stdin.
 
@@ -210,6 +261,7 @@ def inject(fault, ns, image, hold, ev, outdir):
             raise SystemExit("no pod for role %s -- nothing to test" % role)
         pod = pods[0]["metadata"]["name"]
         quota = _granted_gpumem(pod, ns)
+        chain = _chain(pod, ns)
         before = H.gpu_used_mib()
         rc, out = _exec_python(pod, ns, ESCAPE_PROBE)
         after = H.gpu_used_mib()
@@ -225,6 +277,7 @@ def inject(fault, ns, image, hold, ev, outdir):
             rise = max(after.values()) - max(before.values())
         detail = {"escaper_role": role, "escaper_pod": pod,
                   "granted_gpumem_mib": quota, "probe": probe, "rc": rc,
+                  "chain": chain,
                   "card_before_mib": before, "card_after_mib": after,
                   "card_rise_mib": rise, "out_tail": out[-400:]}
         detail["verdict"] = _escape_verdict(detail)
@@ -508,6 +561,16 @@ def main():
         print("\n  --- VRAM isolation")
         print("  escaper            : %s (%s)"
               % (dd.get("escaper_role"), dd.get("escaper_pod")))
+        ch = dd.get("chain") or {}
+        print("  --- HAMi's own chain checks (project-hami.io verification)")
+        for k in ("CUDA_DEVICE_MEMORY_LIMIT", "CUDA_DEVICE_SM_LIMIT",
+                  "GPU_CORE_UTILIZATION_POLICY", "libvgpu.so", "ld.so.preload",
+                  "nvidia-smi-total"):
+            print("    %-28s %s" % (k, ch.get(k, "<not reported>")))
+        intact = (ch.get("libvgpu.so", "").startswith("present")
+                  and "libvgpu" in ch.get("ld.so.preload", ""))
+        print("    %-28s %s" % ("ENFORCEMENT CHAIN",
+              "INTACT" if intact else "*** BROKEN -- a refusal here proves nothing ***"))
         print("  granted gpumem     : %s MiB" % dd.get("granted_gpumem_mib"))
         print("  tenant sees        : %s MiB total, %s MiB free"
               % (pr.get("sees_total_mib"), pr.get("sees_free_mib")))
