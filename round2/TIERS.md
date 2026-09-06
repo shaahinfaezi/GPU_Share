@@ -116,6 +116,43 @@ Not a tier in `run.py`; it lives in `23-failure-inject.py`.
   fault (device-side assert), which is the fault class NVIDIA documents as
   poisoning the whole MPS server.
 
+### T11 — noisy neighbour @ 12 req/s, 90/10 · **done 2026-09-06**
+The aggressor takes 10.82 req/s against its own knee of ~6; the victim gets
+1.22 req/s, well inside capacity.
+
+| | solo | HAMi | HAMi+MPS |
+|---|---|---|---|
+| `llm` 7B, well-behaved | 1.235 s | 3.038 s (2.46×) | **2.181 s (1.77×)** |
+| `llm2` 1.5B, aggressor | 0.783 s | 3.179 s (4.06×) | **2.045 s (2.61×)** |
+
+Combined **+0.86% tokens/s, −34.96% pooled time**. Three findings:
+**noisy-neighbour damage is real** (the victim degrades 2.46× while nowhere
+near its own capacity); **MPS protects the victim** (−28.2%), the first
+positive isolation result MPS earns in this study; and **it protects the
+aggressor more** (−35.7%), which **retires the round-two claim that MPS
+reallocates toward the larger tenant.**
+
+It reallocates toward **in-flight depth**. T5's 7B ran 11.11 concurrent against
+2.84 and won; T11's hammered 1.5B ran 8.47 against 1.51 and won. Same law,
+opposite sign on size. FINDINGS 8.5.
+
+---
+
+## Answered, no tier needed
+
+**RAM offloading / vLLM `swap_space`** — **done, negative result.**
+`27-hostmem-attribution.sh` measured −40 MiB from `--swap-space=0`, after an
+earlier run claiming 2,121 MiB was invalidated by a selector bug (KServe never
+sets `r2-role`). The reason is upstream: `swap_space` is **dead code in vLLM
+V1** — `num_cpu_blocks` is hard-coded to zero in `vllm/v1/engine/core.py` and
+"always has been according to the git history" (vllm#27984). V1 preempts by
+RECOMPUTE, not SWAP. Nothing to tune, nothing further to test.
+
+**Does T9 use HAMi?** — **yes, already.** `09-scaledown.py` takes
+`--arm {dedicated,hami,hami-mps}` and **defaults to `hami`**, renders through
+`render.py --arm`, and toggles the MPS daemon to match the arm. It runs one arm
+per invocation, so a comparison is two runs.
+
 ---
 
 ## Skipped, and why
@@ -139,11 +176,11 @@ Init time of 113–250 s dominates the measurement, so what it reports is a
 KServe and Knative property rather than a GPU-sharing one. Lowest information
 per minute in the matrix.
 
-### T11 and T12 — **not skipped, killed**
-Both were queued in an overnight batch that died because T10 had no teardown at
-the time; T5 rep2, T5 rep3 and T12 all exited `rc=2` against pods that were
-never removed. The teardown is fixed. **Neither has been re-queued, and both
-are still wanted.**
+### T12 — **not skipped, killed**
+Queued in an overnight batch that died because T10 had no teardown at the time;
+T5 rep2, T5 rep3 and T12 all exited `rc=2` against pods that were never
+removed. The teardown is fixed. **T12 has not been re-queued and is still
+wanted.** T11 was in the same batch and has since been run -- see above.
 
 ---
 
@@ -157,28 +194,26 @@ last: it is a research question about what MPS *could* do, not a configuration
 anyone would ship, and it should not displace tiers that describe the system
 the customer will actually run.
 
-### 1. T11 — noisy neighbour @ 12 req/s, 90/10 split — **run this one now**
-Zero new code, ~35 minutes, and the prediction is genuinely uncertain, which is
-what makes it worth the card time.
+Run them one at a time, in this order.
 
-`llm2` takes 90% of a 12 req/s trace — about 10.8 req/s against its own knee of
-roughly 6 — while `llm` receives 1.2 req/s, well inside its capacity. Nothing
-in the matrix has tested **adversarial** load; T2 and T5 both measured fairness
-under matched load.
+### 1. T8 — matched partition — **run this one now**
+`gpucores: 50` **and** `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE: 50`, policy `force`,
+two tenants at 10 req/s. Zero new code — the tier pins its own knobs.
 
-The registered prediction is that **MPS protects the large tenant**, because
-FINDINGS 8 established that MPS reallocates toward in-flight depth rather than
-toward request count — which would make MPS a crude *isolation* mechanism as
-well as a density one, and that is the first positive isolation result MPS
-would have earned in this study. If instead the hammering tenant damages the
-well-behaved one, the "different owners must not share a card" recommendation
-gets a second, independent basis that does not depend on the fault domain.
+Every shared arm so far ran gpucores 50 with MPS at **100**: HAMi asking for
+half a card while MPS was told to use all of it. That is correct for isolating
+"MPS on/off" and it is **not what anyone would deploy** — an operator would set
+both to 50 and expect a 50% guarantee. T7 proved HAMi's limiter is void under
+MPS, so the MPS thread percentage is the only thing left that can bound a
+tenant. Prediction: a ceiling near 50% but **no floor**, because NVIDIA states
+the limit *"does not reserve dedicated resources... kernels launched from
+different MPS client contexts may execute on the same SM."*
 
 ```
-python3 -u run.py --test T11
+python3 -u run.py --test T8
 ```
 
-### 2. A symmetric pair — `llm2` + `llm2`
+### 2. T13 — symmetric pair, `llm2a` + `llm2b` — **built, ready to run**
 Every pairing we ran was asymmetric, so "does MPS create systematic winners and
 losers" is currently answered by mechanism rather than measurement. Two copies
 of Qwen2.5-1.5B-AWQ fit: 2 × 5,632 = 11,264 MiB against `CARD_MIB = 12288`.
@@ -189,7 +224,34 @@ or above T5's, since two identical decoders is the most composition-similar
 pair possible. Also yields the **Gini coefficient** the external review asked
 for, comparable to the published 0.35-MPS / 0.12-MIG figures.
 
-Needs a small edit: a `llm2-llm2` entry in `SCENARIOS`, and a tier in `TESTS`.
+**Built and verified 2026-09-06** (commit `1ab4531`): roles `llm2a`/`llm2b`
+share one `model_dir`, so `render.py`'s PVC path now follows the model rather
+than the role name. Renders at 2 x 5,632 = 11,264 MiB, 91.7% of the card, util
+clamped to 0.855 on both.
+
+```
+python3 -u run.py --test T13
+```
+
+### 2b. T14 — raw prompts, the corpus control — **built, ready to run**
+`make_prompt()` pads chat prompts with a fixed FILLER sentence to hit a
+synthetic target length and truncates the overshoots. In T7's trace **1,033 of
+1,749 prompts (59.1%)** carry it. That cannot bias an arm-versus-arm
+comparison — every arm replays the identical trace — but the prompts are not
+pure ShareGPT, and a reviewer is entitled to ask whether the effect survives
+real text.
+
+T14 is T5 with `--raw-prompts`: corpus prompts verbatim, no padding, no
+truncation, prefill lengths as ShareGPT actually contains them. The flag is
+recorded in the trace's own `params`, so a run is self-describing. Absolute
+numbers will differ from T5 and are not meant to match — **the claim under test
+is only that the MPS effect reproduces in sign and rough magnitude.** If it
+does, the filler is retired as an objection; if it does not, every
+length-sensitive conclusion needs revisiting.
+
+```
+python3 -u run.py --test T14
+```
 
 ### 3. T10 `vram-hog` and `tenant-fault`
 Completes the fault matrix, which the T10 report needs before it can be
