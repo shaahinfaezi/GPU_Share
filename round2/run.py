@@ -212,25 +212,39 @@ TESTS = {
     # The old T8 was the round-one control (llm-embed against round one's two
     # decoders) and could not do that job; the reconciliation is algebraic
     # instead (FINDINGS 6.1). The slot now holds the question that matters more.
-    "T8": dict(scenario="llm-llm", rate=10.0, duration=240, source="sharegpt",
-               gpucores="llm=50,llm2=50", mps_percent="llm=50,llm2=50",
-               core_policy="force",
-               why="MATCHED PARTITION -- do the two knobs have to agree? Every "
-                   "shared arm so far ran nvidia.com/gpucores=50 with "
-                   "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=100: HAMi asking for "
-                   "half a card while MPS was told to use all of it. That is "
-                   "correct for isolating 'MPS on/off' and it is NOT what an "
-                   "operator would deploy -- they would set both to 50 and "
-                   "expect a 50% guarantee. T7 proved HAMi's limiter is void "
-                   "under MPS (548.42 -> 834.51 at force), so the only thing "
-                   "that can still bound a tenant here is the MPS thread "
-                   "percentage. Does it? NVIDIA says the limit 'does not "
-                   "reserve dedicated resources... kernels launched from "
-                   "different MPS client contexts may execute on the same "
-                   "SM', which predicts a CEILING but not a FLOOR: throughput "
-                   "bounded near 50%, fairness still unguaranteed. This is "
-                   "the shippable version of the static-SM-partitioning "
-                   "question and needs no new code -- --mps-percent exists."),
+    "T8": dict(scenario="llm-llm", rate=12.0, duration=300, source="sharegpt",
+               mix="llm=0.1,llm2=0.9", mps_percent="llm=50,llm2=50",
+               why="IS THE MPS CEILING A USABLE QoS KNOB? T8's first draft was "
+                   "a 'matched partition' tier -- gpucores 50 with MPS 50, on "
+                   "T5's balanced load, to make the scheduler's model of the "
+                   "card true. That framing is WRONG and was withdrawn before "
+                   "it ran. Scheduler honesty and oversubscription are the "
+                   "same dial, not two things: honest means reservations, "
+                   "which means the percentages sum to 100, which means no "
+                   "statistical multiplexing and therefore no reason to run "
+                   "MPS at all. There is no configuration that is both "
+                   "matched AND oversubscribed, so 'should the numbers agree' "
+                   "is not a question anyone should be asking. What you can "
+                   "choose is an OVERBOOKING RATIO -- and if HAMi's "
+                   "deviceCoreScaling is set to N, the coherent pairing is "
+                   "MPS at 100 with the scheduler overbooked by the same N, "
+                   "never 1:1. "
+                   "The question that survives is a QoS one: does an MPS "
+                   "ceiling BOUND THE DAMAGE one tenant can do to another? "
+                   "That needs a real aggressor, which T5's balanced load "
+                   "does not have and T11's 90/10 does. So T8 is T11 with "
+                   "both tenants capped at 50%. T11 measured the uncapped "
+                   "case: the aggressor ran 8.47 concurrent against the "
+                   "victim's 1.51 and took the card, and MPS helped the "
+                   "aggressor MORE than the victim (-35.7% against -28.2%). "
+                   "Prediction: the cap binds on the AGGRESSOR, whose demand "
+                   "exceeds 50%, and not on the victim, whose ~25% share is "
+                   "already inside it -- so aggressor throughput falls and "
+                   "victim latency improves beyond T11's. If instead nothing "
+                   "moves, then CUDA_MPS_ACTIVE_THREAD_PERCENTAGE is as inert "
+                   "as nvidia.com/gpucores was, and MPS has NO usable QoS "
+                   "knob at all -- which is the single most consequential "
+                   "negative result still available in this study."),
     "T11": dict(scenario="llm-llm", rate=12.0, duration=300, source="sharegpt",
                 mix="llm=0.1,llm2=0.9",
                 why="NOISY NEIGHBOUR. T2 measured fairness under MATCHED load "
