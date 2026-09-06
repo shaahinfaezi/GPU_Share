@@ -537,6 +537,18 @@ def main():
     if a.fault == "vram-hog":
         H.kubectl(["-n", H.NS, "delete", "pod", "r2-vram-hog",
                    "--ignore-not-found", "--wait=false"], timeout=60)
+
+    # AND THE TENANTS. This was missing, and it cost an overnight batch: the
+    # run left both tenants resident, so the next test in the chain hit
+    # preconditions one second later with "GPU 1 already holds 7984 MiB, only
+    # 3377 MiB of host RAM available" and refused. Three runs -- two T5
+    # repeats and a four-hour soak -- died on a mess this script made. The
+    # gate was right; the script was not.
+    ev.mark("teardown_begin")
+    waited = H.teardown()
+    ev.mark("teardown_end", waited_s=round(waited, 1),
+            left=len(getattr(H.teardown, "pods_left", [])))
+    H.wait_gpu_idle(ev=ev)
     H.set_mps_daemon(True, ev=ev)
     return 0 if rc == 0 else 1
 
