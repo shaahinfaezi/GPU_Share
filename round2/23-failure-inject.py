@@ -338,12 +338,26 @@ def _escape_verdict(d):
     return v
 
 
-def windows(csv_path, t_fault, role, pre=60, during=60, post=120):
+def windows(csv_path, t_fault, role, pre=60, during=60, post=120, epoch0=None):
     """Split the survivor's requests into before / during / after the fault.
 
     An aggregate over the whole run would dissolve a 30-second outage into 300
     seconds of health. The windows are the measurement.
+
+    UNITS. replay.requests.csv stores t_sent RELATIVE to the start of the
+    replay -- the first row reads 0.001 -- while the fault timestamp is an
+    absolute epoch, 1788672842.87. Comparing them put every request outside
+    every window, and the first six fault runs all reported
+
+        window   reqs  failed   p50  p95  p99
+        before      0       0     -    -    -
+
+    which reads like a clean run and is actually no measurement at all. Pass
+    epoch0 (replay.summary.json's epoch_start) and the fault time is converted
+    to the same relative scale.
     """
+    if epoch0 and t_fault > 1e6:
+        t_fault = t_fault - epoch0
     import csv as _csv
     rows = []
     with open(csv_path, encoding="utf-8") as fh:
@@ -525,7 +539,13 @@ def main():
     csv_path = os.path.join(d, "replay.requests.csv")
     win = None
     if fault_at[0] and os.path.exists(csv_path):
-        win = windows(csv_path, fault_at[0], a.victim)
+        summ = H.read_json(os.path.join(d, "replay.summary.json"), {})
+        win = windows(csv_path, fault_at[0], a.victim,
+                      epoch0=summ.get("epoch_start"))
+        if win and not any(win[k]["n"] for k in win):
+            print("  WARNING: all three windows are empty. The victim role (%s) "
+                  "may not appear in the csv, or the fault fired outside the "
+                  "replay window." % a.victim)
 
     doc = dict(test="T10", fault=a.fault, arm=a.arm, victim=a.victim,
                inject_at_s=a.at, rate=a.rate, duration=a.duration,
