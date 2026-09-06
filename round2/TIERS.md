@@ -104,9 +104,14 @@ identical in code" (they are plainly not identical in behaviour). FINDINGS 8.2.
 ### T10 — failure injection · **3 of 5 faults**
 Not a tier in `run.py`; it lives in `23-failure-inject.py`.
 
-- **`mps-kill` — the serious one.** 681 of 1,753 requests failed (39%),
-  ~100 s of total outage, ~140 s to recovery, gated by model reload. Both
-  tenants died together.
+- **`mps-kill` — the serious one.** RECOMPUTED 2026-09-06 after a defect in
+  the window code (it put refused requests into the latency percentiles, so an
+  outage reported as a 54.5% p99 *improvement*). Corrected: the 60 s outage
+  window failed **96 of 173 (55.5%)**, and the following 120 s failed **253 of
+  343 (73.8%)** — a HIGHER rate, so **no recovery was observed inside the
+  instrumented period at all.** 338 of 349 failures are connection-refused.
+  The earlier "~140 s to recovery" described the end of the run, not a measured
+  return to service. Both tenants died together.
 - `tenant-kill` — benign, survivor served through re-init.
 - `vram-escape` — **contained on both arms** by HAMi-core's own OOM path, the
   log line matching `allocator.c:52` exactly. HAMi's memory isolation survives
