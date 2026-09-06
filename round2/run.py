@@ -305,6 +305,40 @@ TESTS = {
                     "magnitude. If it does, the filler is retired as an "
                     "objection; if it does not, every length-sensitive "
                     "conclusion in the study needs revisiting."),
+    "T15": dict(scenario="llm2-llm2", rate=20.0, duration=240, source="sharegpt",
+                why="SATURATED SYMMETRIC PAIR. T13 answered fairness and could "
+                    "not answer capacity: its hami arm reached 99.9% of the sum "
+                    "of the two solo throughputs, so the card was never "
+                    "compute-starved and MPS had no deficit to recover "
+                    "(-0.19% throughput, -22.98% pooled). Only T5 in this "
+                    "entire study is genuinely saturated, at 92.3%, which "
+                    "means every capacity claim we make rests on ONE tier. "
+                    "T15 doubles T13's offered rate to force saturation while "
+                    "keeping the tenants identical. Prediction: a throughput "
+                    "gain appears where T13 had none, and the degradation "
+                    "spread STAYS near 1.0 -- because 8.9 says asymmetry comes "
+                    "from unequal in-flight depth, and identical tenants under "
+                    "identical load have identical depth no matter how hard "
+                    "they are driven. If the spread opens up under saturation, "
+                    "the depth law is incomplete."),
+    "T16": dict(scenario="llm-llm", rate=6.0, duration=300, source="sharegpt",
+                gpucores="llm=25,llm2=25",
+                why="THE LAST EMPTY CELL IN THE POLICY TABLE. 5.14b's semantic "
+                    "-- force limits unconditionally, default limits only "
+                    "under contention -- has never been tested where it "
+                    "actually differs. Every co-tenancy tier ran quotas at or "
+                    "ABOVE the natural share (100//N), where default cannot "
+                    "engage; T2-20260906-102419 went below at 25/25 but used "
+                    "FORCE. This is that run with the policy left at default, "
+                    "same trace, so the only variable is the policy. If the "
+                    "7B's throughput falls toward the 298.37 tok/s that force "
+                    "produced, then DEFAULT ALSO CLAMPS whenever quotas are "
+                    "conservative -- and 'the default is safe' is wrong for "
+                    "most real clusters, which set quotas below natural share "
+                    "precisely to pack more tenants. If it stays near 429, "
+                    "default is confirmed safe and the distinction is real. "
+                    "Read the THROUGHPUT column: the noise floor there is "
+                    "0.42% against 9.51% for latency (8.10)."),
 }
 
 ARMS = ["dedicated", "hami", "hami-mps"]
