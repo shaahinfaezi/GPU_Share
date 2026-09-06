@@ -153,6 +153,17 @@ limits. Behaviour, not source reading, settles it.
 would take anyway. T5 re-run with `--core-policy disable` moved throughput by
 -0.20%. Every co-tenancy number in this study is contention, not throttling.
 
+**The compute limiter DOES work under co-tenancy, and MPS erases it exactly.**
+`T2-20260906-102419` ran T2 at `gpucores 25/25` with `force` -- quotas below
+the natural share, so the limiter genuinely binds with a neighbour present.
+The HAMi arm lost 30.5% of the 7B's throughput and took a 93.7x TTFT p99; the
+1.5B was untouched (+0.1%), because equal quotas cost unequal amounts. The MPS
+arm on the same clamped config came in at **-0.04% throughput and +0.38%
+pooled time against the UNCLAMPED baseline** -- the limiter is not weakened, it
+is absent. Within the clamped run MPS is worth +18.9% throughput and -95.2%
+pooled time. **There is no configuration on this stack giving both a per-tenant
+compute guarantee and efficient use of the card.**
+
 **MPS reallocates toward IN-FLIGHT DEPTH, not model size.** The round-two claim
 that MPS favours the larger tenant is retired. T5's 7B ran 11.11 concurrent
 against the 1.5B's 2.84 and won; T11's hammered 1.5B ran 8.47 against the 7B's
