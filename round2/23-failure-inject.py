@@ -24,6 +24,16 @@ FAULTS
                 large is the latency step, and how long does it take? This is
                 the failure that invalidated T1 and T2, measured deliberately.
 
+  tenant-fault  Trigger a REAL fatal GPU fault inside one tenant, by way of a
+                device-side assert. This is the failure NVIDIA's error-
+                containment section is about, and the one mps-kill does not
+                reach: parking the daemon is graceful, a sticky fault is not.
+                Answers whether the survivor dies too, whether it is told which
+                client caused it (NVIDIA says no), and how long recovery takes
+                once the MPS server has to drain every client before accepting
+                new ones. Our mps-kill measurement -- 100 s of total outage,
+                ~140 s to recovery -- is a best case; this is the real one.
+
   tenant-kill   Delete one tenant's pod mid-run. The survivor keeps serving
                 through its neighbour's death AND through a full re-init --
                 measured elsewhere at 113 s for the 1.5B and 250 s for the VL
@@ -85,7 +95,46 @@ FAULTS = {
     "tenant-kill": "delete one tenant's pod, survivor serves through re-init",
     "vram-hog": "allocate raw VRAM outside HAMi's accounting",
     "vram-escape": "make a MANAGED tenant try to exceed its own gpumem grant",
+    "tenant-fault": "trigger a REAL fatal GPU fault inside one tenant",
 }
+
+# A genuine fatal GPU fault, not a daemon removal. An out-of-range index into a
+# CUDA tensor trips a device-side assert, which is a STICKY error: it poisons
+# the CUDA context and cannot be caught and continued from.
+#
+# This is the path mps-kill does not test. Parking the daemon is graceful --
+# CUDA simply falls back to direct operation and the pods restart clean, which
+# is why that run recovered in ~140s. A fatal fault instead drives the MPS
+# server ACTIVE -> FAULT, and NVIDIA documents the consequence:
+#
+#   "the MPS server will wait for all the clients associated with the affected
+#    GPUs to exit, prohibiting new client connecting to those GPUs from
+#    joining"                                        -- MPS guide 2.3.3.2
+#
+# So recovery is serialised behind EVERY client exiting, and new clients cannot
+# attach meanwhile. Our 140s is a best case; this measures the real one. It also
+# tests the claim that matters most for multi-tenancy: that the fault is
+# reported to every client on the device "without indicating which client
+# generated the error".
+CUDA_FAULT_PROBE = r"""
+import json, torch
+out = {}
+try:
+    x = torch.arange(16, device="cuda", dtype=torch.float32)
+    bad = torch.tensor([1 << 30], device="cuda", dtype=torch.long)
+    y = x[bad]            # device-side assert: index out of bounds
+    torch.cuda.synchronize()
+    out["result"] = "NO FAULT -- the access was not rejected"
+except Exception as exc:
+    out["result"] = "%s: %s" % (type(exc).__name__, str(exc)[:200])
+try:
+    torch.cuda.synchronize()
+    out["context_alive_after"] = True
+except Exception as exc:
+    out["context_alive_after"] = False
+    out["sticky"] = "%s: %s" % (type(exc).__name__, str(exc)[:160])
+print("R2FAULT " + json.dumps(out), flush=True)
+"""
 
 # Runs inside the tenant's container, as a second process sharing that
 # container's HAMi quota. Deliberately not a pod: the whole question is whether
@@ -131,6 +180,14 @@ print("R2ESCAPE " + json.dumps(out), flush=True)
 # chain is intact is exactly the question to ask of the memory limiter too, and
 # it is the one thing our own probe cannot answer.
 CHAIN_CHECK = r"""
+# HAMi's device plugin injects the INDEX-SUFFIXED name, not the bare one:
+#   limitKey := fmt.Sprintf("CUDA_DEVICE_MEMORY_LIMIT_%v", i)
+# (HAMi v2.9.0 pkg/device-plugin/nvidiadevice/nvinternal/plugin/server.go).
+# HAMi-core reads CUDA_DEVICE_MEMORY_LIMIT_<i> first and falls back to the bare
+# name. The bare name is the KAI Scheduler integration's contract, which is what
+# HAMi's verification blog documents -- so checking only for it reported
+# "<unset>" on a correctly-configured pod.
+echo "CUDA_DEVICE_MEMORY_LIMIT_0=${CUDA_DEVICE_MEMORY_LIMIT_0:-<unset>}"
 echo "CUDA_DEVICE_MEMORY_LIMIT=${CUDA_DEVICE_MEMORY_LIMIT:-<unset>}"
 echo "CUDA_DEVICE_SM_LIMIT=${CUDA_DEVICE_SM_LIMIT:-<unset>}"
 echo "GPU_CORE_UTILIZATION_POLICY=${GPU_CORE_UTILIZATION_POLICY:-<unset>}"
@@ -254,6 +311,26 @@ def inject(fault, ns, image, hold, ev, outdir):
         rc, out = H.kubectl(["-n", ns, "delete", "pod"] + names +
                             ["--wait=false"], timeout=60)
         detail = {"rc": rc, "deleted": names, "out": out[-300:]}
+    elif fault == "tenant-fault":
+        role = ESCAPE_ROLE[0]
+        pods = H.pods_for(role, ns)
+        if not pods:
+            raise SystemExit("no pod for role %s" % role)
+        pod = pods[0]["metadata"]["name"]
+        before = H.gpu_used_mib()
+        rc, out = _exec_python(pod, ns, CUDA_FAULT_PROBE)
+        probe = {}
+        for line in out.splitlines():
+            if line.startswith("R2FAULT "):
+                try:
+                    probe = json.loads(line[len("R2FAULT "):])
+                except Exception:
+                    pass
+        detail = {"faulter_role": role, "faulter_pod": pod, "rc": rc,
+                  "probe": probe, "gpu_before": before,
+                  "mps_daemon_after": H.mps_daemon_running(),
+                  "mps_clients_after": H.mps_client_pids(),
+                  "out_tail": out[-400:]}
     elif fault == "vram-escape":
         role = ESCAPE_ROLE[0]
         pods = H.pods_for(role, ns)
@@ -532,7 +609,7 @@ def main():
 
     # Recovery: did the victim's neighbour come back at all?
     recovered = None
-    if a.fault in ("tenant-kill",):
+    if a.fault in ("tenant-kill", "tenant-fault"):
         ready2, _ = H.wait_ready(["llm2"], timeout=600, ev=ev)
         recovered = bool(ready2)
 
@@ -574,6 +651,22 @@ def main():
             print("  no victim requests failed")
     else:
         print("  no windows computed -- fault may not have fired")
+    if a.fault == "tenant-fault" and detail[0]:
+        dd = detail[0]
+        pr = dd.get("probe") or {}
+        print("\n  --- fatal GPU fault")
+        print("  faulter            : %s (%s)" % (dd.get("faulter_role"), dd.get("faulter_pod")))
+        print("  fault raised       : %s" % pr.get("result"))
+        print("  context survived   : %s" % pr.get("context_alive_after"))
+        if pr.get("sticky"):
+            print("  sticky error       : %s" % pr["sticky"])
+        print("  mps daemon after   : %s" % dd.get("mps_daemon_after"))
+        print("  mps clients after  : %s" % dd.get("mps_clients_after"))
+        print("  >>> the survivor's windows above are the blast radius. Under")
+        print("      MPS, NVIDIA documents this fault reaching every client on")
+        print("      the device without naming the culprit; without MPS it")
+        print("      should kill only the faulting process.")
+
     if a.fault == "vram-escape" and detail[0]:
         dd = detail[0]
         v = dd.get("verdict") or {}
@@ -583,7 +676,8 @@ def main():
               % (dd.get("escaper_role"), dd.get("escaper_pod")))
         ch = dd.get("chain") or {}
         print("  --- HAMi's own chain checks (project-hami.io verification)")
-        for k in ("CUDA_DEVICE_MEMORY_LIMIT", "CUDA_DEVICE_SM_LIMIT",
+        for k in ("CUDA_DEVICE_MEMORY_LIMIT_0", "CUDA_DEVICE_MEMORY_LIMIT",
+                  "CUDA_DEVICE_SM_LIMIT",
                   "GPU_CORE_UTILIZATION_POLICY", "libvgpu.so", "ld.so.preload",
                   "nvidia-smi-total"):
             print("    %-28s %s" % (k, ch.get(k, "<not reported>")))
