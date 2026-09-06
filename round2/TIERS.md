@@ -164,6 +164,23 @@ is absent. Within the clamped run MPS is worth +18.9% throughput and -95.2%
 pooled time. **There is no configuration on this stack giving both a per-tenant
 compute guarantee and efficient use of the card.**
 
+**NEITHER advertised compute control constrains anything under MPS.**
+`nvidia.com/gpucores` is void because MPS hides per-PID utilisation from
+HAMi's sampler (T7, T2@25/25). And T8 moved
+`CUDA_MPS_ACTIVE_THREAD_PERCENTAGE` from 100 to 50 on T11's exact trace: the
+aggressor returned 1,401.15 tok/s against 1,399.72, combined throughput +0.08%,
+pooled +0.76% -- all inside the reproducibility band. Halving a greedy tenant's
+permitted SM share cost it nothing. Unresolved whether the knob is ignored on
+GeForce or merely non-binding for a bandwidth-bound decode; `T8@mps=25`
+discriminates. The operational answer is the same either way.
+
+**MPS creates no winner when in-flight depth is equal (T13).** Two identical
+1.5B instances, solo depth 3.04 against 3.14: degradation spread is 1.019 under
+HAMi and 1.031 under MPS, against 2.16x (T2) and 2.84x (T5) between unlike
+tenants. The asymmetry was never about the models. Caveat: T13 is unsaturated
+-- the HAMi arm hit 99.9% of the solo throughput sum -- so it settles fairness
+and says nothing about capacity.
+
 **MPS reallocates toward IN-FLIGHT DEPTH, not model size.** The round-two claim
 that MPS favours the larger tenant is retired. T5's 7B ran 11.11 concurrent
 against the 1.5B's 2.84 and won; T11's hammered 1.5B ran 8.47 against the 7B's
