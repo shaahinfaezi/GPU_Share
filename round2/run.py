@@ -79,6 +79,7 @@ ROLES = {
     "llm-only": ["llm"], "embed-only": ["embed"], "rerank-only": ["rerank"],
     "llm2-only": ["llm2"], "vl-only": ["vl"], "embed-small-only": ["embed-small"],
     "llm-embed": ["llm", "embed"], "llm-llm": ["llm", "llm2"],
+    "llm2-llm2": ["llm2a", "llm2b"],
     "vl-rerank": ["vl", "rerank"],
     "dense4": ["llm2", "embed", "embed-small", "rerank"],
 }
@@ -207,12 +208,29 @@ TESTS = {
                    "mapping straightens under prefill-dominated load. Also the "
                    "clean single-tenant control -- the only tier where no "
                    "co-tenancy exists at all."),
-    # T8 REMOVED 2026-09-03. It was the round-one control, meant to let the two
-    # rounds be compared directly. Its configuration could not do that job: it
-    # was llm-embed, and round one was TWO DECODERS (2x Qwen2.5-0.5B). Varying
-    # the corpus on a pairing that measured null twice tests nothing. The
-    # reconciliation between the rounds is established algebraically instead
-    # (FINDINGS 6.1) and the run time is better spent on T10-T12.
+    # T8 was REMOVED on 2026-09-03 and REINSTATED on 2026-09-06 with a new job.
+    # The old T8 was the round-one control (llm-embed against round one's two
+    # decoders) and could not do that job; the reconciliation is algebraic
+    # instead (FINDINGS 6.1). The slot now holds the question that matters more.
+    "T8": dict(scenario="llm-llm", rate=10.0, duration=240, source="sharegpt",
+               gpucores="llm=50,llm2=50", mps_percent="llm=50,llm2=50",
+               core_policy="force",
+               why="MATCHED PARTITION -- do the two knobs have to agree? Every "
+                   "shared arm so far ran nvidia.com/gpucores=50 with "
+                   "CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=100: HAMi asking for "
+                   "half a card while MPS was told to use all of it. That is "
+                   "correct for isolating 'MPS on/off' and it is NOT what an "
+                   "operator would deploy -- they would set both to 50 and "
+                   "expect a 50% guarantee. T7 proved HAMi's limiter is void "
+                   "under MPS (548.42 -> 834.51 at force), so the only thing "
+                   "that can still bound a tenant here is the MPS thread "
+                   "percentage. Does it? NVIDIA says the limit 'does not "
+                   "reserve dedicated resources... kernels launched from "
+                   "different MPS client contexts may execute on the same "
+                   "SM', which predicts a CEILING but not a FLOOR: throughput "
+                   "bounded near 50%, fairness still unguaranteed. This is "
+                   "the shippable version of the static-SM-partitioning "
+                   "question and needs no new code -- --mps-percent exists."),
     "T11": dict(scenario="llm-llm", rate=12.0, duration=300, source="sharegpt",
                 mix="llm=0.1,llm2=0.9",
                 why="NOISY NEIGHBOUR. T2 measured fairness under MATCHED load "
@@ -237,6 +255,42 @@ TESTS = {
                     "four hours of continuous multiplexing. A tenant that "
                     "degrades at hour three is invisible to the rest of this "
                     "matrix."),
+    "T13": dict(scenario="llm2-llm2", rate=10.0, duration=240, source="sharegpt",
+                why="SYMMETRIC PAIR. Every co-tenancy tier in this study pairs "
+                    "UNLIKE models, so 'does MPS create systematic winners and "
+                    "losers' has only ever been answered by argument. Two "
+                    "identical Qwen2.5-1.5B-AWQ instances remove the confound: "
+                    "same weights, same quota, same kernels, same trace "
+                    "weight. FINDINGS 8 established that MPS reallocates "
+                    "toward IN-FLIGHT DEPTH rather than model size -- T5's 7B "
+                    "ran 11.11 concurrent against the 1.5B's 2.84 and won; "
+                    "T11's hammered 1.5B ran 8.47 against 1.51 and won. "
+                    "Identical tenants under identical load have identical "
+                    "depth, so the prediction is NEAR-SYMMETRIC degradation on "
+                    "both arms and an aggregate MPS gain at or above T5's, two "
+                    "identical decoders being the most composition-similar "
+                    "pair possible. Also yields the Gini coefficient the "
+                    "external review asked for, comparable to the published "
+                    "0.35-MPS / 0.12-MIG figures."),
+    "T14": dict(scenario="llm-llm", rate=10.0, duration=240, source="sharegpt",
+                raw_prompts=True,
+                why="RAW PROMPTS -- the methodological control for the corpus. "
+                    "make_prompt() pads a chat prompt with a fixed FILLER "
+                    "sentence to hit a synthetic target length, and truncates "
+                    "the ones that overshoot; in T7's trace 1033 of 1749 "
+                    "prompts (59.1%) carry it. That CANNOT bias an "
+                    "arm-versus-arm comparison, because every arm replays the "
+                    "identical trace -- but the prompts are not pure ShareGPT, "
+                    "and a reviewer is entitled to ask whether the effect "
+                    "survives real text. This tier is T5 with --raw-prompts: "
+                    "corpus prompts verbatim, no padding, no truncation, so "
+                    "the prefill length distribution is whatever ShareGPT "
+                    "actually contains. Absolute numbers will differ from T5 "
+                    "and are not meant to match. The claim under test is only "
+                    "that the MPS EFFECT reproduces in sign and rough "
+                    "magnitude. If it does, the filler is retired as an "
+                    "objection; if it does not, every length-sensitive "
+                    "conclusion in the study needs revisiting."),
 }
 
 ARMS = ["dedicated", "hami", "hami-mps"]
@@ -260,6 +314,8 @@ def gen_trace(test, cfg, out_path, seed, warmup):
         cmd += ["--fixed-output", cfg["fixed_output"]]
     if cfg.get("mix"):
         cmd += ["--mix", cfg["mix"]]
+    if cfg.get("raw_prompts"):
+        cmd += ["--raw-prompts"]
     rc, out = run(cmd)
     if rc != 0:
         raise RuntimeError("gen_trace failed:\n" + out[-3000:])
@@ -587,6 +643,17 @@ def main():
         cfg["duration"] = a.duration
     if a.rate:
         cfg["rate"] = a.rate
+
+    # A tier may pin gpucores / mps-percent / core-policy as part of its
+    # DEFINITION rather than leaving them to the caller -- T8 is a partition
+    # test, so "both knobs at 50" is the tier, not an option on it. An explicit
+    # flag still wins, so the tier stays sweepable from the command line.
+    for key, flag in (("gpucores", "gpucores"),
+                      ("mps_percent", "mps_percent"),
+                      ("core_policy", "core_policy")):
+        if cfg.get(key) and not getattr(a, flag):
+            setattr(a, flag, cfg[key])
+            print("    %s from the tier definition: %s" % (flag, cfg[key]))
     arms = [x.strip() for x in a.arms.split(",") if x.strip()]
     bad = [x for x in arms if x not in ARMS]
     if bad:

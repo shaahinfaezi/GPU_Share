@@ -44,6 +44,11 @@ SCENARIOS = {
     "embed-small-only": [("embed-small", 1.0, "embed")],
     "llm-embed":   [("llm", 0.5, "chat"), ("embed", 0.5, "embed")],
     "llm-llm":     [("llm", 0.5, "chat"), ("llm2", 0.5, "chat")],
+    # SYMMETRIC PAIR. Identical model on both sides, so any asymmetry in
+    # the result is the mechanism and not the tenants. Every other
+    # co-tenancy scenario pairs unlike models, which is why "does MPS
+    # create winners and losers" was answerable only by argument.
+    "llm2-llm2":   [("llm2a", 0.5, "chat"), ("llm2b", 0.5, "chat")],
     "vl-rerank":   [("vl", 0.5, "chat"), ("rerank", 0.5, "rerank")],
     # Must match render.py's SCENARIOS exactly: a trace naming a service that
     # was never deployed fails at replay, after the deploy-and-warm cost.
@@ -121,9 +126,22 @@ def synth_lengths(rng):
     return ctx, gen
 
 
-def make_prompt(ctx_tokens, pool, idx):
-    """A prompt of roughly ctx_tokens tokens, from the real pool where possible."""
+def make_prompt(ctx_tokens, pool, idx, raw=False):
+    """A prompt of roughly ctx_tokens tokens, from the real pool where possible.
+
+    With raw=True the corpus prompt is used VERBATIM: no FILLER padding and
+    no truncation, so ctx_tokens is ignored and the length distribution is
+    whatever ShareGPT actually contains.
+
+    This exists because the default path pads 59.1% of chat prompts (T7,
+    measured) and truncates the ones that overshoot. Neither can bias an
+    arm-versus-arm comparison, since every arm replays the identical
+    trace -- but it does mean the prompts are not pure ShareGPT, and a
+    reviewer is entitled to ask whether the effect survives real text.
+    """
     base = pool[idx % len(pool)][0] if pool else FILLER
+    if raw:
+        return base
     want = ctx_tokens * 4          # ~4 chars/token for English
     if len(base) >= want:
         return base[:want]
@@ -181,7 +199,11 @@ def build(a, rng, pool, lengths):
             gen = a.fixed_output
         row = dict(t=round(t, 6), service=role, kind=kind, warmup=False)
         if kind == "chat":
-            row["prompt"] = make_prompt(ctx, pool, idx)
+            # raw mode applies to the MEASURED chat prompt only. Warm-up
+            # prompts stay bounded: their content is irrelevant and an
+            # unbounded corpus prompt there just slows the warm-up.
+            row["prompt"] = make_prompt(ctx, pool, idx,
+                                        raw=getattr(a, "raw_prompts", False))
             row["max_tokens"] = int(gen)
         elif kind == "embed":
             per = max(16, ctx // a.embed_batch)
@@ -221,6 +243,11 @@ def main():
     ap.add_argument("--warmup", type=int, default=8,
                     help="per-service warm-up requests, excluded from metrics")
     ap.add_argument("--out")
+    ap.add_argument("--raw-prompts", action="store_true",
+                    help="use corpus prompts verbatim -- no FILLER "
+                         "padding and no truncation. Changes the offered "
+                         "load, so compare a raw run only against another "
+                         "raw run.")
     ap.add_argument("--list-scenarios", action="store_true")
     a = ap.parse_args()
 
@@ -253,7 +280,8 @@ def main():
         params=dict(scenario=a.scenario, rate=a.rate, duration=a.duration,
                     source=resolved, seed=a.seed, fixed_output=a.fixed_output,
                     embed_batch=a.embed_batch, rerank_docs=a.rerank_docs,
-                    warmup=a.warmup),
+                    warmup=a.warmup,
+                    raw_prompts=bool(getattr(a, "raw_prompts", False))),
         services=sorted(set(r["service"] for r in reqs)),
         requests=reqs,
     )

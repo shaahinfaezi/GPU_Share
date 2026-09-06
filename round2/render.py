@@ -129,6 +129,22 @@ MODELS = {
         outside_mib=664,
         extra=["--quantization=awq_marlin"],
     ),
+    # The symmetric pair: two names, one model, one directory on the PVC.
+    # 2 x 5632 = 11264 MiB against CARD_MIB 12288, so it fits with ~1 GiB
+    # spare. Two 7Bs do not (2 x 8192 = 16384), which is why the pair is
+    # built from the 1.5B.
+    "llm2a": dict(
+        repo="Qwen/Qwen2.5-1.5B-Instruct-AWQ", kind="chat", weights_mib=1540,
+        gpumem=5632, util=0.92, max_model_len=4096, max_num_seqs=64,
+        outside_mib=664, model_dir="llm2",
+        extra=["--quantization=awq_marlin"],
+    ),
+    "llm2b": dict(
+        repo="Qwen/Qwen2.5-1.5B-Instruct-AWQ", kind="chat", weights_mib=1540,
+        gpumem=5632, util=0.92, max_model_len=4096, max_num_seqs=64,
+        outside_mib=664, model_dir="llm2",
+        extra=["--quantization=awq_marlin"],
+    ),
     "llm-small": dict(
         repo="Qwen/Qwen2.5-0.5B-Instruct", kind="chat", weights_mib=990,
         gpumem=2816, util=0.90, max_model_len=4096, max_num_seqs=32, extra=[],
@@ -187,6 +203,7 @@ SCENARIOS = {
     "embed-small-only": ["embed-small"],
     "llm-embed":   ["llm", "embed"],
     "llm-llm":     ["llm", "llm2"],
+    "llm2-llm2":   ["llm2a", "llm2b"],
     "vl-rerank":   ["vl", "rerank"],
     "dense4":      ["llm2", "embed", "embed-small", "rerank"],
 }
@@ -397,7 +414,7 @@ metadata:
 spec:
   model:
     name: {m['repo']}
-    uri: pvc://{PVC}/models/{role}
+    uri: pvc://{PVC}/models/{m.get('model_dir', role)}
   replicas: 1{router}
   template:
     containers:
