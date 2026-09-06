@@ -195,6 +195,16 @@ def build(a, rng, pool, lengths):
             ctx, gen = lengths[idx % len(lengths)]
         else:
             ctx, gen = synth_lengths(rng)
+        # SHAREGPT SUPPLIES TEXT, NOT LENGTHS. load_sharegpt fills `pool` and
+        # leaves `lengths` None, so a "sharegpt" run takes its prompt-length
+        # target and its output length from the synthetic lognormals above and
+        # uses the corpus only for prompt TEXT, padded or truncated to fit.
+        # load_sharegpt does compute a real answer length -- pool[i][1] -- and
+        # nothing has ever read it. In raw mode we do: the whole point of the
+        # tier is a request shaped like the corpus rather than like our
+        # lognormal, and that means the output length too, not just the prompt.
+        if getattr(a, "raw_prompts", False) and pool:
+            gen = pool[idx % len(pool)][1]
         if a.fixed_output:
             gen = a.fixed_output
         row = dict(t=round(t, 6), service=role, kind=kind, warmup=False)
