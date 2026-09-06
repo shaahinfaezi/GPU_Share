@@ -567,7 +567,19 @@ def subrun(run_dir, ev_global, test, cfg, arm, roles, trace_path, trace_id,
         t0 = ev.mark("replay_begin")
         rc, out = run([PY, os.path.join("workload", "replay.py"),
                        "--trace", trace_path, "--arm", arm, "--out-dir", d,
-                       "--note", "%s %s" % (test, tag)]
+                       "--note", "%s %s" % (test, tag),
+                       # replay.py defaults to 512 worker threads. Past that the
+                       # client stops issuing at the trace's rate and the wait
+                       # lands in client_delay, which latency_e2e EXCLUDES -- so
+                       # a client-throttled arm reports better latency than it
+                       # delivered. Worse, the pool is SHARED across tenants, so
+                       # the slower one holds more workers and throttles its own
+                       # offered load: a feedback loop that artificially
+                       # equalises two tenants, which is exactly what a symmetry
+                       # tier is trying to measure. Highest peak ever recorded on
+                       # disk is 291 (T5 hami), so 4096 cannot bind at any rate
+                       # in this matrix.
+                       "--max-inflight", "4096"]
                       + sum([["--only", r] for r in roles], [])
                       + sum([["--endpoint", "%s=%s" % (r, u)]
                              for r, u in eps.items()], [])

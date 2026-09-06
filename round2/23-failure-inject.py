@@ -285,7 +285,14 @@ spec:
           time.sleep(%(hold)d)
       env:
         - name: NVIDIA_VISIBLE_DEVICES
-          value: "all"
+          # "all" made the hog allocate on CUDA ordinal 0 -- and every one of
+          # the 98 tenant allocations in this study landed on the OTHER card
+          # (GPU-fa422f59, nvidia-smi index 1). HAMi's binpack has never once
+          # chosen index 0. So the hog took the IDLE card, no victim request
+          # ever failed, and the run reported "HAMi held its caps" having
+          # tested nothing at all. The UUID is substituted from H.placement()
+          # of the live tenants; %(HOG_UUID)s is filled in by inject().
+          value: "%(HOG_UUID)s"
         - name: NVIDIA_DRIVER_CAPABILITIES
           value: compute,utility
       resources:
@@ -297,7 +304,7 @@ def sh(cmd, timeout=120):
     return H.sh(cmd, timeout=timeout)
 
 
-def inject(fault, ns, image, hold, ev, outdir):
+def inject(fault, ns, image, hold, ev, outdir, roles=()):
     """Apply the fault. Returns (label, detail) and stamps the event log."""
     t = time.time()
     if fault == "mps-kill":
@@ -361,9 +368,28 @@ def inject(fault, ns, image, hold, ev, outdir):
     elif fault == "vram-hog":
         path = os.path.join(outdir, "r2-vram-hog.yaml")
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(VRAM_HOG % dict(ns=ns, image=image, hold=hold))
+            # Pin the hog to the card the TENANTS are actually on. Without
+            # this the hog took the idle GPU and the fault measured nothing.
+            uuid = ""
+            try:
+                pl = H.placement(roles) or {}
+                seen = sorted({u for lst in pl.values() for u in (lst or [])})
+                uuid = seen[0] if len(seen) == 1 else ""
+            except Exception:
+                uuid = ""
+            if not uuid:
+                raise SystemExit(
+                    "vram-hog REFUSED: could not resolve the tenants' GPU "
+                    "UUID. Pinning is not optional -- every tenant allocation "
+                    "in this study landed on nvidia-smi index 1 while an "
+                    "unpinned hog allocates on ordinal 0, i.e. the idle card, "
+                    "and the run would report a pass having tested nothing.")
+            fh.write(VRAM_HOG % dict(ns=ns, image=image, hold=hold,
+                                     HOG_UUID=uuid))
+            detail_uuid = uuid
         rc, out = H.kubectl(["apply", "-f", path], timeout=60)
-        detail = {"rc": rc, "out": out[-300:], "manifest": path}
+        detail = {"rc": rc, "out": out[-300:], "manifest": path,
+                   "hog_gpu_uuid": detail_uuid}
     else:
         raise SystemExit("unknown fault %s" % fault)
     ev.mark("fault_injected", fault=fault, at=t, **{
@@ -453,7 +479,13 @@ def windows(csv_path, t_fault, role, pre=60, during=60, post=120, epoch0=None):
                          ("during", t_fault, t_fault + during),
                          ("after", t_fault + during, t_fault + during + post)):
         sel = [r for r in rows if lo <= r[0] < hi]
-        lat = sorted(x[1] for x in sel if x[1] is not None)
+        # A refused request has t_last stamped within milliseconds of t_sent,
+        # so including failures here drops ~3 ms rows into the latency
+        # percentiles and an OUTAGE reports as a latency IMPROVEMENT. The
+        # mps-kill run printed "victim p99 -54.5%" for a window in which 96 of
+        # 173 requests FAILED. Percentiles are over SUCCESSFUL requests only;
+        # the failure count is the headline and must be read first.
+        lat = sorted(x[1] for x in sel if x[1] is not None and x[2])
         n_fail = sum(1 for x in sel if not x[2])
         q = (lambda p: lat[min(len(lat) - 1, int(p * len(lat)))]) if lat else (lambda p: None)
         out[name] = dict(n=len(sel), failed=n_fail,
@@ -590,7 +622,7 @@ def main():
         if proc.poll() is None:
             print("\n  >>> injecting %s at +%.0fs\n" % (a.fault, a.at), flush=True)
             fault_at[0], detail[0] = inject(a.fault, H.NS, IMAGE,
-                                            a.duration, ev, d)
+                                            a.duration, ev, d, ROLES)
 
     timer = threading.Thread(target=fire, daemon=True)
     timer.start()
