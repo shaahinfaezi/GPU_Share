@@ -116,7 +116,11 @@ Not a tier in `run.py`; it lives in `23-failure-inject.py`.
 - `vram-escape` — **contained on both arms** by HAMi-core's own OOM path, the
   log line matching `allocator.c:52` exactly. HAMi's memory isolation survives
   MPS because it hooks `cuMemAlloc_v2` and never consults NVML.
-- `vram-hog` — **built, never run.**
+- `vram-hog` — **run twice, VOID both times.** The hog pod was created and
+  never allocated a byte: device 0 peak 1.0 MiB, device 1 peak 11,549 MiB,
+  identical to the normal two-tenant level. Zero victim failures proves nothing
+  when nothing was held. Pinning to the tenants' card was fixed and did not
+  help; the injector now captures the hog's own log. FINDINGS 8.14.
 - `tenant-fault` — **added 2026-09-06, never run.** Triggers a real fatal GPU
   fault (device-side assert), which is the fault class NVIDIA documents as
   poisoning the whole MPS server.
@@ -194,6 +198,30 @@ is NOT void; it is a real ceiling that does nothing until it is set below what
 the tenant would actually use, and then it strands capacity the same way HAMi's
 `force` does. `T7@mps=50` cannot test this -- 50 symmetric is precisely the
 non-binding case. Test asymmetrically, or at 25.
+
+**The MPS thread percentage is a REAL, monotone compute control.** Single
+tenant, whole card, identical trace, only `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE`
+varying: **100% -> 835.00, 50% -> 560.98 (67.1%), 25% -> 297.91 (35.7%)
+tok/s.** Sub-linear — you keep more throughput than your SM fraction, which is
+what a bandwidth-bound decode should do. At 25% the tenant broke down entirely
+(163 failures, 267 s mean latency). And on the same trace HAMi's `gpucores: 50`
++ `force` costs 548.42 (65.6%) — **the two controls both labelled "50%" cost
+within 1.5 points of each other.** What differs is that HAMi's is void the
+moment MPS is on and MPS's is not. FINDINGS 8.12.
+
+**The corpus objection is dead, and the effect is BIGGER with real text.** T14
+replays ShareGPT prompts verbatim — no filler padding, no truncation, real
+answer lengths. Two replicates agreeing to **0.15%**: MPS gives **+8.72% /
++8.52% throughput** against T5's +5.9%, pooled time −70%, and the fairness
+spread collapses **5.65x -> 1.67x**. At 86.3% saturation it is also the most
+throughput-saturated tier in the study, so **capacity claims should rest on
+T14, not T5.** FINDINGS 8.13.
+
+**`default` does not limit, even below the natural share under contention.**
+T16 at `gpucores 25/25`, policy default: llm returns **429.27 tok/s** against
+429.49 unclamped and 298.37 under `force`. The last empty cell in the policy
+table, and it is the operationally important one — most clusters run the
+default. FINDINGS 8.11.
 
 **MPS creates no winner when in-flight depth is equal (T13).** Two identical
 1.5B instances, solo depth 3.04 against 3.14: degradation spread is 1.019 under
