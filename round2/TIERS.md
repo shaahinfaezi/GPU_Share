@@ -89,8 +89,16 @@ requests, seed 20260826, 660,530 prompt tokens submitted on every arm.
 
 **The three-way is settled from behaviour: `disable` ≈ `default` ≈ no limit at
 all, and `force` is the lone outlier.** That is the documented semantic —
-`force` limits unconditionally, `default` limits only under contention — and it
-is what 5.14b predicted from HAMi's docs before any of these runs existed.
+`force` limits unconditionally; **`default` and `disable` never limit.** T16
+closed the last cell: 25/25 under contention with the policy left at default
+returns 429.27 tok/s, indistinguishable from unclamped. Behaviour settles it,
+and a latch defect in `rate_limiter()` explains it — the early return on
+`cached_util_switch == 0` sits in front of the only writer of the flag the
+monitor reads, so once the switch is observed off it stays off for the life of
+the pod.27 tok/s**,
+indistinguishable from the 429.49 unclamped. 5.14b's prediction from HAMi's docs
+was half right — the two policies differ, but the documented *reason* does not
+survive measurement.
 
 **`force` throttles to 65.6% of solo throughput, 21.6× mean latency, 45.8×
 TTFT p99. Adding MPS to that same forced pod returns it to 834.51 — +52.2%,
@@ -121,9 +129,16 @@ Not a tier in `run.py`; it lives in `23-failure-inject.py`.
   identical to the normal two-tenant level. Zero victim failures proves nothing
   when nothing was held. Pinning to the tenants' card was fixed and did not
   help; the injector now captures the hog's own log. FINDINGS 8.14.
-- `tenant-fault` — **added 2026-09-06, never run.** Triggers a real fatal GPU
-  fault (device-side assert), which is the fault class NVIDIA documents as
-  poisoning the whole MPS server.
+- `tenant-fault` — **run 2026-09-06 on the `hami` arm with the MPS daemon DOWN,
+  and it is the most important fault result in the study.** A real device-side
+  assert inside `llm2` took the untouched neighbour `llm` offline **9 s later
+  for 131.7 s** — 384 of 885 requests, 43.4% — while the faulting tenant kept
+  serving for a further 78 s. **The shared fault domain is a property of the
+  physical GPU, not of MPS.** This falsifies the premise that running HAMi
+  without MPS gives an unshared fault domain: if two workloads must not be able
+  to take each other down, they need separate cards. The `hami-mps` sibling has
+  not been transferred, so whether MPS makes it worse is still open. FINDINGS
+  8.15.
 
 ### T11 — noisy neighbour @ 12 req/s, 90/10 · **done 2026-09-06**
 The aggressor takes 10.82 req/s against its own knee of ~6; the victim gets
@@ -201,10 +216,14 @@ non-binding case. Test asymmetrically, or at 25.
 
 **The MPS thread percentage is a REAL, monotone compute control.** Single
 tenant, whole card, identical trace, only `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE`
-varying: **100% -> 835.00, 50% -> 560.98 (67.1%), 25% -> 297.91 (35.7%)
-tok/s.** Sub-linear — you keep more throughput than your SM fraction, which is
-what a bandwidth-bound decode should do. At 25% the tenant broke down entirely
-(163 failures, 267 s mean latency). And on the same trace HAMi's `gpucores: 50`
+varying: **100% -> 835.00, 50% -> 560.98, 25% -> 297.91 tok/s.** Enforced and monotone.
+It is **not** evidence of sub-linear SM scaling: the 100% arm was never at
+capacity (304.7 s wall against a 300 s trace, peak in-flight 61, 4.06 s mean
+latency), so 835.00 is the offered rate and 67.1%/35.7% are upper bounds on
+retention rather than measurements of it. The one interval with both ends
+saturated is 50 -> 25: **0.531 for a halving, elasticity 0.913 — essentially
+proportional.** The 163 lost requests at 25% are client-side connection errors
+at ~1,000 concurrent threads, a load-generator ceiling, not a tenant breakdown. And on the same trace HAMi's `gpucores: 50`
 + `force` costs 548.42 (65.6%) — **the two controls both labelled "50%" cost
 within 1.5 points of each other.** What differs is that HAMi's is void the
 moment MPS is on and MPS's is not. FINDINGS 8.12.
