@@ -34,8 +34,39 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
+from requests.adapters import HTTPAdapter
 
 DEFAULT_TIMEOUT = 600.0
+
+# ONE session for the whole replay, with a connection pool sized to the worker
+# count.
+#
+# Module-level requests.post() opens a fresh TCP connection per call and throws
+# it away. That is invisible at the concurrencies this harness used to reach --
+# the highest peak in-flight ever recorded on disk was 291 -- and it becomes the
+# binding constraint the moment it is not. Raising --max-inflight from 512 to
+# 4096 removed the thread ceiling and immediately exposed this one:
+# T7-20260906-225515 lost 163 requests to ConnectionError at roughly 1,000
+# concurrent, all of them clustered in the last 60 s of the arrival window, and
+# shipped 593,178 prompt tokens against the 660,530 every comparable arm sent.
+# The run was read as "the tenant broke down under a 25% SM cap". It did not.
+# The load generator ran out of sockets.
+#
+# max_retries stays 0 on purpose: a retry here would hide exactly the failure
+# this harness exists to measure.
+SESSION = requests.Session()
+
+
+def size_connection_pool(n):
+    """Size the HTTP connection pool to the number of in-flight requests.
+
+    Call once, after arguments are parsed and before any request is issued.
+    """
+    n = max(16, int(n))
+    adapter = HTTPAdapter(pool_connections=n, pool_maxsize=n, max_retries=0)
+    SESSION.mount("http://", adapter)
+    SESSION.mount("https://", adapter)
+    return n
 
 
 # --------------------------------------------------------------- endpoints
@@ -62,7 +93,7 @@ def resolve_chat(base, model, timeout, insecure):
     for path in ("/v1/chat/completions", "/openai/v1/chat/completions"):
         url = base.rstrip("/") + path
         try:
-            r = requests.post(url, json=probe, timeout=15, verify=not insecure)
+            r = SESSION.post(url, json=probe, timeout=15, verify=not insecure)
         except requests.RequestException:
             continue
         if r.status_code == 200:
@@ -95,8 +126,8 @@ def do_chat(url, model, row, timeout, insecure, origin, sched):
     if row.get("ignore_eos"):
         payload["ignore_eos"] = True
     try:
-        with requests.post(url, json=payload, timeout=timeout, stream=True,
-                           verify=not insecure) as resp:
+        with SESSION.post(url, json=payload, timeout=timeout, stream=True,
+                          verify=not insecure) as resp:
             rec["status"] = resp.status_code
             if not resp.ok:
                 rec["error"] = resp.text[:300]
@@ -154,7 +185,7 @@ def do_pooling(urls, model, row, timeout, insecure, origin, sched, kind):
     last = ""
     for url in urls:
         try:
-            r = requests.post(url, json=payload, timeout=timeout, verify=not insecure)
+            r = SESSION.post(url, json=payload, timeout=timeout, verify=not insecure)
             rec["status"] = r.status_code
             if r.status_code == 404:
                 last = "404 " + url
@@ -403,6 +434,13 @@ def main():
         rec.update(service=role, kind=kind, warmup=row["warmup"])
         with lock:
             results.append(rec)
+
+    # Size the HTTP connection pool BEFORE the first request. A pool smaller
+    # than the worker count means urllib3 opens a connection it cannot keep,
+    # and at high concurrency the sockets run out before the GPU does.
+    npool = size_connection_pool(a.max_inflight)
+    print("http pool %d connections for %d workers" % (npool, a.max_inflight),
+          flush=True)
 
     pool = ThreadPoolExecutor(max_workers=a.max_inflight)
 
