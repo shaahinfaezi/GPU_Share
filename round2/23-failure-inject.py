@@ -70,6 +70,7 @@ The windows are what matters: an aggregate over the whole run would average a
 """
 import argparse
 import json
+import re
 import os
 import subprocess
 import sys
@@ -388,8 +389,31 @@ def inject(fault, ns, image, hold, ev, outdir, roles=()):
                                      HOG_UUID=uuid))
             detail_uuid = uuid
         rc, out = H.kubectl(["apply", "-f", path], timeout=60)
+        # "pod created" is NOT evidence the hog allocated. The 20260906 run
+        # recorded rc=0 and 0 victim failures while device 0 peaked at 1 MiB
+        # and device 1 never rose above its normal tenant level -- the hog
+        # never grabbed a byte, anywhere, and the run read as "HAMi contained
+        # it". Wait for the pod to say so itself, and record what it said.
+        held, hog_log = None, ""
+        for _ in range(30):
+            time.sleep(2)
+            _rc, hog_log = H.kubectl(["logs", "r2-vram-hog", "-n", ns],
+                                     timeout=30)
+            m = re.search(r"held\s+(\d+)\s*MiB", hog_log or "")
+            if m:
+                held = int(m.group(1))
+                break
+            if "Error" in (hog_log or "") or "OutOfMemory" in (hog_log or ""):
+                break
         detail = {"rc": rc, "out": out[-300:], "manifest": path,
-                   "hog_gpu_uuid": detail_uuid}
+                  "hog_gpu_uuid": detail_uuid,
+                  "hog_held_mib": held,
+                  "hog_log_tail": (hog_log or "")[-500:]}
+        if not held:
+            print("\n  !!! vram-hog NEVER ALLOCATED. This run measures "
+                  "NOTHING -- a victim that does not fail proves containment "
+                  "only if something was actually held. Log tail:\n%s"
+                  % (hog_log or "")[-500:])
     else:
         raise SystemExit("unknown fault %s" % fault)
     ev.mark("fault_injected", fault=fault, at=t, **{
