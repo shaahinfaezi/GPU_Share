@@ -669,6 +669,53 @@ def main():
         ready2, _ = H.wait_ready(["llm2"], timeout=600, ev=ev)
         recovered = bool(ready2)
 
+    # MPS DAEMON RECOVERY. The operational question a fault run must answer is
+    # not only "how wide was the blast radius" but "what does an operator have
+    # to do afterwards". NVIDIA documents the MPS server moving ACTIVE -> FAULT
+    # on a fatal fault and refusing new clients with
+    # CUDA_ERROR_MPS_SERVER_NOT_READY until every existing client exits, so a
+    # daemon that is reachable is not the same as a daemon that is serving.
+    #
+    # Three states are distinguished here, in order, and each is recorded:
+    #   healthy   -- reachable straight after the fault, no action needed
+    #   self_healed -- unreachable at first, reachable again within the wait
+    #   needed_restart -- only came back after the DaemonSet was cycled
+    #   dead      -- did not come back even after a restart
+    mps_recovery = None
+    if a.arm == "hami-mps":
+        ev.mark("mps_recovery_probe_start")
+        first = H.mps_daemon_running()
+        state, waited = ("healthy" if first else None), 0.0
+        if not first:
+            t_probe = time.time()
+            for _ in range(30):
+                time.sleep(2)
+                if H.mps_daemon_running():
+                    state = "self_healed"
+                    break
+            waited = round(time.time() - t_probe, 1)
+            if state is None:
+                ok_r, how_r = H.set_mps_daemon(False, ev=ev)
+                time.sleep(5)
+                ok_u, how_u = H.set_mps_daemon(True, ev=ev)
+                time.sleep(5)
+                state = "needed_restart" if H.mps_daemon_running() else "dead"
+        mps_recovery = {
+            "reachable_immediately": bool(first),
+            "state": state,
+            "seconds_to_reachable": waited,
+            "clients_after": H.mps_client_pids(),
+        }
+        ev.mark("mps_recovery_probe", **mps_recovery)
+        print("\n  MPS daemon after the fault: %s (reachable immediately=%s, "
+              "%.1fs to reachable, clients=%s)"
+              % (state, first, waited, mps_recovery["clients_after"]))
+        if state in ("needed_restart", "dead"):
+            print("  >>> OPERATOR ACTION REQUIRED: the MPS daemon did not "
+                  "recover on its own. Any node pool running MPS needs a "
+                  "health check and an automatic restart, or a fatal fault "
+                  "leaves the whole card unusable until someone notices.")
+
     csv_path = os.path.join(d, "replay.requests.csv")
     win = None
     if fault_at[0] and os.path.exists(csv_path):
@@ -685,6 +732,7 @@ def main():
                seed=a.seed, out=d, replay_rc=rc,
                fault_time=fault_at[0], fault_detail=detail[0],
                mps=mps_detail, placement=place, recovered=recovered,
+               mps_recovery=mps_recovery,
                windows=win, t0=t0, t1=t1)
     H.write_json(os.path.join(d, "t10.json"), doc)
 
