@@ -169,8 +169,13 @@ earlier source review claimed they were identical in code and that our
 835.72-vs-548.42 measurement was unexplained. Withdrawn. T7 ran all three
 policies on one identical trace, one tenant, `gpucores: 50`:
 `default` 835.72 / `disable` 835.90 / **`force` 548.42**. `force` limits
-unconditionally; `default` limits only under contention; `disable` never
-limits. Behaviour, not source reading, settles it.
+unconditionally; **`default` and `disable` never limit.** T16 closed the last
+cell: `gpucores 25/25` under contention with the policy left at default returns
+**429.27 tok/s**, indistinguishable from the 429.49 unclamped. Behaviour settles
+it, and a latch defect explains it — `rate_limiter()`'s early return on
+`cached_util_switch == 0` sits in front of the only writer of the flag the
+vGPUmonitor reads, so once the switch is observed off it stays off for the life
+of the pod. `force` bypasses the shared region and is immune.
 
 **The compute limiter never bound in any co-tenancy tier.** `render.py` uses
 `share = 100 // len(roles)`, so two tenants get 50 each -- which is what they
