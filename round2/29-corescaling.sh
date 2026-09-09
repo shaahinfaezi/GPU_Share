@@ -48,6 +48,7 @@ cd "$(dirname "$0")"
 NS="${R2_NS:-llm-demo}"
 CM_NS="${HAMI_NS:-kube-system}"
 CM="${HAMI_CM:-hami-device-plugin}"
+[ -n "${HAMI_CM:-}" ] && HAMI_CM_PINNED=1
 NODE="${R2_NODE:-mr-gholami}"
 DS="${HAMI_DS:-hami-device-plugin}"
 SCALE="${1:-2}"
@@ -101,8 +102,28 @@ fi
 # `kubectl apply` with stderr discarded, so a rejected patch looked exactly
 # like a successful one and the only symptom was the node not re-registering.
 # Show what is actually in there before touching it.
+# Which ConfigMap does the plugin ACTUALLY read? The DaemonSet mounts more
+# than one. register.go reads plugin.schedulerConfig.DeviceCoreScaling -- the
+# SCHEDULER device config, not the plugin's own -- so patching
+# hami-device-plugin changed a real key in the wrong object and the node never
+# re-registered. Pick the mounted ConfigMap that carries the key, preferring
+# the scheduler one, unless the caller pinned HAMI_CM.
+if [ -z "${HAMI_CM_PINNED:-}" ]; then
+  MOUNTED=$(kubectl -n "$CM_NS" get ds "$DS" -o jsonpath='{.spec.template.spec.volumes[*].configMap.name}' 2>/dev/null)
+  for CAND in $(echo "$MOUNTED" | tr ' ' '
+' | grep -i scheduler) $(echo "$MOUNTED" | tr ' ' '
+' | grep -vi scheduler); do
+    if kubectl -n "$CM_NS" get cm "$CAND" -o yaml 2>/dev/null | grep -qi devicecorescaling; then
+      CM="$CAND"; break
+    fi
+  done
+fi
+note "using configmap" "$CM"
+note "all mounted" "${MOUNTED:-?}"
+
 say "what the device plugin is actually reading"
-note "scaling keys" "$(kubectl -n "$CM_NS" get cm "$CM" -o yaml 2>/dev/null | grep -oiE 'device(memory|core)scaling[^,}]*' | tr -d '' | paste -sd' ' - | head -c 160)"
+note "scaling keys" "$(kubectl -n "$CM_NS" get cm "$CM" -o yaml 2>/dev/null | grep -oiE 'device(memory|core)scaling[^,}]*' | tr -d '
+' | paste -sd' ' - | head -c 160)"
 note "plugin args" "$(kubectl -n "$CM_NS" get ds "$DS" -o jsonpath='{.spec.template.spec.containers[*].args}' 2>/dev/null | head -c 200)"
 note "mounted cms" "$(kubectl -n "$CM_NS" get ds "$DS" -o jsonpath='{.spec.template.spec.volumes[*].configMap.name}' 2>/dev/null)"
 echo "  If the plugin reads a DIFFERENT ConfigMap or a --config-file flag,"
