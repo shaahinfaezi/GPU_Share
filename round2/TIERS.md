@@ -95,8 +95,10 @@ returns 429.27 tok/s, indistinguishable from unclamped. Behaviour settles it,
 and a latch defect in `rate_limiter()` explains it — the early return on
 `cached_util_switch == 0` sits in front of the only writer of the flag the
 monitor reads, so once the switch is observed off it stays off for the life of
-the pod. 5.14b's prediction from HAMi's docs was half right — the two policies
-differ, but the documented *reason* does not survive measurement.
+the pod.27 tok/s**,
+indistinguishable from the 429.49 unclamped. 5.14b's prediction from HAMi's docs
+was half right — the two policies differ, but the documented *reason* does not
+survive measurement.
 
 **`force` throttles to 65.6% of solo throughput, 21.6× mean latency, 45.8×
 TTFT p99. Adding MPS to that same forced pod returns it to 834.51 — +52.2%,
@@ -127,14 +129,390 @@ Not a tier in `run.py`; it lives in `23-failure-inject.py`.
   identical to the normal two-tenant level. Zero victim failures proves nothing
   when nothing was held. Pinning to the tenants' card was fixed and did not
   help; the injector now captures the hog's own log. FINDINGS 8.14.
-- `tenant-fault` — **run 4 times; the alarming result did NOT replicate.**
-  A genuine device-side assert (`cudaErrorAssert`, dead context) was
-  **contained on every arm with a clean measurement** — the `hami` replicate
-  and both `hami-mps` runs show 0 victim failures and flat VRAM. One earlier
-  `hami` run lost 384 of 885 victim requests with an 8 GiB VRAM collapse; it
-  did not reproduce and is most plausibly a host OOM kill, which the injector
-  cannot confirm because it never sampled host memory. **A sticky CUDA error
-  appears to kill only the process that caused it.** FINDINGS 8.16.
+- `tenant-fault` — **run 4 times; the alarming result did NOT replicate, and
+  the claim built on it is withdrawn.** A genuine device-side assert
+  (`cudaErrorAssert`, dead context) was **contained on every arm that has a
+  clean measurement**: the `hami` replicate and both `hami-mps` runs show 0
+  victim failures and flat VRAM. One earlier `hami` run lost 384 of 885 victim
+  requests with an 8 GiB VRAM collapse; it did not reproduce, and its VRAM
+  signature is a pod restart rather than fault propagation. The probe spawns a
+  third torch process on a node with no swap, so a host OOM kill explains every
+  observation — but the injector never sampled host memory, so it cannot be
+  confirmed. **A sticky CUDA error appears to kill only the process that caused
+  it.** FINDINGS 8.16.
+
+### T11 — noisy neighbour @ 12 req/s, 90/10 · **done 2026-09-06**
+The aggressor takes 10.82 req/s against its own knee of ~6; the victim gets
+1.22 req/s, well inside capacity.
+
+| | solo | HAMi | HAMi+MPS |
+|---|---|---|---|
+| `llm` 7B, well-behaved | 1.235 s | 3.038 s (2.46×) | **2.181 s (1.77×)** |
+| `llm2` 1.5B, aggressor | 0.783 s | 3.179 s (4.06×) | **2.045 s (2.61×)** |
+
+Combined **+0.86% tokens/s, −34.96% pooled time**. Three findings:
+**noisy-neighbour damage is real** (the victim degrades 2.46× while nowhere
+near its own capacity); **MPS protects the victim** (−28.2%), the first
+positive isolation result MPS earns in this study; and **it protects the
+aggressor more** (−35.7%), which **retires the round-two claim that MPS
+reallocates toward the larger tenant.**
+
+It reallocates toward **in-flight depth**. T5's 7B ran 11.11 concurrent against
+2.84 and won; T11's hammered 1.5B ran 8.47 against 1.51 and won. Same law,
+opposite sign on size. FINDINGS 8.5.
+
+---
+
+## Corrections that are settled (tracked here so they travel with the repo)
+
+**The overbook curve is measured, and the "matched" config is the worst one.**
+T14, the only saturated tier, varying only the MPS percentage on one trace:
+Σ 200% → **+8.6%**, Σ 150% → **+3.7%**, Σ 100% → **−6.9%**. Setting `gpucores`
+equal to `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE` — the intuitive way to make the
+scheduler's model honest — delivers **less throughput than not running MPS at
+all**, and the fairness spread explodes 1.67 → 4.26 → **15.20** as the cap
+tightens. A cap does not protect the small tenant; it strands the large one,
+which is the only tenant that could have used the SMs the small one leaves
+idle. **On a saturated card the choice is binary: MPS at 100, or no MPS.** The
+`hami` control replicates to 0.24% across all four runs. FINDINGS 8.17.
+
+**`GPU_CORE_UTILIZATION_POLICY`: `default` and `force` are NOT the same.** An
+earlier source review claimed they were identical in code and that our
+835.72-vs-548.42 measurement was unexplained. Withdrawn. T7 ran all three
+policies on one identical trace, one tenant, `gpucores: 50`:
+`default` 835.72 / `disable` 835.90 / **`force` 548.42**. `force` limits
+unconditionally; **`default` and `disable` never limit.** T16 closed the last
+cell: `gpucores 25/25` under contention with the policy left at default returns
+**429.27 tok/s**, indistinguishable from the 429.49 unclamped. Behaviour settles
+it, and a latch defect explains it — `rate_limiter()`'s early return on
+`cached_util_switch == 0` sits in front of the only writer of the flag the
+vGPUmonitor reads, so once the switch is observed off it stays off for the life
+of the pod. `force` bypasses the shared region and is immune.
+
+**The compute limiter never bound in any co-tenancy tier.** `render.py` uses
+`share = 100 // len(roles)`, so two tenants get 50 each -- which is what they
+would take anyway. T5 re-run with `--core-policy disable` moved throughput by
+-0.20%. Every co-tenancy number in this study is contention, not throttling.
+
+**The compute limiter DOES work under co-tenancy, and MPS erases it exactly.**
+`T2-20260906-102419` ran T2 at `gpucores 25/25` with `force` -- quotas below
+the natural share, so the limiter genuinely binds with a neighbour present.
+The HAMi arm lost 30.5% of the 7B's throughput and took a 93.7x TTFT p99; the
+1.5B was untouched (+0.1%), because equal quotas cost unequal amounts. The MPS
+arm on the same clamped config came in at **-0.04% throughput and +0.38%
+pooled time against the UNCLAMPED baseline** -- the limiter is not weakened, it
+is absent. Within the clamped run MPS is worth +18.9% throughput and -95.2%
+pooled time. **There is no configuration on this stack giving both a per-tenant
+compute guarantee and efficient use of the card.**
+
+**CORRECTED 2026-09-06. `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE` IS enforced on
+this GeForce.** An earlier version of this section claimed neither compute
+control constrains anything under MPS, and left open whether the MPS knob is
+ignored on consumer silicon. **The study's own round-one archive refutes it.**
+`BenchLOGS_B1b/asym-mpsonly`, same node, `CUDA_DEVICE_SM_LIMIT=0` on both pods
+so no HAMi core limit is involved, MPS set to 75 and 25:
+
+| MPS % | svc-01 | svc-02 | ratio |
+|---|---|---|---|
+| 75 / 25 | 1117.4 / 1112.1 / 1083.6 | **624.3 / 622.2 / 614.1** | **1.79:1** |
+| 100 / 100 | 916.9 / 914.3 / 913.0 | 915.2 / 912.1 / 909.0 | 1.00:1 |
+
+Three passes each. The knob binds, and it binds hard when set asymmetrically.
+
+**What T8 actually showed** is narrower and still useful: a SYMMETRIC 50/50 cap
+did not bind, on a card that was only 99.2% saturated, running a
+bandwidth-bound decode. Restricting a tenant to half the SMs does not halve its
+tokens/s when the bottleneck is HBM and nobody is competing for SMs anyway.
+
+**So the honest statement is:** `nvidia.com/gpucores` is void under MPS (T7,
+T2@25/25 -- mechanism confirmed in HAMi-core source). The MPS thread percentage
+is NOT void; it is a real ceiling that does nothing until it is set below what
+the tenant would actually use, and then it strands capacity the same way HAMi's
+`force` does. `T7@mps=50` cannot test this -- 50 symmetric is precisely the
+non-binding case. Test asymmetrically, or at 25.
+
+**The MPS thread percentage is a REAL, monotone compute control.** Single
+tenant, whole card, identical trace, only `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE`
+varying: **100% -> 835.00, 50% -> 560.98, 25% -> 297.91 tok/s.** Enforced and monotone.
+It is **not** evidence of sub-linear SM scaling: the 100% arm was never at
+capacity (304.7 s wall against a 300 s trace, peak in-flight 61, 4.06 s mean
+latency), so 835.00 is the offered rate and 67.1%/35.7% are upper bounds on
+retention rather than measurements of it. The one interval with both ends
+saturated is 50 -> 25: **0.531 for a halving, elasticity 0.913 — essentially
+proportional.** The 163 lost requests at 25% are client-side connection errors
+at ~1,000 concurrent threads, a load-generator ceiling, not a tenant breakdown. And on the same trace HAMi's `gpucores: 50`
++ `force` costs 548.42 (65.6%) — **the two controls both labelled "50%" cost
+within 1.5 points of each other.** What differs is that HAMi's is void the
+moment MPS is on and MPS's is not. FINDINGS 8.12.
+
+**The corpus objection is dead, and the effect is BIGGER with real text.** T14
+replays ShareGPT prompts verbatim — no filler padding, no truncation, real
+answer lengths. Two replicates agreeing to **0.15%**: MPS gives **+8.72% /
++8.52% throughput** against T5's +5.9%, pooled time −70%, and the fairness
+spread collapses **5.65x -> 1.67x**. At 86.3% saturation it is also the most
+throughput-saturated tier in the study, so **capacity claims should rest on
+T14, not T5.** FINDINGS 8.13.
+
+**`default` does not limit, even below the natural share under contention.**
+T16 at `gpucores 25/25`, policy default: llm returns **429.27 tok/s** against
+429.49 unclamped and 298.37 under `force`. The last empty cell in the policy
+table, and it is the operationally important one — most clusters run the
+default. FINDINGS 8.11.
+
+**MPS creates no winner when in-flight depth is equal (T13).** Two identical
+1.5B instances, solo depth 3.04 against 3.14: degradation spread is 1.019 under
+HAMi and 1.031 under MPS, against 2.16x (T2) and 2.84x (T5) between unlike
+tenants. The asymmetry was never about the models. Caveat: T13 is unsaturated
+-- the HAMi arm hit 99.9% of the solo throughput sum -- so it settles fairness
+and says nothing about capacity.
+
+**MPS reallocates toward IN-FLIGHT DEPTH, not model size.** The round-two claim
+that MPS favours the larger tenant is retired. T5's 7B ran 11.11 concurrent
+against the 1.5B's 2.84 and won; T11's hammered 1.5B ran 8.47 against the 7B's
+1.51 and won. Measure `arrival rate x mean latency` per tenant, not parameters.
+
+**The ~3 GiB per-tenant host RAM is NOT recoverable by configuration.** The
+`--swap-space` A/B test was invalid (KServe never sets `r2-role`, so the
+teardown selector matched nothing) and was never redone. It does not need to
+be: `--swap-space` defaults to 4 GiB, and a stock tenant's total resident
+footprint is 3,276 MiB. A 4 GiB buffer cannot fit inside a 3.3 GiB RSS, so it
+was never allocated. Upstream agrees -- `num_cpu_blocks` is hard-coded to zero
+in vLLM V1 (vllm#27984), which preempts by RECOMPUTE, never SWAP.
+
+**What `source: sharegpt` actually means.** The corpus does load -- all 13 run
+dirs record it, and `run.py` raises if a tier asks for it and gets synthetic.
+But `load_sharegpt` fills `pool` and leaves `lengths` None, so **ShareGPT
+supplies prompt TEXT only**: both the prompt-length target and the output
+length come from a lognormal. The filler fraction rises with length -- 33.2%
+below 500 chars, 98.0% above 4,000, 100% above 12,000 (the corpus cap), 58.3%
+overall in T5's trace. This cannot bias an arm-versus-arm comparison, since
+every arm replays one trace byte for byte. It does mean any conclusion that
+depends on prompt or output LENGTH is untested against real text, which is
+what T14 is for.
+
+## Answered, no tier needed
+
+**RAM offloading / vLLM `swap_space`** — **done, negative result.**
+`27-hostmem-attribution.sh` measured −40 MiB from `--swap-space=0`, after an
+earlier run claiming 2,121 MiB was invalidated by a selector bug (KServe never
+sets `r2-role`). The reason is upstream: `swap_space` is **dead code in vLLM
+V1** — `num_cpu_blocks` is hard-coded to zero in `vllm/v1/engine/core.py` and
+"always has been according to the git history" (vllm#27984). V1 preempts by
+RECOMPUTE, not SWAP. Nothing to tune, nothing further to test.
+
+**Does T9 use HAMi?** — **yes, already.** `09-scaledown.py` takes
+`--arm {dedicated,hami,hami-mps}` and **defaults to `hami`**, renders through
+`render.py --arm`, and toggles the MPS daemon to match the arm. It runs one arm
+per invocation, so a comparison is two runs.
+
+---
+
+## Skipped, and why
+
+### T6 — `llm-llm` @ 6 on the Azure trace — **deprioritised, not abandoned**
+Asks whether −26.7% survives production token-length distributions rather than
+ShareGPT's. **Low expected information:** T2's gain was already flat across
+output-length buckets — −38.0% at ≤32 tokens to −45.0% above 512 — which
+predicts the result survives a different length mix. Worth running for external
+validity in the final report, not worth running ahead of anything below.
+
+### T8 — **removed 2026-09-03**
+It was the round-one control, meant to let the two rounds be compared directly.
+It could not do that job: T8 was `llm-embed` and round one was **two decoders**
+(2× Qwen2.5-0.5B). Varying the corpus on a pairing that measured null twice
+tests nothing. The reconciliation between rounds is established algebraically
+instead (FINDINGS 6.1).
+
+### T9 — scale-down / admission — **script exists (`09-scaledown.py`), unrun**
+Init time of 113–250 s dominates the measurement, so what it reports is a
+KServe and Knative property rather than a GPU-sharing one. Lowest information
+per minute in the matrix.
+
+### T12 — **not skipped, killed**
+Queued in an overnight batch that died because T10 had no teardown at the time;
+T5 rep2, T5 rep3 and T12 all exited `rc=2` against pods that were never
+removed. The teardown is fixed. **T12 has not been re-queued and is still
+wanted.** T11 was in the same batch and has since been run -- see above.
+
+---
+
+## What to run next, ranked by decisiveness
+
+Rewritten 2026-09-07. Everything that was on the previous list has now RUN —
+T8, T13, T14 (x2), T15, T16, T7 at MPS 50 and 25, `tenant-fault`, `vram-hog`.
+What follows is what those runs opened, not what they closed.
+
+Criterion is unchanged: how much can this run change a conclusion that is
+already written down?
+
+**Fix this first — it gates items 2, 5 and 8.** `workload/replay.py` calls
+module-level `requests.post` with no `Session` and no `HTTPAdapter`, so every
+in-flight thread opens and discards its own TCP connection. Raising
+`--max-inflight` to 4096 removed the concurrency ceiling and exposed a
+connection-establishment ceiling instead: `T7-20260906-225515` lost 163
+requests to `ConnectionError` at ~1,000 concurrent, and shipped 593,178 prompt
+tokens against 660,530 on every comparable arm. Any future run driven past
+roughly 500 in flight will hit it. One-line fix: a module-level `Session` with
+`HTTPAdapter(pool_maxsize=max_inflight, pool_connections=…)`.
+
+### 1. `tenant-fault` on the `hami-mps` arm — the highest-value run outstanding
+~9 minutes, no new code, and it decides a recommendation.
+
+The `hami` arm (`T10-tenant-fault-hami-20260906-185601`, MPS daemon DOWN)
+showed a device-side assert inside one tenant taking the untouched neighbour
+offline **9 s later for 131.7 s**, 384 of 885 requests lost, while the faulting
+tenant served on for a further 78 s. So the fault domain is the physical GPU,
+not the MPS server — which falsified the premise that HAMi-without-MPS gives
+you an unshared blast radius.
+
+**What is still unknown is whether MPS makes it worse.** NVIDIA documents an
+MPS server FAULT state that refuses new clients with
+`CUDA_ERROR_MPS_SERVER_NOT_READY` until every existing client exits, which
+predicts a *longer* outage and a slower recovery on the MPS arm. If that
+reproduces, "MPS widens an already-shared fault domain" is measured rather than
+quoted. If the two arms are indistinguishable, the honest headline becomes
+"sharing a card at all is the risk; MPS is not the marginal one".
+
+    python3 -u 23-failure-inject.py --fault tenant-fault --arm hami-mps
+
+The run exists only on the node — it was executed once and never transferred.
+Check before re-running.
+
+### 2. The true SM-percentage curve — the 100% anchor is not a capacity number
+`T7-20260904-111030`'s MPS arm finished in 304.7 s against a 300 s trace with a
+peak of 61 requests in flight and a 4.06 s mean latency. **It was serving the
+offered load, not saturating.** So 835.00 tok/s is the arrival rate, and the
+67.1% / 35.7% retentions at 50% and 25% are upper bounds rather than
+measurements. The only interval with both ends saturated is 50 -> 25, which
+gives 0.531 for a halving — elasticity 0.913, essentially proportional.
+
+To measure the curve, drive the 100% arm past its own knee so every point is a
+capacity measurement:
+
+    python3 -u run.py --test T7 --rate 24 --mps-percent llm=100
+    python3 -u run.py --test T7 --rate 24 --mps-percent llm=50
+
+Needs the connection fix above; rate 24 will exceed 500 in flight.
+
+### 3. Verify the `default` latch mechanism — one run, decisive
+T16 established the behaviour: `default` does not limit, at any quota, with or
+without a neighbour. The source explains it as a latch defect —
+`rate_limiter()` returns early on `cached_util_switch == 0`, *before* reaching
+`set_recent_kernel(2)`, the only writer of the flag the vGPUmonitor reads — so
+once the switch is observed off it stays off for the life of the pod.
+
+That is a source reading, not a measurement. Re-run T16 with the monitor and
+the container both talking:
+
+    kubectl -n kube-system set env ds/hami-device-plugin -v=5
+    # and on the tenant: LIBCUDA_LOG_LEVEL to make hami-core print
+    #   "init_utilization_watcher: util_switch=…"
+    python3 -u run.py --test T16
+
+The log either shows the switch going off and never coming back, or it does
+not. **This is the difference between reporting a defect and reporting a
+behaviour**, and HAMi's maintainers cannot act on the second.
+
+### 4. Replicate the two `force` results — the study's central negative rests on n=1
+`T7 gpucores 50 + force` = **548.42** and `T2 gpucores 25/25 + force` =
+**298.37** are each measured exactly once, and round one shows throttled arms
+spreading up to 15.3% across passes of a single run. The directions are safe;
+the magnitudes — "-34.4%", "+52.17%", "21.6x", "-30.5%" — are not yet
+quotable to two decimals.
+
+    python3 -u run.py --test T7 --gpucores llm=50 --core-policy force
+    python3 -u run.py --test T2 --gpucores llm=25,llm2=25 --core-policy force
+
+Two runs, ~55 minutes, and they harden the most-quoted table in the report.
+
+### 5. A genuinely saturated symmetric pair — T15 did not manage it
+`T15-20260906-182642` doubled T13's rate to 20 and still returned **99.5%** of
+the solo sum; its dedicated arms finished in 241 s against a 240 s trace. Two
+1.5B models do not fill this card at rate 20 either. The fairness prediction
+held (spread 1.008 HAMi, 1.029 MPS) but the saturation prediction failed, so
+the symmetric capacity point is **still missing**.
+
+The test is on the *dedicated* arm, not the shared one: raise the rate until a
+single tenant's wall clock overruns the trace window by >15%.
+
+    python3 -u run.py --test T13 --rate 32
+
+### 6. `deviceMemoryScaling = 1.5` — the untested cell with the worst failure mode
+Confirmed not enabled on this node (`devicememoryscaling: 1` in the
+`hami-device-plugin` ConfigMap), so this is genuinely untested rather than
+accidentally on.
+
+VRAM is the one axis where HAMi's enforcement provably works — it hooks
+`cuMemAlloc_v2` and hard-fails at the per-tenant cap regardless of MPS. And the
+source says the overcommit is scheduler-only: `register.go:145` inflates the
+advertised memory, `server.go:656` sets `CUDA_OVERSUBSCRIBE=true` in the
+container, and `grep -r OVERSUBSCRIBE` over the whole HAMi-core tree returns
+**nothing**. No paging, no eviction, no fallback. `oom_check` compares each
+container against its own limit and has no knowledge of the physical device.
+
+Predicted: both pods admitted, the second dies with a raw
+`CUDA_ERROR_OUT_OF_MEMORY` during vLLM profiling, no HAMi event or metric
+explaining it, while a virtualised `nvidia-smi` shows headroom. For an 8-12 GiB
+GeForce fleet that is the most dangerous switch a customer could flip.
+
+    helm upgrade hami hami-charts/hami -n kube-system --reuse-values \
+      --set devicePlugin.deviceMemoryScaling=1.5
+    python3 -u run.py --test T2 --gpumem llm=8192,llm2=8192
+
+Cluster-config change — run it awake, and revert afterwards.
+
+### 7. Fix `vram-hog`, then run it
+Two attempts, both VOID: the pod was created and allocated **zero bytes** on
+either card (device 0 peak 1.0 MiB, device 1 unchanged at 11,549 MiB). Pinning
+to the tenants' device was added and did not help. The injector now captures
+the pod's own log and prints a NEVER ALLOCATED banner, so the third attempt
+will at least say why — the likeliest cause is the image, since this node
+returns 403 from `registry-1.docker.io`.
+
+**Nothing about VRAM containment is testable until the pod is confirmed holding
+memory.** Do not report a quiet victim as containment.
+
+### 8. Where the depth law's re-ranking turns over
+Nine runs out of nine show the deeper tenant taking the larger share of the MPS
+gain. Where the depth gap is large the shallower tenant is made *absolutely
+worse* (T14: 2.96x -> 6.38x degradation; T5: 2.89x -> 5.42x). Where it is small
+nobody loses (T13, T15: spread ~1.01).
+
+Unknown is where the turnover sits. One asymmetric tier at a *moderate* depth
+ratio, around 2x, would find it:
+
+    python3 -u run.py --test T5 --rate 10 --mix llm=0.35,llm2=0.65
+
+This is the run that turns the depth law from a nine-point correlation into a
+control with a threshold.
+
+### 9. The power-limit sweep — demoted, but it settles a withdrawn claim
+The claim that this card is power-limited and that compute quotas are therefore
+theatre has been **withdrawn** — a busy GPU sits near its board limit whatever
+the bottleneck is, and T7's SM curve shows SM allocation demonstrably matters.
+Power is now used only as a *diagnostic* that a throttle engaged.
+
+If anyone wants the causal question closed:
+
+    sudo nvidia-smi -pl 250 && python3 -u run.py --test T7 --arms dedicated
+    sudo nvidia-smi -pl 350
+
+Throughput tracking the limit would resurrect the claim; flat would bury it.
+
+### 10. T12 soak, T6 Azure trace, T9 scale-down
+Unchanged in priority and rationale. T12 is required for a production sign-off
+and unlikely to change a conclusion. T6 is external validity and is predicted
+to reproduce. T9 crashes deterministically at `09-scaledown.py:299` —
+`smoke.items()` on a tuple — and must be fixed before it can run at all.
+
+### 11. One tier on Ada or Blackwell
+Every number in this study is one RTX 3080 Ti (GA102). The customer's fleet is
+GeForce 30/40/50-series. Ada and Blackwell differ in SM count, L2, memory
+bandwidth and MPS server behaviour. **Until a second architecture is measured
+the fleet recommendation is "measured on 3080 Ti", and that belongs in the
+executive summary rather than a footnote.**
+
+### Deliberately not planned
 - **MPS static SM partitioning** (`sm_partition`, `CUDA_MPS_SM_PARTITION`).
   Research, not shippable: it needs the MPS control daemon driven by hand per
   node, is not exposed by HAMi, KServe or the device plugin, and nothing would
