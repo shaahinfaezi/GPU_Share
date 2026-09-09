@@ -277,14 +277,31 @@ def effective_util(m):
 # the binpack policy is a second, independent lever towards the same outcome in
 # case the UUID pin is dropped somewhere along the KServe path.
 def pin_annotations(uuid, indent):
-    """HAMi reads the device pin from the POD's annotations, and the two call
-    sites nest at different depths, so the indent is a parameter rather than
-    baked into a constant."""
+    """Emit the spec.annotations block that KServe copies onto the pod.
+
+    CORRECTED 2026-09-09. These used to be emitted under the
+    LLMInferenceService OWN metadata.annotations, which KServe does NOT
+    copy onto the workload pod -- so the pin was written, looked correct in
+    the manifest, and never reached HAMi. That is why this project believed
+    for weeks that pinning was impossible on the KServe path and reached for
+    a cluster-wide binpack instead.
+
+    The field that DOES propagate is spec.annotations: KServe WorkloadSpec
+    carries first-class Labels and Annotations as siblings of Template, and
+    0.17 ships propagation to downstream workload resources. Our serving
+    image is v0.17.0. FINDINGS 9.1.
+
+    Returns the whole block including the annotations: key, so an empty pin
+    emits nothing at all rather than a dangling mapping.
+    """
     if not uuid:
         return ""
     pad = "\n" + " " * indent
-    return ('%snvidia.com/use-gpuuuid: "%s"'
-            '%shami.io/gpu-scheduler-policy: "binpack"' % (pad, uuid, pad))
+    inner = pad + "  "
+    return ("%sannotations:"
+            "%snvidia.com/use-gpuuuid: \"%s\""
+            "%shami.io/gpu-scheduler-policy: \"binpack\""
+            % (pad, inner, uuid, inner))
 
 # HAMi's core limiter is policy-gated and its DEFAULT is "default", whose
 # behaviour HAMi does not document. Only "force" is documented to "always limit
@@ -379,7 +396,8 @@ ROUTER_BLOCK = """
 
 def render_llm(role, m, arm, pct, pin="", router=False):
     res = gpu_resources(m, arm, pct)
-    pin = pin_annotations(pin, 4) or " {}"
+    # 2 spaces: spec.annotations is a sibling of spec.model, not nested in it.
+    pin = pin_annotations(pin, 2)
     # The router is OFF by default. `scheduler: {}` makes KServe create a
     # router-scheduler Deployment pulling ghcr.io/llm-d/llm-d-inference-
     # scheduler, which this node cannot fetch -- ghcr returns 403 Forbidden to
@@ -410,8 +428,7 @@ metadata:
   labels:
     r2-arm: {arm}
     r2-role: {role}
-  annotations:{pin}
-spec:
+spec:{pin}
   model:
     name: {m['repo']}
     uri: pvc://{PVC}/models/{m.get('model_dir', role)}
