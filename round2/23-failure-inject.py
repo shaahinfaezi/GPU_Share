@@ -623,6 +623,16 @@ def main():
 
     sampler = H.GpuSampler(os.path.join(d, "gpu.csv"))
     sampler.start()
+    # Host memory, 1 Hz, for the whole run. Without this a fault run cannot
+    # distinguish a GPU fault from an OOM kill -- and that ambiguity cost a
+    # published claim. The 20260906 tenant-fault run lost 384 of 885 victim
+    # requests with an 8 GiB VRAM collapse that looks exactly like a pod
+    # restart; the replicate lost nothing. This node has no swap and two
+    # co-tenants need ~6.8 GiB of 15.9, while the fault probe spawns a THIRD
+    # torch process inside a tenant. An OOM explains every observation and we
+    # had no way to check.
+    hsampler = H.HostSampler(os.path.join(d, "host.csv"))
+    hsampler.start()
 
     cmd = ([PY, os.path.join(HERE, "workload", "replay.py"),
             "--trace", trace, "--arm", a.arm, "--out-dir", d,
@@ -659,6 +669,15 @@ def main():
     rc = proc.wait()
     t1 = ev.mark("replay_end", rc=rc)
     sampler.stop()
+    hsampler.stop()
+    host_min = getattr(hsampler, "min_available", None)
+    if host_min is not None:
+        ev.mark("host_min_available", mib=host_min)
+        print("  host memory low-water mark: %s MiB" % host_min)
+        if host_min < 1200:
+            print("  >>> HOST MEMORY GOT LOW. Any tenant that died in this run "
+                  "may have been OOM-killed rather than hit by the fault. "
+                  "Treat the blast radius as UNRESOLVED.")
     timer.join(timeout=5)
 
     print("\n".join(tail[-12:]))
@@ -732,7 +751,7 @@ def main():
                seed=a.seed, out=d, replay_rc=rc,
                fault_time=fault_at[0], fault_detail=detail[0],
                mps=mps_detail, placement=place, recovered=recovered,
-               mps_recovery=mps_recovery,
+               mps_recovery=mps_recovery, host_min_available_mib=host_min,
                windows=win, t0=t0, t1=t1)
     H.write_json(os.path.join(d, "t10.json"), doc)
 

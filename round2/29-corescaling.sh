@@ -97,16 +97,37 @@ if ! echo "$BEFORE_CORE" | grep -q '"devcore":100'; then
   exit 1
 fi
 
+# The previous attempt failed silently: the ConfigMap edit was piped into
+# `kubectl apply` with stderr discarded, so a rejected patch looked exactly
+# like a successful one and the only symptom was the node not re-registering.
+# Show what is actually in there before touching it.
+say "what the device plugin is actually reading"
+note "scaling keys" "$(kubectl -n "$CM_NS" get cm "$CM" -o yaml 2>/dev/null | grep -oiE 'device(memory|core)scaling[^,}]*' | tr -d '' | paste -sd' ' - | head -c 160)"
+note "plugin args" "$(kubectl -n "$CM_NS" get ds "$DS" -o jsonpath='{.spec.template.spec.containers[*].args}' 2>/dev/null | head -c 200)"
+note "mounted cms" "$(kubectl -n "$CM_NS" get ds "$DS" -o jsonpath='{.spec.template.spec.volumes[*].configMap.name}' 2>/dev/null)"
+echo "  If the plugin reads a DIFFERENT ConfigMap or a --config-file flag,"
+echo "  set HAMI_CM to that name and re-run. Editing the wrong object is"
+echo "  exactly how the last attempt produced a silent no-op."
+
 say "applying deviceCoreScaling=$SCALE"
-kubectl -n "$CM_NS" get cm "$CM" -o yaml \
-  | sed -E "s/\"devicecorescaling\"[[:space:]]*:[[:space:]]*[0-9]+/\"devicecorescaling\": $SCALE/I" \
-  | kubectl apply -f - >/dev/null 2>&1
-# The key may be absent entirely at the default; insert it next to the split
-# count if the substitution above matched nothing.
-if ! kubectl -n "$CM_NS" get cm "$CM" -o yaml | grep -qi "devicecorescaling.*$SCALE"; then
-  kubectl -n "$CM_NS" get cm "$CM" -o yaml \
-    | sed -E "s/(\"devicesplitcount\"[[:space:]]*:[[:space:]]*[0-9]+,)/\1 \"devicecorescaling\": $SCALE,/I" \
-    | kubectl apply -f - >/dev/null 2>&1
+CUR=$(kubectl -n "$CM_NS" get cm "$CM" -o yaml)
+if echo "$CUR" | grep -qi '"devicecorescaling"'; then
+  NEWCM=$(echo "$CUR" | sed -E "s/\"devicecorescaling\"[[:space:]]*:[[:space:]]*[0-9.]+/\"devicecorescaling\": $SCALE/I")
+  HOW="replaced existing key"
+else
+  NEWCM=$(echo "$CUR" | sed -E "s/(\"devicesplitcount\"[[:space:]]*:[[:space:]]*[0-9]+,)/\1 \"devicecorescaling\": $SCALE,/I")
+  HOW="inserted new key"
+fi
+APPLY_OUT=$(echo "$NEWCM" | kubectl apply -f - 2>&1)
+note "$HOW" "$APPLY_OUT"
+# Prove the OBJECT changed before blaming the plugin for not reacting.
+if kubectl -n "$CM_NS" get cm "$CM" -o yaml | grep -qiE "devicecorescaling\"?[[:space:]]*:[[:space:]]*$SCALE"; then
+  ok "the ConfigMap now contains devicecorescaling=$SCALE"
+else
+  bad "the ConfigMap does NOT contain devicecorescaling=$SCALE."
+  bad "The edit did not take, so nothing below would mean anything."
+  note "current" "$(kubectl -n "$CM_NS" get cm "$CM" -o yaml | grep -oiE 'devicecorescaling[^,}]*' | head -1)"
+  revert; exit 1
 fi
 kubectl -n "$CM_NS" rollout restart ds "$DS" >/dev/null 2>&1
 kubectl -n "$CM_NS" rollout status ds "$DS" --timeout=180s >/dev/null 2>&1
