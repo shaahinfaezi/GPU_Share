@@ -97,6 +97,7 @@ FAULTS = {
     "vram-hog": "allocate raw VRAM outside HAMi's accounting",
     "vram-escape": "make a MANAGED tenant try to exceed its own gpumem grant",
     "tenant-fault": "trigger a REAL fatal GPU fault inside one tenant",
+    "global-fault": "trigger a GLOBAL-scope illegal address in one tenant",
 }
 
 # A genuine fatal GPU fault, not a daemon removal. An out-of-range index into a
@@ -117,6 +118,45 @@ FAULTS = {
 # tests the claim that matters most for multi-tenancy: that the fault is
 # reported to every client on the device "without indicating which client
 # generated the error".
+# A GLOBAL-scope fault, as opposed to tenant-fault's per-warp assert.
+#
+# NVIDIA's cuda-gdb table scopes each exception. CUDA_EXCEPTION_12, the
+# device-side assertion that `tenant-fault` raises, is "Per warp" -- the most
+# containable class there is, and it was contained on 5 of 6 arms. But
+# CUDA_EXCEPTION_10, an illegal out-of-bounds GLOBAL address, is scoped
+# "Global error", and the one published measurement (arXiv 2605.26461, L40 and
+# H100) finds every SM-class fault propagating to all MPS clients because the
+# SM global TRAP path carries no per-channel attribution.
+#
+# So the containment we measured is the easy case, and this probe is the hard
+# one. torch.as_strided does NOT bounds-check: it fabricates a view whose
+# extent runs far past the real allocation, and reading it dereferences
+# unmapped device memory. That produces "an illegal memory access was
+# encountered" rather than an assertion, needs no nvcc in the image, and is the
+# class NVIDIA documents as reaching every client on the device.
+CUDA_GLOBAL_FAULT_PROBE = r"""
+import json, torch
+out = {}
+try:
+    x = torch.zeros(16, device="cuda", dtype=torch.float32)
+    torch.cuda.synchronize()
+    # A view 16 MiB wide over a 64-byte allocation. No bounds check is applied.
+    y = torch.as_strided(x, (1 << 22,), (4,))
+    _ = y.sum().item()
+    torch.cuda.synchronize()
+    out["result"] = "NO FAULT -- the out-of-bounds read was not rejected"
+except Exception as exc:
+    out["result"] = "%s: %s" % (type(exc).__name__, str(exc)[:200])
+try:
+    torch.cuda.synchronize()
+    probe = torch.ones(4, device="cuda")
+    out["context_alive_after"] = bool(float(probe.sum().item()) == 4.0)
+except Exception as exc:
+    out["context_alive_after"] = False
+    out["sticky"] = "%s: %s" % (type(exc).__name__, str(exc)[:200])
+print("R2FAULT " + json.dumps(out))
+"""
+
 CUDA_FAULT_PROBE = r"""
 import json, torch
 out = {}
@@ -319,7 +359,7 @@ def inject(fault, ns, image, hold, ev, outdir, roles=()):
         rc, out = H.kubectl(["-n", ns, "delete", "pod"] + names +
                             ["--wait=false"], timeout=60)
         detail = {"rc": rc, "deleted": names, "out": out[-300:]}
-    elif fault == "tenant-fault":
+    elif fault in ("tenant-fault", "global-fault"):
         role = ESCAPE_ROLE[0]
         pods = H.pods_for(role, ns)
         if not pods:
@@ -718,7 +758,7 @@ def main():
 
     # Recovery: did the victim's neighbour come back at all?
     recovered = None
-    if a.fault in ("tenant-kill", "tenant-fault"):
+    if a.fault in ("tenant-kill", "tenant-fault", "global-fault"):
         ready2, _ = H.wait_ready(["llm2"], timeout=600, ev=ev)
         recovered = bool(ready2)
 
@@ -808,7 +848,7 @@ def main():
             print("  no victim requests failed")
     else:
         print("  no windows computed -- fault may not have fired")
-    if a.fault == "tenant-fault" and detail[0]:
+    if a.fault in ("tenant-fault", "global-fault") and detail[0]:
         dd = detail[0]
         pr = dd.get("probe") or {}
         print("\n  --- fatal GPU fault")

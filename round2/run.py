@@ -80,6 +80,7 @@ ROLES = {
     "llm2-only": ["llm2"], "vl-only": ["vl"], "embed-small-only": ["embed-small"],
     "llm-embed": ["llm", "embed"], "llm-llm": ["llm", "llm2"],
     "llm2-llm2": ["llm2a", "llm2b"],
+    "dense3": ["llm2", "embed-small", "embed"],
     "vl-rerank": ["vl", "rerank"],
     "dense4": ["llm2", "embed", "embed-small", "rerank"],
 }
@@ -269,6 +270,22 @@ TESTS = {
                     "four hours of continuous multiplexing. A tenant that "
                     "degrades at hour three is invisible to the rest of this "
                     "matrix."),
+    "T18": dict(scenario="dense3", rate=9.0, duration=300, source="sharegpt",
+                why="THREE TENANTS. Every co-tenancy result in this study is a "
+                    "PAIR -- the depth law, the fairness reversal and the "
+                    "overbook curve are all two-body results, and nothing says "
+                    "they extend to three. This is the largest structural gap "
+                    "in the matrix. WARNING: it may not run on this node. "
+                    "Three tenants need roughly 8.3 GiB of host RAM against "
+                    "~8.2 available, and T4 was already refused at four. If "
+                    "the host guard refuses this too, THAT IS THE RESULT and "
+                    "it should be reported as the density ceiling rather than "
+                    "worked around -- host memory, not VRAM, is what caps "
+                    "tenants per box. Prediction if it does run: the deepest "
+                    "tenant takes the largest share of the MPS gain and the "
+                    "shallowest is made worst-off, exactly as in the two-body "
+                    "tiers. A three-body run is the first chance for that to "
+                    "fail."),
     "T13": dict(scenario="llm2-llm2", rate=10.0, duration=240, source="sharegpt",
                 why="SYMMETRIC PAIR. Every co-tenancy tier in this study pairs "
                     "UNLIKE models, so 'does MPS create systematic winners and "

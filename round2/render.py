@@ -204,6 +204,7 @@ SCENARIOS = {
     "llm-embed":   ["llm", "embed"],
     "llm-llm":     ["llm", "llm2"],
     "llm2-llm2":   ["llm2a", "llm2b"],
+    "dense3":      ["llm2", "embed-small", "embed"],
     "vl-rerank":   ["vl", "rerank"],
     "dense4":      ["llm2", "embed", "embed-small", "rerank"],
 }
@@ -235,6 +236,8 @@ SCENARIO_QUOTAS = {
     # resident at a 3840 quota, so 2816 leaves it comfortable room.
     "vl-rerank": {"vl": 9216, "rerank": 2816},
     # four tenants: 4096 + 2816 + 2304 + 2816 = 12032, 97.9% of the card.
+    # three tenants: 3840 + 2304 + 2816 = 8960 MiB, 72.9% of the card.
+    "dense3": {"llm2": 3840, "embed-small": 2304, "embed": 2816},
     "dense4": {"llm2": 4096, "embed": 2816, "embed-small": 2304,
                "rerank": 2816},
 }

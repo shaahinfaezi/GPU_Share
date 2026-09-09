@@ -49,6 +49,8 @@ SCENARIOS = {
     # co-tenancy scenario pairs unlike models, which is why "does MPS
     # create winners and losers" was answerable only by argument.
     "llm2-llm2":   [("llm2a", 0.5, "chat"), ("llm2b", 0.5, "chat")],
+    "dense3":      [("llm2", 0.4, "chat"), ("embed-small", 0.3, "embed"),
+                    ("embed", 0.3, "embed")],
     "vl-rerank":   [("vl", 0.5, "chat"), ("rerank", 0.5, "rerank")],
     # Must match render.py's SCENARIOS exactly: a trace naming a service that
     # was never deployed fails at replay, after the deploy-and-warm cost.
