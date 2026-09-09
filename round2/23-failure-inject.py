@@ -394,26 +394,60 @@ def inject(fault, ns, image, hold, ev, outdir, roles=()):
         # and device 1 never rose above its normal tenant level -- the hog
         # never grabbed a byte, anywhere, and the run read as "HAMi contained
         # it". Wait for the pod to say so itself, and record what it said.
-        held, hog_log = None, ""
-        for _ in range(30):
+        # "pod created" is NOT evidence the hog allocated, and an EMPTY log
+        # is not evidence it failed -- the 20260909 run recorded rc=0 with
+        # hog_log_tail="" and we could not tell whether the pod was still
+        # pulling, had no GPU access, or had crashed. Poll long enough for a
+        # 29 GiB image to start, and capture the pod's own state either way.
+        held, hog_log, phase, cstate = None, "", "", ""
+        for _ in range(90):                      # up to ~180 s
             time.sleep(2)
             _rc, hog_log = H.kubectl(["logs", "r2-vram-hog", "-n", ns],
                                      timeout=30)
-            m = re.search(r"held\s+(\d+)\s*MiB", hog_log or "")
+            m = re.search(r"held" + chr(92) + "s+(" + chr(92) + "d+)" + chr(92) + "s*MiB", hog_log or "")
             if m:
                 held = int(m.group(1))
                 break
-            if "Error" in (hog_log or "") or "OutOfMemory" in (hog_log or ""):
+            if "stopped at" in (hog_log or "") or "Error" in (hog_log or ""):
                 break
+            _rc, phase = H.kubectl(
+                ["get", "pod", "r2-vram-hog", "-n", ns,
+                 "-o", "jsonpath={.status.phase}"], timeout=30)
+            if (phase or "").strip() in ("Failed", "Succeeded"):
+                break
+
+        # Whatever happened, record what the cluster says about it.
+        _rc, cstate = H.kubectl(
+            ["get", "pod", "r2-vram-hog", "-n", ns, "-o",
+             "jsonpath={.status.containerStatuses[0].state}"], timeout=30)
+        _rc, hog_events = H.kubectl(
+            ["get", "events", "-n", ns, "--field-selector",
+             "involvedObject.name=r2-vram-hog",
+             "-o", "custom-columns=REASON:.reason,MSG:.message",
+             "--no-headers"], timeout=30)
+
         detail = {"rc": rc, "out": out[-300:], "manifest": path,
                   "hog_gpu_uuid": detail_uuid,
                   "hog_held_mib": held,
+                  "hog_phase": (phase or "").strip(),
+                  "hog_container_state": (cstate or "")[:400],
+                  "hog_events": (hog_events or "")[-600:],
                   "hog_log_tail": (hog_log or "")[-500:]}
         if not held:
             print("\n  !!! vram-hog NEVER ALLOCATED. This run measures "
                   "NOTHING -- a victim that does not fail proves containment "
-                  "only if something was actually held. Log tail:\n%s"
-                  % (hog_log or "")[-500:])
+                  "only if something was actually held.")
+            print("      pod phase      : %s" % ((phase or "?").strip()))
+            print("      container state: %s" % (cstate or "?")[:300])
+            print("      events         : %s" % (hog_events or "none")[-400:])
+            print("      log tail       : %r" % (hog_log or "")[-300:])
+            print("      If the phase is Pending or the state is waiting on "
+                  "ContainerCreating, the image is still unpacking -- raise the "
+                  "poll. If the log shows a CUDA error with 0 MiB held, the "
+                  "container has no GPU: this pod deliberately requests no "
+                  "nvidia.com/* resource, so it depends on the runtime "
+                  "honouring NVIDIA_VISIBLE_DEVICES for unprivileged pods, "
+                  "which many installs disable on purpose.")
     else:
         raise SystemExit("unknown fault %s" % fault)
     ev.mark("fault_injected", fault=fault, at=t, **{
