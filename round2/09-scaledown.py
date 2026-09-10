@@ -296,9 +296,11 @@ def main():
         # first attempt ran four arms to completion with 0/885 successful
         # requests because readiness was taken as proof of service.
         kinds = {r: MODELS[r]["kind"] for r in incumbents if r in MODELS}
-        smoke = H.smoke_test(eps, models, kinds, ev=ev)
+        smoke_ok, smoke = H.smoke_test(eps, models, kinds, ev=ev)
         rec["smoke_incumbent"] = smoke
         bad = [r for r, v in smoke.items() if "ok" not in str(v).lower()]
+        if not smoke_ok and not bad:
+            bad = sorted(smoke)
         if bad:
             raise RuntimeError("incumbent smoke test failed for %s: %s"
                                % (bad, json.dumps(smoke)))
@@ -385,10 +387,9 @@ def main():
                 aeps = H.endpoints([a.arrival], ev=ev)
                 amodels = {r: H.served_model(u) or r for r, u in aeps.items()}
                 akinds = {a.arrival: MODELS.get(a.arrival, {}).get("kind", "chat")}
-                asmoke = H.smoke_test(aeps, amodels, akinds, ev=ev)
+                asmoke_ok, asmoke = H.smoke_test(aeps, amodels, akinds, ev=ev)
                 rec["smoke_arrival"] = asmoke
-                marks["t_serving"] = ev.mark("arrival_serving",
-                                             ok="ok" in str(asmoke).lower())
+                marks["t_serving"] = ev.mark("arrival_serving", ok=asmoke_ok)
                 # And the MPS state must still hold with the new tenant set.
                 survivors = [r for r in incumbents if r != evict] + [a.arrival]
                 m2_ok, m2 = H.assert_mps_matches_arm(a.arm, survivors, ev=ev)
