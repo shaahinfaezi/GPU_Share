@@ -337,7 +337,14 @@ spec:
         - name: NVIDIA_DRIVER_CAPABILITIES
           value: compute,utility
       resources:
-        limits: {cpu: "2", memory: 8Gi}
+        # requests, not just limits. Kubernetes defaults requests to limits,
+        # so `memory: 8Gi` alone asked for eight gigabytes of HOST RAM on a
+        # node with ~7.5 GiB free and the pod sat Pending with
+        # "Insufficient memory" -- three runs in a row that measured nothing.
+        # The hog wants VRAM; its host footprint is a Python and a CUDA
+        # context, which the rest of this study measures at about 3 GiB.
+        requests: {cpu: "250m", memory: 512Mi}
+        limits: {cpu: "2", memory: 3Gi}
 """
 
 
@@ -366,7 +373,9 @@ def inject(fault, ns, image, hold, ev, outdir, roles=()):
             raise SystemExit("no pod for role %s" % role)
         pod = pods[0]["metadata"]["name"]
         before = H.gpu_used_mib()
-        rc, out = _exec_python(pod, ns, CUDA_FAULT_PROBE)
+        probe_src = (CUDA_GLOBAL_FAULT_PROBE if fault == "global-fault"
+                     else CUDA_FAULT_PROBE)
+        rc, out = _exec_python(pod, ns, probe_src)
         probe = {}
         for line in out.splitlines():
             if line.startswith("R2FAULT "):
@@ -474,6 +483,11 @@ def inject(fault, ns, image, hold, ev, outdir, roles=()):
                   "hog_events": (hog_events or "")[-600:],
                   "hog_log_tail": (hog_log or "")[-500:]}
         if not held:
+            if str(detail.get("hog_phase")) == "Pending":
+                print("\n  !!! vram-hog was NEVER SCHEDULED (phase=Pending). "
+                      "Check hog_events: if it says Insufficient memory the "
+                      "pod's own resource requests are too large for the "
+                      "node, and this run tested nothing about HAMi.")
             print("\n  !!! vram-hog NEVER ALLOCATED. This run measures "
                   "NOTHING -- a victim that does not fail proves containment "
                   "only if something was actually held.")

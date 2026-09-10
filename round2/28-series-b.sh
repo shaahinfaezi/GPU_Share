@@ -37,15 +37,29 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 SERIES="$(pwd)/logs/seriesB-${STAMP}.log"
 ITEMS="$*"
 
-# Rough estimate so the operator knows whether to wait or sleep.
+# Rough estimate so the operator knows whether to wait or sleep, and a
+# per-stage wall-clock cap so one hung stage cannot eat the rest of the night.
+# T12 is a four-hour soak, so the cap has to be per stage rather than global.
 MINS=0
 for I in $ITEMS; do
   case "$I" in
     fault:*) MINS=$((MINS + 18)) ;;   # two arms at ~9 min
     T7*)     MINS=$((MINS + 25)) ;;
+    T12*)    MINS=$((MINS + 290)) ;;  # 4 h replay + init + teardown
+    T9*)     MINS=$((MINS + 55)) ;;   # two arms, init-dominated
     *)       MINS=$((MINS + 30)) ;;
   esac
 done
+
+stage_cap() {                       # seconds, generous: a cap that fires is a bug
+  case "$1" in
+    T12*)    echo 23400 ;;          # 6.5 h, matches T12 and T12@arms=...
+    T9*)     echo 5400 ;;           # 1.5 h
+    fault:*) echo 3600 ;;           # 1 h for both arms
+    *)       echo 4200 ;;           # 70 min
+  esac
+}
+FAILED=""; DONE_OK=""
 
 {
   echo "=== series B: ${ITEMS}"
@@ -85,12 +99,25 @@ done
         # an MPS property or just a Kubernetes one -- vram-escape was contained
         # on BOTH arms, and without the control that would have read as an MPS
         # success rather than as HAMi doing its job.
+        RC=0
         for ARM in hami hami-mps; do
           echo "--- ${F} arm=${ARM} $(date -Is)"
-          python3 -u 23-failure-inject.py --fault "$F" --arm "$ARM" >> "$LOG" 2>&1
-          echo "--- ${F} arm=${ARM} rc=$? $(date -Is)"
+          timeout -k 60 "$(stage_cap "$I")" \
+            python3 -u 23-failure-inject.py --fault "$F" --arm "$ARM" >> "$LOG" 2>&1
+          ARC=$?
+          echo "--- ${F} arm=${ARM} rc=${ARC} $(date -Is)"
+          [ "$ARC" -ne 0 ] && RC=$ARC
         done
-        RC=0
+        ;;
+      *@arms=*)
+        # T12 runs four arms by default and each one is a four-hour soak.
+        # Unconstrained that is a sixteen-hour stage, which is how an
+        # overnight batch turns into a lost day. `T12@arms=hami-mps` runs the
+        # single arm the soak question is actually about.
+        T="${I%@arms=*}"; A="${I#*@arms=}"
+        echo "--- ${T} with --arms ${A//,/ }"
+        timeout -k 60 "$(stage_cap "$I")"           python3 -u run.py --test "$T" --arms ${A//,/ } > "$LOG" 2>&1
+        RC=$?
         ;;
       *@mps=*)
         T="${I%@mps=*}"; P="${I#*@mps=}"
@@ -101,11 +128,25 @@ done
           echo "    SKIPPED : could not expand roles for ${T}"; continue
         fi
         echo "--- ${T} with --mps-percent ${ROLES}"
-        python3 -u run.py --test "$T" --mps-percent "$ROLES" > "$LOG" 2>&1
+        timeout -k 60 "$(stage_cap "$I")" \
+          python3 -u run.py --test "$T" --mps-percent "$ROLES" > "$LOG" 2>&1
         RC=$?
         ;;
+      T9*)
+        # 09-scaledown.py is its own driver, one arm per invocation.
+        RC=0
+        for ARM in hami hami-mps; do
+          echo "--- T9 arm=${ARM} $(date -Is)"
+          timeout -k 60 "$(stage_cap "$I")" \
+            python3 -u 09-scaledown.py --arm "$ARM" >> "$LOG" 2>&1
+          ARC=$?
+          echo "--- T9 arm=${ARM} rc=${ARC} $(date -Is)"
+          [ "$ARC" -ne 0 ] && RC=$ARC
+        done
+        ;;
       *)
-        python3 -u run.py --test "$I" > "$LOG" 2>&1
+        timeout -k 60 "$(stage_cap "$I")" \
+          python3 -u run.py --test "$I" > "$LOG" 2>&1
         RC=$?
         ;;
     esac
@@ -127,12 +168,27 @@ done
       kubectl delete llminferenceservice --all -n "${R2_NS:-llm-demo}" --wait=true --timeout=180s >/dev/null 2>&1
       sleep 20
     fi
+
+    if [ "${RC}" -eq 124 ] || [ "${RC}" -eq 137 ]; then
+      echo "    TIMEOUT : stage exceeded $(stage_cap "$I")s and was killed"
+    fi
+    if [ "${RC}" -eq 0 ]; then DONE_OK="${DONE_OK} ${I}"; else FAILED="${FAILED} ${I}(rc=${RC})"; fi
+
+    # Leave the daemon in the state 13-validate.py expects, so a stage that
+    # died mid-arm cannot hand the next one a half-configured node.
+    ./22-mps-check.sh >/dev/null 2>&1 || echo "    WARNING : MPS daemon toggle unhealthy after ${I}"
   done
   echo
   echo "=== series done $(date -Is)"
+  echo "=== ok    :${DONE_OK:- none}"
+  echo "=== failed:${FAILED:- none}"
 } > "$SERIES" 2>&1 &
 
 PID=$!
+# Detach from the controlling terminal. Every stage so far has survived a
+# disconnect, but a twelve-hour run should not rest on the shell choosing not
+# to send SIGHUP.
+disown "$PID" 2>/dev/null || true
 ln -sfn "$SERIES" logs/latest-seriesB.log
 sleep 3
 echo
