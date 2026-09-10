@@ -10,6 +10,78 @@ single SM busy. FINDINGS 7.2.
 
 ---
 
+## Status at a glance
+
+Updated 2026-09-10, after the 09-09 and 09-10 batches.
+
+**DONE** measured, reported, and the number is quotable ·
+**VOID** the run completed and measured nothing — the most dangerous state,
+because the logs look clean ·
+**REFUSED** the node would not run it, and that refusal is itself the result ·
+**READY** specified, script exists and works, simply unrun ·
+**PROPOSED** argued for below, no runnable definition yet
+
+| tier | asks | state | n | where it stands |
+|---|---|---|---|---|
+| **T1** `llm-embed` @6 | decoder beside a pooling model | DONE | 1 | null, +1.31% — below saturation |
+| **T2** `llm-llm` @4/5/6 | two decoders, swept | DONE | 3 rates, 4 repeats at @6 | −18.8 / −23.3 / −26.7% pooled time |
+| **T3** `vl-rerank` @4 | two compute-bound neighbours | DONE | 1 | null, +0.42% — killed the power hypothesis |
+| **T4** `dense4` @8 | four tenants | REFUSED | — | host RAM. Produced the ~3 GiB/tenant coefficient, the study's most reusable number |
+| **T5** `llm-llm` @10 | past the knee | DONE | 2 | +5.94 / +6.03% throughput, −78% pooled time |
+| **T6** `llm-llm` @6 azure | do production token lengths change it | READY | 0 | predicted to reproduce; specified in full below |
+| **T7** `llm-only` @6 | every compute knob, one tenant | DONE | 7 | the only tier where either limiter binds. `force` replicated to 0.25% |
+| **T8** QoS ceiling on T11's mix | does an MPS cap protect a victim | DONE | 1 | null with a known cause — nobody wanted >50% of the SMs |
+| **T9** scale-down | eviction and admission | READY | 0 | crash fixed 2026-09-10; runnable for the first time |
+| **T10** `mps-kill` | losing the daemon under clients | DONE | 2 + control | severe: 56% / 69% failed. Daemon back in 60.9 s **with zero clients** |
+| **T10** `tenant-fault` | a per-warp device-side assert | DONE | 7 | contained on 6 of 7; the one exception is a host OOM, not propagation |
+| **T10** `global-fault` | a **global-scope** illegal address | **VOID** | 0 | dispatched the wrong probe — both 09-10 runs raised the per-warp assert. Fixed; unrun |
+| **T10** `vram-hog` | can an unmanaged pod take VRAM | **VOID** | 0 | pod requested 8 GiB host RAM and never scheduled. Fixed; unrun |
+| **T10** `vram-escape` | can a tenant exceed its grant | **VOID** | 0 | the tenant's own vLLM had eaten the grant, so the cap was never pushed. Needs a probe change, not a re-run |
+| **T11** noisy neighbour @12 | can a hammering tenant hurt a quiet one | DONE | 1 | yes, 2.46× — and MPS is the first isolation win in the study |
+| **T12** soak, 4 h | does anything drift | READY | 0 | required for sign-off, unlikely to change a conclusion |
+| **T13** `llm2-llm2` @10 | identical tenants | DONE | 1 | no winner, spread 1.019 / 1.031 — the fairness control |
+| **T14** raw prompts @10 | is the effect an artifact of the trace generator | DONE | 2 at each of Σ200/150/100 | no: **bigger** with real text. The study's best tier |
+| **T15** `llm2-llm2` @20 | a saturated symmetric pair | DONE, **failed its job** | 1 | still 99.5% of solo sum. A saturated symmetric pair is unrun |
+| **T16** `gpucores 25/25`, `default` | does the quota bind under contention | DONE | 2 | no: 429.30 vs 429.27. Agreement 0.007% |
+| **T18** `dense3` @9 | three tenants | REFUSED | — | guard: 9,524 MiB needed, 7,559 available. **This is the three-tenant answer** |
+| **T19–T24** | see "Tiers worth defining" | PROPOSED | — | mechanisms argued below, no runnable definitions |
+
+### What has no answer at all
+
+Four questions, and only these four, are still completely open:
+
+1. **Does a global-scope GPU fault propagate under MPS?** The only fault class
+   tested is the most containable one in NVIDIA's taxonomy. Until
+   `global-fault` runs with the corrected probe, **this study does not support
+   a fault-isolation claim** — say so in any summary.
+2. **Can an unmanaged pod reach the card behind HAMi?** Three attempts, three
+   pods that never started.
+3. **Three or more tenants.** Every co-tenancy result here is two-body. The
+   depth law, the fairness reversal and the overbook curve are all pair
+   results and nothing says they extend.
+4. **Anything past 300 seconds.** No soak has run.
+
+### Settled since the last revision (2026-09-09 → 09-10)
+
+- **The GPU pin works through KServe.** `spec.annotations` propagates in
+  KServe 0.17 and HAMi honours it: two T2 runs pinned to GPU 0 placed both
+  tenants there, confirmed in `placement.devices_in_use` and in the pod's own
+  annotation. Four unclamped `hami` arms across both cards span **0.37%** —
+  the pin is free and the two cards are interchangeable. The long-standing
+  "you cannot pin through KServe" entry is closed.
+- **The overbook curve is n=2 at every point**: Σ200% +8.72/+8.52,
+  Σ150% +3.65/+3.61, Σ100% −6.91/−7.15. The fairness collapse replicates too
+  (15.20 → 15.27).
+- **Both `force` results replicated.** T7 548.42 → 547.04 (0.25%), and MPS
+  erases it identically (834.51 → 834.96). Item 4 on the run-next list is
+  closed.
+- **`mps-kill` has a control.** The `hami` arm lost **zero** requests in all
+  three windows, so the damage is MPS-specific rather than a Kubernetes
+  artifact — and the daemon's own recovery is now measured at 60.9 s, with
+  no clients attached when it returns.
+
+---
+
 ## Done
 
 ### T1 — `llm-embed` @ 6 req/s · 140.4% duty
@@ -109,7 +181,12 @@ This tier also corrected two published claims: "HAMi's limiter is free" (that
 run was `gpucores: 100` — nothing to limit) and "`default` and `force` are
 identical in code" (they are plainly not identical in behaviour). FINDINGS 8.2.
 
-### T10 — failure injection · **5 faults, 3 of them with data**
+### T10 — failure injection · **5 faults, 2 with data, 3 VOID**
+
+Revised 2026-09-10. `mps-kill` now has a plain-HAMi control and a second
+replicate; `tenant-fault` is at n=7. The other three faults have never
+measured anything, and each failed in a different and initially invisible
+way — the reason this file now opens with a status table.
 Not a tier in `run.py`; it lives in `23-failure-inject.py`.
 
 - **`mps-kill` — the serious one.** RECOMPUTED 2026-09-06 after a defect in
@@ -512,9 +589,13 @@ per invocation, so a comparison is two runs.
 
 ## What to run next, ranked by decisiveness
 
-Rewritten 2026-09-07. Everything that was on the previous list has now RUN —
-T8, T13, T14 (x2), T15, T16, T7 at MPS 50 and 25, `tenant-fault`, `vram-hog`.
-What follows is what those runs opened, not what they closed.
+Rewritten 2026-09-07, revised 2026-09-10. Everything on the 09-07 list has
+run. The 09-09/09-10 batches then closed item 4 (both `force` results
+replicated), gave `mps-kill` a control and a second replicate, put the whole
+overbook curve at n=2, and proved the GPU pin works through KServe. They also
+turned up two probes that had been reporting clean nulls while testing
+nothing — see "Status at a glance". What follows is what all of that opened,
+not what it closed.
 
 Criterion is unchanged: how much can this run change a conclusion that is
 already written down?
@@ -531,7 +612,7 @@ startup, with `max_retries=0` — deliberately, because a retry would silently
 repair exactly the failures this harness exists to measure. Any tier driven
 past ~500 in flight is now safe to run.
 
-### 1. `tenant-fault` on the `hami-mps` arm — the highest-value run outstanding
+### 1. ~~`tenant-fault` on the `hami-mps` arm~~ — **DONE, n=7 across both arms**
 ~9 minutes, no new code, and it decides a recommendation.
 
 The `hami` arm (`T10-tenant-fault-hami-20260906-185601`, MPS daemon DOWN)
