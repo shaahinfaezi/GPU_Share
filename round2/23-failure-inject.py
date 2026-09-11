@@ -135,18 +135,60 @@ FAULTS = {
 # encountered" rather than an assertion, needs no nvcc in the image, and is the
 # class NVIDIA documents as reaching every client on the device.
 CUDA_GLOBAL_FAULT_PROBE = r"""
-import json, torch
+import ctypes, json, torch
 out = {}
+
+# Establish a real CUDA context through torch, then leave torch alone. Every
+# out-of-bounds route reachable from the tensor API is bounds-checked
+# somewhere -- indexing hits IndexKernel's device-side assert (per-warp,
+# CUDA_EXCEPTION_12, which is what tenant-fault already tests), and
+# as_strided is rejected on the host before any kernel launches.
+torch.zeros(1, device="cuda")
+torch.cuda.synchronize()
+
+# A store to an address this process never mapped. The driver JIT-compiles
+# PTX, so no nvcc is needed in the serving image.
+PTX = b"\n".join([
+    b".version 6.0",
+    b".target sm_52",
+    b".address_size 64",
+    b".visible .entry wild(.param .u64 dst)",
+    b"{",
+    b"    .reg .u64 %rd<2>;",
+    b"    .reg .u32 %r<2>;",
+    b"    ld.param.u64 %rd1, [dst];",
+    b"    mov.u32 %r1, 1;",
+    b"    st.global.u32 [%rd1], %r1;",
+    b"    ret;",
+    b"}",
+    b"",
+])
+
 try:
-    x = torch.zeros(16, device="cuda", dtype=torch.float32)
+    cuda = ctypes.CDLL("libcuda.so.1")
+    mod = ctypes.c_void_p()
+    fn = ctypes.c_void_p()
+    rc = cuda.cuModuleLoadData(ctypes.byref(mod), PTX)
+    if rc != 0:
+        raise RuntimeError("cuModuleLoadData rc=%d" % rc)
+    rc = cuda.cuModuleGetFunction(ctypes.byref(fn), mod, b"wild")
+    if rc != 0:
+        raise RuntimeError("cuModuleGetFunction rc=%d" % rc)
+
+    bad = ctypes.c_void_p(0x00007F0000000000)      # never mapped
+    arg = (ctypes.c_void_p * 1)(ctypes.cast(ctypes.byref(bad),
+                                            ctypes.c_void_p))
+    rc = cuda.cuLaunchKernel(fn, 1, 1, 1, 1, 1, 1, 0, None, arg, None)
+    out["launch_rc"] = rc
     torch.cuda.synchronize()
-    # A view 16 MiB wide over a 64-byte allocation. No bounds check is applied.
-    y = torch.as_strided(x, (1 << 22,), (4,))
-    _ = y.sum().item()
-    torch.cuda.synchronize()
-    out["result"] = "NO FAULT -- the out-of-bounds read was not rejected"
+    out["result"] = "NO FAULT -- the illegal store was not rejected"
 except Exception as exc:
     out["result"] = "%s: %s" % (type(exc).__name__, str(exc)[:200])
+
+# The question this probe exists to answer: is the context dead afterwards?
+# A global-scope fault should poison it; a per-warp assert also does, but a
+# host-side rejection leaves it alive, which is how the previous two attempts
+# were caught.
 try:
     torch.cuda.synchronize()
     probe = torch.ones(4, device="cuda")
@@ -449,20 +491,39 @@ def inject(fault, ns, image, hold, ev, outdir, roles=()):
         # pulling, had no GPU access, or had crashed. Poll long enough for a
         # 29 GiB image to start, and capture the pod's own state either way.
         held, hog_log, phase, cstate = None, "", "", ""
+        # Order matters here. An earlier version asked for logs FIRST and
+        # broke out of the loop on the substring "Error" -- but a pod still
+        # in ContainerCreating makes `kubectl logs` answer with exactly that
+        # ("Error from server (BadRequest): container 'hog' in pod ... is
+        # waiting to start"), so the loop exited two seconds in, having never
+        # read the phase, and the run recorded hog_phase="" with
+        # hog_held_mib=null while the container was in fact about to start.
+        # Read the pod's state first; only read logs once it is out of
+        # "waiting"; only treat "Error" as terminal when the hog itself said
+        # it.
         for _ in range(90):                      # up to ~180 s
             time.sleep(2)
-            _rc, hog_log = H.kubectl(["logs", "r2-vram-hog", "-n", ns],
-                                     timeout=30)
-            m = re.search(r"held" + chr(92) + "s+(" + chr(92) + "d+)" + chr(92) + "s*MiB", hog_log or "")
-            if m:
-                held = int(m.group(1))
-                break
-            if "stopped at" in (hog_log or "") or "Error" in (hog_log or ""):
-                break
             _rc, phase = H.kubectl(
                 ["get", "pod", "r2-vram-hog", "-n", ns,
                  "-o", "jsonpath={.status.phase}"], timeout=30)
-            if (phase or "").strip() in ("Failed", "Succeeded"):
+            phase = (phase or "").strip()
+            _rc, cstate = H.kubectl(
+                ["get", "pod", "r2-vram-hog", "-n", ns, "-o",
+                 "jsonpath={.status.containerStatuses[0].state}"], timeout=30)
+            cstate = cstate or ""
+            if phase == "Pending" and "waiting" in cstate:
+                continue                          # still pulling or creating
+            _rc, hog_log = H.kubectl(["logs", "r2-vram-hog", "-n", ns],
+                                     timeout=30)
+            hog_log = hog_log or ""
+            m = re.search(r"held" + chr(92) + "s+(" + chr(92) + "d+)" + chr(92) + "s*MiB", hog_log)
+            if m:
+                held = int(m.group(1))
+                break
+            started = ("running" in cstate) or ("terminated" in cstate)
+            if started and ("stopped at" in hog_log or "Error" in hog_log):
+                break
+            if phase in ("Failed", "Succeeded"):
                 break
 
         # Whatever happened, record what the cluster says about it.

@@ -838,8 +838,10 @@ close the scheduling question properly.
   shippable: it needs the control daemon driven by hand per node, is exposed by
   neither HAMi nor KServe nor the device plugin, and nothing would reconcile it
   with `nvidia.com/gpucores`.
-- **CUDA green contexts.** Proposed in HAMi-core#179, not implemented in 2.9.0
-  — not testable here at all.
+- **CUDA green contexts.** Proposed in HAMi-core#179 and **closed as
+  unworkable in July 2026**: green contexts are shareable only within a single
+  process, so they cannot enforce SM limits across containers. Not a gap that
+  a later HAMi release is expected to close.
 
 ---
 
@@ -881,13 +883,46 @@ mechanism, scope and vocabulary.
 - HAMi-core, `src/multiprocess/multiprocess_memory_limit.c` and the
   `rate_limiter()` path — the mechanism behind "`default` never limits, only
   `force` does", including `get_utilization_switch()` and `set_recent_kernel`.
-- **Issue #1864**, filed against v2.9.0 — an independent report that
-  `gpucores` does not limit under the default policy. Our measurement and this
-  issue were arrived at separately and agree.
-- HAMi-core **#179** — the green-contexts proposal. Not implemented in 2.9.0,
-  which is why it is untestable here.
-- RiseUnion's published isolation test — a third independent observation of the
-  same `default`-policy behaviour.
+- ~~Issue #1864~~ — **WITHDRAWN 2026-09-11.** It was cited here as an
+  independent report that `gpucores` does not limit under the default policy.
+  It is not that. #1864 is a metrics bug — the
+  `hami_container_device_utilization_ratio` series is emitted as 0 unless
+  `GPU_CORE_UTILIZATION_POLICY=force` and `0 < CUDA_DEVICE_SM_LIMIT < 100` — a
+  maintainer disputed the reporter's diagnosis in-thread, and it was **closed
+  as fixed** on 2026-05-20. It cannot support a standing claim about v2.9.0
+  behaviour. A search of all 73 HAMi issues mentioning `gpucores` and all 11
+  mentioning `GPU_CORE_UTILIZATION_POLICY` found **no issue stating what was
+  attributed to this one**. The nearest neighbours (#332, #1445) are not
+  matches either.
+  <https://github.com/Project-HAMi/HAMi/issues/1864>
+- HAMi-core **Issue #179**, *feat: SM Limiting using CUDA Green Contexts*
+  (opened 2026-04-22, **closed 2026-07-27**) — and it was closed as
+  **unworkable**, not merely unimplemented, which is a stronger fact than the
+  one previously recorded here. A maintainer tested green contexts and found
+  they "can only be shared among multiple contexts **in the same process**", so
+  a green context in one process cannot run simultaneously with one in another:
+  *"the green context approach cannot enforce SM limits across processes, which
+  is required for container-level GPU isolation."* That is a structural reason
+  the approach cannot replace the token limiter, not a scheduling gap.
+  <https://github.com/Project-HAMi/HAMi-core/issues/179>
+- RiseUnion, *Open Source vGPU Solution HAMi: Core & Memory Isolation Test*
+  (blog, 2025-01-01) — **use with two corrections.** It is a commercial
+  GPU-virtualisation vendor republishing a test by the "Exploring Cloud Native"
+  author (lixd), credited on the page itself, so it is **not** an independent
+  observation. And it was run under `force` on **v2.3.13**, where limiting
+  **works** — at 30% cores a step takes ~0.6 s against ~0.3 s at 60%. What it
+  does support is one narrower sentence, which is worth having: *"The default
+  limitation policy won't restrict computing power when only one Pod is using
+  that GPU."*
+  <https://www.theriseunion.com/en/blog/HAMi-Isolation-Test.html>
+
+- **What actually supports "`default` does not limit", now that those two are
+  gone:** our own measurements (T7 at `gpucores 50`, T16 at `gpucores 25/25`
+  under contention) and HAMi's own documentation, which promises enforcement
+  only for `force` — *"'force' means the container will always limit the core
+  utilization below 'nvidia.com/gpucores'"* — and describes `default` as no
+  more than "Default utilization policy".
+  <https://project-hami.io/docs/userguide/configure>
 
 **vLLM and KServe**
 
@@ -895,10 +930,17 @@ mechanism, scope and vocabulary.
   context and the graph pool. This is why `resident = util × quota + outside`
   and why the safe test is `util ≤ 1 − outside/quota`. Measured `outside`:
   664 MiB (1.5B), 448 MiB (7B AWQ).
-- **vllm#27984** and `vllm/v1/engine/core.py` — `swap_space` is dead code in
-  vLLM V1; `num_cpu_blocks` is hard-coded to zero and V1 preempts by
-  RECOMPUTE, not SWAP. This is why the RAM-offloading question is closed with
-  a negative result rather than a tier.
+- **vllm#27984**, *"[Bug]: `swap_space` parameter is unused and useless"*
+  (2025-11-03, closed) — `swap_space` is dead code in vLLM V1:
+  `num_cpu_blocks` "is hard coded to zero at `vllm/v1/engine/core.py:252` and
+  always has been according to the git history." This is why the
+  RAM-offloading question is closed with a negative result rather than a tier.
+  <https://github.com/vllm-project/vllm/issues/27984>
+- The **RECOMPUTE-not-SWAP** half of that claim is **not in #27984** and needs
+  its own citation: vLLM's own tuning documentation — *"In vLLM V1, the default
+  preemption mode is `RECOMPUTE` rather than `SWAP`, as recomputation has lower
+  overhead in the V1 architecture."*
+  <https://docs.vllm.ai/en/stable/configuration/optimization/>
 - `vllm:num_requests_running` — the production metric that corresponds to the
   in-flight depth the MPS depth law keys on.
 - KServe `LLMInferenceService`: `spec.template` is a bare `PodSpec` with no
@@ -919,12 +961,42 @@ mechanism, scope and vocabulary.
   because the SM global TRAP path carries no per-channel attribution.
   Device-side assert is not among their five, so it does not contradict our
   containment result — it bounds what that result covers.
-- Published co-location work on resource-profile complementarity: three
-  independent systems, keying on three different signals, converge on the same
-  rule — co-location gain depends on the tenants' resource profiles being
-  complementary, not on how busy the device is. Memory-bound pairs can make
-  **both** tenants worse. This is what T1 and T3's nulls look like from the
+- **Orion** — Strati, F., Ma, X., Klimovic, A. (2024). *Orion:
+  Interference-aware, Fine-grained GPU Sharing for ML Applications.* EuroSys
+  '24, 1075–1092. DOI 10.1145/3627703.3629578. This is the citation for
+  **occupancy being the wrong predictor**, and it says so almost directly:
+  collocating two memory-bound kernels gives only a small speedup —
+  *"Despite each kernel only consuming 40% of the GPU's SMs, their
+  memory-intensive nature causes significant interference"* — and *"spatial
+  collocation is most effective for kernels with opposite compute vs. memory
+  intensity."* This is what T1's and T3's nulls look like from the
   literature's side.
+  <https://dl.acm.org/doi/10.1145/3627703.3629578>
+
+- **CORRECTED 2026-09-11.** An earlier version of this entry claimed published
+  work shows memory-bound pairs making **both** tenants worse. **Orion measures
+  the opposite.** Its Table 2 (V100, batch 32, collocated vs sequential) gives
+  the memory-bound pair BN2d–BN2d a **1.08× speedup**, the complementary pair
+  Conv2d–BN2d **1.41×**, and the **compute**-bound pair Conv2d–Conv2d
+  **0.98×** — so the marginally net-negative pairing is the compute-bound one,
+  by about 2%, not the memory-bound one. The complementarity claim stands; the
+  "both worse" claim does not and has been removed.
+
+- **MuxServe** — Duan, J. et al. (2024). *MuxServe: Flexible Spatial-Temporal
+  Multiplexing for Multiple LLM Serving.* ICML 2024, PMLR 235:11905–11917
+  (arXiv:2404.02015). Supports the complementarity half through prefill
+  (compute-heavy) versus decode (compute-underutilising) phase separation,
+  enforced with MPS SM partitioning. It reports mild interference costs, not
+  mutual degradation.
+  <https://proceedings.mlr.press/v235/duan24a.html>
+
+- **Prism** — Yu, S. et al. (2026). *Prism: Cost-Efficient Multi-LLM Serving
+  via GPU Memory Ballooning.* USENIX OSDI '26 (arXiv:2505.04021). Cited only
+  for memory-demand complementarity, which is what it actually studies: it
+  explicitly sets compute sharing aside as "already well studied" and centres
+  on memory. It is **not** a third independent observation of the
+  compute-versus-bandwidth rule, and is no longer presented as one.
+  <https://www.usenix.org/system/files/osdi26-yu-shan.pdf>
 - KV-cache and weight VRAM estimation follows the standard transformer
   formulas: weights = parameters × bytes-per-parameter (0.5 for 4-bit AWQ),
   KV = 2 × layers × kv_heads × head_dim × bytes × sequence × batch. Model
