@@ -203,6 +203,29 @@ TESTS = {
                    "particular output-length spread? T2's gain was flat across "
                    "output-length buckets (-38.0% at <=32 tokens to -45.0% "
                    "above 512), which predicts it survives."),
+    "T21": dict(scenario="llm2-llm2", rate=40.0, duration=240, source="sharegpt",
+                why="A SYMMETRIC PAIR THAT ACTUALLY SATURATES. T13 at 10 req/s "
+                    "and T15 at 20 req/s both answered the FAIRNESS question -- "
+                    "degradation spread 1.006 to 1.031, so MPS creates no winner "
+                    "when in-flight depth is equal -- and neither answered the "
+                    "CAPACITY question, because both stayed above 99.5% of their "
+                    "solo-sum throughput. T15 was commissioned to saturate and "
+                    "failed: doubling the rate roughly doubled delivered "
+                    "throughput (1,307 -> 2,589 tok/s), which is what "
+                    "not-yet-saturated looks like. "
+                    "So double it again. Two Qwen2.5-1.5B-AWQ instances have "
+                    "delivered 1,327 tok/s each; 40 req/s demands far more than "
+                    "the card can serve, which is the only way to learn whether "
+                    "the MPS throughput gain measured on UNLIKE pairs (T5 +6.4%, "
+                    "T14 +7.6%) also appears when the tenants are identical. "
+                    "Registered prediction: it does, and at a similar magnitude, "
+                    "because the gain comes from removing context-switch cost "
+                    "rather than from any asymmetry between the tenants. If it "
+                    "does NOT appear, then every throughput number in this study "
+                    "depends on the pair being unlike, which would be a "
+                    "significant and previously unsuspected caveat. "
+                    "Watch the host-RAM guard: two 1.5B tenants fit, but this "
+                    "tier is the most in-flight requests the node has held."),
     "T20": dict(scenario="llm-llm", rate=6.0, duration=300, source="azure",
                 replay_arrivals=True,
                 why="THE ARRIVAL PROCESS, FOR ONCE. Every other tier in this "
