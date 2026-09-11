@@ -203,6 +203,30 @@ TESTS = {
                    "particular output-length spread? T2's gain was flat across "
                    "output-length buckets (-38.0% at <=32 tokens to -45.0% "
                    "above 512), which predicts it survives."),
+    "T20": dict(scenario="llm-llm", rate=6.0, duration=300, source="azure",
+                replay_arrivals=True,
+                why="THE ARRIVAL PROCESS, FOR ONCE. Every other tier in this "
+                    "study -- T6 included -- regenerates arrivals as Poisson "
+                    "at a requested rate, so offered load stays a controlled "
+                    "variable. That is defensible and it is what the Splitwise "
+                    "authors did for cluster sizing, but it means NO tier "
+                    "anywhere replays a production arrival process, and the "
+                    "findings report has to say so. T20 replays the real "
+                    "inter-arrival gaps from a contiguous window of "
+                    "AzureLLMInferenceTrace_conv.csv. "
+                    "WHAT TO EXPECT, registered before the run: not much, and "
+                    "that is the point. The conversation trace measures at an "
+                    "inter-arrival CV of 1.057-1.094, which is close to "
+                    "Poisson, and no gap in it exceeds ~4 s. So if the T6 "
+                    "result holds here, the Poisson substitution used "
+                    "everywhere else is VINDICATED for this corpus, and that "
+                    "is a stronger statement than any single tier's effect "
+                    "size. If it does NOT hold, every tier in the study "
+                    "inherits a caveat. Either way the answer is worth one "
+                    "run. "
+                    "NOTE the rate argument no longer controls offered load: "
+                    "real gaps set it, and the achieved rate was 7.41/s "
+                    "against 6.00 requested when the trace was generated."),
     "T7": dict(scenario="llm-only", rate=6.0, duration=300, source="sharegpt",
                why="Prefill-heavy, single tenant. Round one's second "
                    "registered prediction: the sub-linear SM-to-throughput "
@@ -381,6 +405,11 @@ def gen_trace(test, cfg, out_path, seed, warmup):
         cmd += ["--mix", cfg["mix"]]
     if cfg.get("raw_prompts"):
         cmd += ["--raw-prompts"]
+    # T20 replays the Azure trace's real inter-arrival gaps instead of
+    # regenerating them. gen_trace.py refuses rather than falling back to
+    # Poisson if the CSV is missing, which is the whole point of the flag.
+    if cfg.get("replay_arrivals"):
+        cmd += ["--replay-arrivals"]
     rc, out = run(cmd)
     if rc != 0:
         raise RuntimeError("gen_trace failed:\n" + out[-3000:])

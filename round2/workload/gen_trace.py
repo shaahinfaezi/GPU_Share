@@ -121,6 +121,77 @@ def load_azure(limit, rng):
     return None
 
 
+def load_azure_arrivals(duration, rng):
+    """Real (offset, ctx, gen) triples from a contiguous window of the CSV.
+
+    Unlike load_azure this keeps TIMESTAMP. A contiguous window is taken rather
+    than a shuffled sample, because the whole point is to preserve the shape of
+    the arrival process -- shuffling would destroy exactly what is being
+    measured. The window start is chosen at random among the windows that
+    actually contain the requested span.
+    """
+    import csv, datetime
+    for env in ("AZURE_TRACE_CSV", "R2_AZURE_TRACE"):
+        path = os.environ.get(env)
+        if not path or not os.path.exists(path):
+            continue
+        rows = []
+        with open(path, newline="", encoding="utf-8") as fh:
+            for r in csv.DictReader(fh):
+                ts = (r.get("TIMESTAMP") or "").strip()
+                try:
+                    ctx = int(float(r.get("ContextTokens")))
+                    gen = int(float(r.get("GeneratedTokens")))
+                except (TypeError, ValueError):
+                    continue
+                if not (8 <= ctx <= 16000 and 1 <= gen <= 4096) or not ts:
+                    continue
+                # .NET ticks: 7 fractional digits, more precision than
+                # datetime accepts. Truncate to microseconds.
+                if "." in ts:
+                    head, frac = ts.split(".", 1)
+                    ts = head + "." + frac[:6]
+                try:
+                    when = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S.%f")
+                except ValueError:
+                    try:
+                        when = datetime.datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        continue
+                rows.append((when, ctx, gen))
+        if len(rows) < 16:
+            continue
+        rows.sort(key=lambda x: x[0])
+        span = (rows[-1][0] - rows[0][0]).total_seconds()
+        if span < duration:
+            print("[warn] azure trace spans %.0f s, shorter than the requested "
+                  "%.0f s; using the whole file" % (span, duration),
+                  file=sys.stderr)
+            start = rows[0][0]
+        else:
+            latest = rows[0][0] + datetime.timedelta(
+                seconds=(span - duration))
+            offset = rng.uniform(0.0, (latest - rows[0][0]).total_seconds())
+            start = rows[0][0] + datetime.timedelta(seconds=offset)
+        out = []
+        for when, ctx, gen in rows:
+            dt = (when - start).total_seconds()
+            if 0.0 <= dt < duration:
+                out.append((dt, ctx, gen))
+        if out:
+            gaps = [out[i][0] - out[i - 1][0] for i in range(1, len(out))]
+            if gaps:
+                mean = sum(gaps) / len(gaps)
+                var = sum((g - mean) ** 2 for g in gaps) / len(gaps)
+                cv = (var ** 0.5 / mean) if mean else 0.0
+                print("azure arrivals  n=%d  span=%.0fs  mean gap=%.3fs  CV=%.3f"
+                      % (len(out), duration, mean, cv))
+            return out
+    print("[warn] no Azure trace CSV for --replay-arrivals "
+          "(set AZURE_TRACE_CSV)", file=sys.stderr)
+    return None
+
+
 def synth_lengths(rng):
     """Lognormal in, lognormal out -- shaped like the sharegpt corpus."""
     ctx = int(min(8192, max(16, rng.lognormvariate(5.5, 1.05))))
@@ -186,14 +257,27 @@ def build(a, rng, pool, lengths):
                              documents=[make_prompt(64, pool, i + j) for j in range(4)],
                              max_tokens=32))
 
+    # Real production inter-arrival gaps, when asked for. The trace carries
+    # no service identity, so roles are still drawn from the scenario weights;
+    # what is replayed is WHEN requests arrive and how big they are, which is
+    # exactly what is claimed for it and no more.
+    schedule = getattr(a, "_arrivals", None)
+
     t, idx = 0.0, 0
     while True:
-        t += rng.expovariate(a.rate)     # Poisson arrivals
-        if t >= a.duration:
-            break
+        if schedule is not None:
+            if idx >= len(schedule):
+                break
+            t, _ctx, _gen = schedule[idx]
+        else:
+            t += rng.expovariate(a.rate)     # Poisson arrivals
+            if t >= a.duration:
+                break
         role = rng.choices(roles, weights=weights, k=1)[0]
         kind = kind_of[role]
-        if lengths:
+        if schedule is not None:
+            ctx, gen = _ctx, _gen
+        elif lengths:
             ctx, gen = lengths[idx % len(lengths)]
         else:
             ctx, gen = synth_lengths(rng)
@@ -260,6 +344,12 @@ def main():
                          "padding and no truncation. Changes the offered "
                          "load, so compare a raw run only against another "
                          "raw run.")
+    ap.add_argument("--replay-arrivals", action="store_true",
+                    help="replay the Azure trace's REAL inter-arrival gaps "
+                         "instead of regenerating them as Poisson. Requires "
+                         "--source azure. Burstiness survives into the run, "
+                         "so --rate no longer controls offered load and two "
+                         "runs are only comparable if they share a seed.")
     ap.add_argument("--list-scenarios", action="store_true")
     a = ap.parse_args()
 
@@ -277,7 +367,17 @@ def main():
     if a.source == "sharegpt":
         pool = load_sharegpt(n_est, rng)
     elif a.source == "azure":
-        lengths = load_azure(n_est, rng)
+        if getattr(a, "replay_arrivals", False):
+            a._arrivals = load_azure_arrivals(a.duration, rng)
+            if not a._arrivals:
+                sys.exit("--replay-arrivals asked for the Azure trace and did "
+                         "not get it. Refusing rather than silently falling "
+                         "back to Poisson, which is the whole point of this "
+                         "flag. Stage the CSV with 07-prefetch-traces.sh and "
+                         "set AZURE_TRACE_CSV.")
+            lengths = [(c, g) for _, c, g in a._arrivals]
+        else:
+            lengths = load_azure(n_est, rng)
 
     reqs = build(a, rng, pool, lengths)
 
@@ -293,7 +393,8 @@ def main():
                     source=resolved, seed=a.seed, fixed_output=a.fixed_output,
                     embed_batch=a.embed_batch, rerank_docs=a.rerank_docs,
                     warmup=a.warmup,
-                    raw_prompts=bool(getattr(a, "raw_prompts", False))),
+                    raw_prompts=bool(getattr(a, "raw_prompts", False)),
+                    replay_arrivals=bool(getattr(a, "replay_arrivals", False))),
         services=sorted(set(r["service"] for r in reqs)),
         requests=reqs,
     )
