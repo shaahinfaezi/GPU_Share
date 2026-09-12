@@ -237,11 +237,15 @@ for d, b in FOUND:
                 try:
                     if str(row.get("index")) != "1":
                         continue
-                    pw.append(float(row.get("power_w") or 0))
-                    vr.append(float(row.get("mem_used_mib") or 0))
-                    ut.append(float(row.get("util_gpu") or 0))
-                    if row.get("clock_sm_mhz"):
-                        cl.append(float(row["clock_sm_mhz"]))
+                    pw.append(float(row.get("power.draw")
+                                    or row.get("power_w") or 0))
+                    vr.append(float(row.get("memory.used")
+                                    or row.get("mem_used_mib") or 0))
+                    ut.append(float(row.get("utilization.gpu")
+                                    or row.get("util_gpu") or 0))
+                    c = row.get("clocks.sm") or row.get("clock_sm_mhz")
+                    if c:
+                        cl.append(float(c))
                 except Exception:
                     pass
         if pw:
@@ -268,7 +272,8 @@ for d, b in FOUND:
                     e = json.loads(line)
                 except Exception:
                     continue
-                if e.get("event") != "host_memory":
+                # harness.Events.mark() writes the key as "phase".
+                if e.get("phase") != "host_memory":
                     continue
                 said = True
                 print("   host_memory ok=%-5s roles=%-28s need=%-6s avail=%-6s "

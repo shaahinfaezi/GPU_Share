@@ -44,9 +44,9 @@ because the logs look clean ·
 | **T15** `llm2-llm2` @20 | a saturated symmetric pair | DONE, **failed its job** | 1 | still 99.5% of solo sum. A saturated symmetric pair is unrun |
 | **T16** `gpucores 25/25`, `default` | does the quota bind under contention | DONE | 2 | no: 429.30 vs 429.27. Agreement 0.007% |
 | **T18** `dense3` @9 | three tenants | **REFUSED ×2** | — | 9,524 MiB needed against 7,559 free, then 7,812 with the observability stack parked. **This is the three-tenant answer** |
-| **T20** `llm-llm` @6, Azure arrivals | does a real arrival process change anything | RAN 2026-09-12 | 4/4 arms | first replay of production inter-arrival gaps in the study; not yet analysed |
-| **T21** `llm2-llm2` @40 | a symmetric pair that actually saturates | RAN 2026-09-12 | 4/4 arms | the capacity question T13 and T15 both failed to reach; not yet analysed |
-| **T22** `dense3b` @14 | three bodies, two of them identical | RUNNING 2026-09-12 | — | the solo arms fit; the three-tenant arms are expected to be refused for the same reason as T18 |
+| **T20** `llm-llm` @6, Azure arrivals | does a real arrival process change anything | **DONE** | 1 | **no: +0.06% throughput.** Real gaps measure CV 1.057 against Poisson's 1.000, so the substitution used by every other tier is vindicated. But pooled time in system falls **18.75%** and the depth law holds on real arrivals |
+| **T21** `llm2-llm2` @40 | a symmetric pair that actually saturates | **DONE** | 1 | **saturation 55.9%**, the most saturated tier in the study, and **MPS +20.8%** — the largest gain in round two. Fairness spread stays 1.00/1.01 |
+| **T22** `dense3b` @14 | three bodies, two of them identical | **REFUSED** | — | 9,024 MiB needed against 8,152 available **with 6,143 MiB of swap present and untouched**. Three tenants are not measurable on this node |
 | **T19, T23–T26** | see "Tiers worth defining" | PROPOSED | — | mechanisms argued below, no runnable definitions |
 
 ### What has no answer at all
