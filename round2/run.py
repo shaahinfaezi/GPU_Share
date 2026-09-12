@@ -81,6 +81,7 @@ ROLES = {
     "llm-embed": ["llm", "embed"], "llm-llm": ["llm", "llm2"],
     "llm2-llm2": ["llm2a", "llm2b"],
     "dense3": ["llm2", "embed-small", "embed"],
+    "dense3b": ["llm2a", "llm2b", "embed-small"],
     "vl-rerank": ["vl", "rerank"],
     "dense4": ["llm2", "embed", "embed-small", "rerank"],
 }
@@ -203,6 +204,28 @@ TESTS = {
                    "particular output-length spread? T2's gain was flat across "
                    "output-length buckets (-38.0% at <=32 tokens to -45.0% "
                    "above 512), which predicts it survives."),
+    "T22": dict(scenario="dense3b", rate=14.0, duration=240, source="sharegpt",
+                why="THREE BODIES, AND THE FIRST ONE THAT CAN FALSIFY THE "
+                    "DEPTH LAW. Every co-tenancy result in this study is "
+                    "two-body. T18 was meant to close that and cannot run on "
+                    "this node -- and even if it did, dense3 is one decoder "
+                    "beside two pooling models, so 'the deepest tenant wins' "
+                    "is true by construction there. "
+                    "dense3b is T13's symmetric pair with a third body: two "
+                    "IDENTICAL Qwen2.5-1.5B instances plus one embedder. The "
+                    "two decoders start at equal in-flight depth, so the law "
+                    "makes a real prediction -- they should stay equal to each "
+                    "other while the shallow embedder is made worst-off. If "
+                    "instead MPS splits the two identical tenants apart, the "
+                    "two-body fairness result does not extend to three and "
+                    "every fairness claim in this study needs a tenant-count "
+                    "caveat. "
+                    "VRAM is comfortable: 3840 + 3840 + 2304 = 9984 of 12288, "
+                    "81.2%. HOST RAM is the whole difficulty at 8600 MiB raw, "
+                    "which is why this tier ships with 35-swapfile.sh. Swap is "
+                    "an OOM BACKSTOP, not a resource: if the run touches it "
+                    "the latency numbers are void, so 36-three-body.sh records "
+                    "swap used before and after and says so."),
     "T21": dict(scenario="llm2-llm2", rate=40.0, duration=240, source="sharegpt",
                 why="A SYMMETRIC PAIR THAT ACTUALLY SATURATES. T13 at 10 req/s "
                     "and T15 at 20 req/s both answered the FAIRNESS question -- "

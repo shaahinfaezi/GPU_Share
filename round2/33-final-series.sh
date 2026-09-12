@@ -50,7 +50,22 @@ trap restore EXIT INT TERM
   echo
 
   echo "=== step 2/2: the tiers"
-  ./28-series-b.sh T18 T20 T21
+  # 28-series-b.sh BACKGROUNDS ITSELF and returns immediately. Calling it
+  # bare made this wrapper finish in seconds, firing the EXIT trap and
+  # restoring the observability stack 90 minutes before the series ended --
+  # handing back the very memory the three-tenant tier needed. Capture the
+  # pid it prints and block on it, so the trap fires when the work is done.
+  ./28-series-b.sh T18 T20 T21 | tee /tmp/r2-series-launch.txt
+  SERIES_PID="$(awk '/^ *pid /{print $2; exit}' /tmp/r2-series-launch.txt)"
+  if [[ -z "${SERIES_PID}" ]]; then
+    echo "!!! could not read the series pid; NOT restoring, do it by hand:"
+    echo "!!!   ./31-freeram.sh up"
+    trap - EXIT INT TERM
+    exit 1
+  fi
+  echo "--- waiting on series pid ${SERIES_PID}"
+  while kill -0 "${SERIES_PID}" 2>/dev/null; do sleep 30; done
+  echo "--- series pid ${SERIES_PID} has exited"
 } 2>&1 | tee -a "${LOG}"
 
 echo

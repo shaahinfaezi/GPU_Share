@@ -205,6 +205,7 @@ SCENARIOS = {
     "llm-llm":     ["llm", "llm2"],
     "llm2-llm2":   ["llm2a", "llm2b"],
     "dense3":      ["llm2", "embed-small", "embed"],
+    "dense3b":     ["llm2a", "llm2b", "embed-small"],
     "vl-rerank":   ["vl", "rerank"],
     "dense4":      ["llm2", "embed", "embed-small", "rerank"],
 }
@@ -238,6 +239,10 @@ SCENARIO_QUOTAS = {
     # four tenants: 4096 + 2816 + 2304 + 2816 = 12032, 97.9% of the card.
     # three tenants: 3840 + 2304 + 2816 = 8960 MiB, 72.9% of the card.
     "dense3": {"llm2": 3840, "embed-small": 2304, "embed": 2816},
+    # three tenants, two of them identical decoders: 3840 + 3840 + 2304
+    # = 9984 MiB, 81.2% of the card. Deliberately roomier than dense3 on
+    # the GPU because host RAM, not VRAM, is what refuses this tier.
+    "dense3b": {"llm2a": 3840, "llm2b": 3840, "embed-small": 2304},
     "dense4": {"llm2": 4096, "embed": 2816, "embed-small": 2304,
                "rerank": 2816},
 }
