@@ -913,6 +913,81 @@ close the scheduling question properly.
 
 ---
 
+---
+
+## Provenance: which scripts produced each tier
+
+Added 2026-09-12. Every number in every report traces to a tier, and every
+tier traces to a command. This table is the map, so a reader can re-run any
+result rather than take it on trust.
+
+### The chain every tier runs, in order
+
+| script | what it does |
+|---|---|
+| `run.py` | the tier runner. `TESTS` holds each tier's scenario, rate, duration, corpus and the prediction registered *before* the run. Executes the arms in order and drains the card between them |
+| `harness.py` | preconditions and guards. `host_memory_problems()` refuses a tier that will not fit — this is what rejected three tenants. `assert_colocated()` proves the tenants share one card; `assert_mps_matches_arm()` proves the MPS state matches the arm being claimed. `GpuSampler` and `HostSampler` write `gpu.csv` and `host.csv` at 1 Hz |
+| `render.py` | builds each arm's `LLMInferenceService` manifests: `nvidia.com/gpumem`, `nvidia.com/gpucores`, `GPU_CORE_UTILIZATION_POLICY`, `CUDA_MPS_ACTIVE_THREAD_PERCENTAGE` |
+| `workload/gen_trace.py` | generates `trace.json`. `trace_id` is a SHA-256 digest of the requests themselves, so a matching id across arms **proves** the comparison was like-for-like |
+| `workload/replay.py` | the open-loop replayer. Writes `replay.summary.json`, `replay.requests.csv`, `itl.json` |
+
+### Per tier
+
+`run.py --test <ID>` for all of these except T9 and T10, which have their own
+entry points.
+
+| tier | command | scenario · rate · duration | corpus | extra machinery |
+|---|---|---|---|---|
+| T1 | `run.py --test T1` | `llm-embed` · 6/s · 300 s | ShareGPT | — |
+| T2 | `run.py --test T2` | `llm-llm` · 6/s · 300 s | ShareGPT | §8.7 variant adds `--gpucores llm=25,llm2=25 --core-policy force` |
+| T3 | `run.py --test T3` | `vl-rerank` · 4/s · 300 s | ShareGPT | — |
+| T4 | `run.py --test T4` | `dense4` · 8/s · 300 s | ShareGPT | **refused** — host RAM |
+| T5 | `run.py --test T5` | `llm-llm` · 10/s · 240 s | ShareGPT | control arm adds `--core-policy disable` |
+| T6 | `run.py --test T6` | `llm-llm` · 6/s · 300 s | **Azure** | token pairs only, Poisson arrivals |
+| T7 | `run.py --test T7` | `llm-only` · 6/s · 300 s | ShareGPT | the policy sweep: `--gpucores llm=50/25` × `--core-policy default\|force\|disable`, and `--mps-percent` for the SM curve |
+| T8 | `run.py --test T8` | `llm-llm` · 12/s · 300 s | ShareGPT | `mix` (90/10 split) + `mps_percent` |
+| T9 | `09-scaledown.py` | admission and scale-down | — | writes `t9.json` |
+| T10 | `23-failure-inject.py --fault <f> --arm <a>` | `llm-llm` · 6/s · 300 s | ShareGPT | five faults: `mps-kill`, `tenant-kill`, `tenant-fault`, `global-fault`, `vram-hog`. `--roles llm` runs the one-tenant variant. Writes `t10.json` |
+| T11 | `run.py --test T11` | `llm-llm` · 12/s · 300 s | ShareGPT | `mix` — the noisy neighbour |
+| T12 | `run.py --test T12` | `llm-llm` · 6/s · **14,400 s** | ShareGPT | the 4-hour soak |
+| T13 | `run.py --test T13` | `llm2-llm2` · 10/s · 240 s | ShareGPT | — |
+| T14 | `run.py --test T14` | `llm-llm` · 10/s · 240 s | ShareGPT | **`--raw-prompts`** — corpus text and answer lengths verbatim |
+| T15 | `run.py --test T15` | `llm2-llm2` · 20/s · 240 s | ShareGPT | — |
+| T16 | `run.py --test T16` | `llm-llm` · 6/s · 300 s | ShareGPT | `gpucores 25/25`, policy `default` |
+| **T17** | `run.py --test T17` | `llm2-llm2` · 28/s · 240 s | ShareGPT | the saturated-but-serviceable point |
+| T18 | `run.py --test T18` | `dense3` · 9/s · 300 s | ShareGPT | needs `31-freeram.sh down` first; **refused** twice |
+| **T20** | `run.py --test T20` | `llm-llm` · 6/s · 300 s | **Azure** | **`--replay-arrivals`** — the only tier that replays real inter-arrival gaps |
+| **T21** | `run.py --test T21` | `llm2-llm2` · 40/s · 240 s | ShareGPT | — |
+| **T22** | `36-three-body.sh` | `dense3b` · 14/s · 240 s | ShareGPT | wraps `31-freeram.sh` + `35-swapfile.sh` + `run.py --test T22`; **refused** |
+
+### Orchestration, collection and probes
+
+| script | role |
+|---|---|
+| `19-run-bg.sh`, `21-run-series.sh`, `28-series-b.sh` | detached series runners with forced teardown between stages |
+| `33-final-series.sh`, `37-final-runs.sh` | the last two series, each stating why every stage earns its slot |
+| `31-freeram.sh` | parks the observability stack to buy host RAM; `up` restores it |
+| `35-swapfile.sh` | a 6 GiB swap **backstop**, never a resource — a run that pages is void |
+| `30-collect.py`, `30-collect-b.py` | the round-one and Series-B collectors |
+| `32-collect-faults.py` | fault windows, probe output and the run inventory |
+| `34-collect-c.py` | Series-C collector. Derives the **saturation ratio**, the inter-arrival **CV**, the fairness spread and the MPS delta, which no raw file contains |
+| `22-mps-check.sh` | proves the MPS daemon state matches the arm — the check whose absence invalidated T1 and T2 the first time |
+| `26-gpucores-probe.sh` | whether `gpucores` above the admission ceiling schedules |
+| `27-hostmem-attribution.sh` | per-role host RSS, the source of `HOST_RSS_MIB` |
+| `29-corescaling.sh` | `deviceCoreScaling`, the one-way door |
+| `18-vram-probe.sh`, `05-pooling-probe.sh` | VRAM headroom and the pooling-route check |
+| `13-validate.py`, `25-node-check.sh`, `00-preflight.sh` | environment validation before any tier runs |
+
+### What each run directory contains
+
+`results/<TIER>-<UTC timestamp>/` holds `run.json` (the tier definition as
+executed), `trace.json` (the exact requests, with `trace_id`), `events.jsonl`
+(every phase mark, including the host-memory refusals), and one subdirectory
+per arm holding `replay.summary.json`, `replay.requests.csv`, `itl.json`,
+`gpu.csv`, `host.csv`, `prom.json` and the rendered manifests.
+
+---
+
 ## References
 
 Every external claim in this matrix and in the tier reports resolves to one of
