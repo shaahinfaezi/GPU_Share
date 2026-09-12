@@ -226,6 +226,28 @@ TESTS = {
                     "an OOM BACKSTOP, not a resource: if the run touches it "
                     "the latency numbers are void, so 36-three-body.sh records "
                     "swap used before and after and says so."),
+    "T17": dict(scenario="llm2-llm2", rate=28.0, duration=240, source="sharegpt",
+                why="THE SATURATED POINT THAT IS NOT IN OVERLOAD. The study's "
+                    "throughput claim currently rests on three tiers and none "
+                    "of them is quotable for capacity planning: T20 at 99.6% "
+                    "saturation returns +0.06% because there is no queue, T14 "
+                    "at 86.3% returns +8.6%, and T21 at 55.9% returns +20.8% "
+                    "but sits in OVERLOAD -- 30-39 s mean latency, TTFT p99 of "
+                    "34-45 s, and neither arm finished the trace (66.1% and "
+                    "76.9% of 9,621 requests). No SLO is meetable there, so no "
+                    "operator would ever run in that regime and the number "
+                    "cannot be sold. "
+                    "28 req/s is the geometric mean of T15's 20 (99.5%, "
+                    "unsaturated) and T21's 40 (55.9%, overloaded), so it "
+                    "brackets the knee from inside. PREDICTION registered "
+                    "before the run: saturation lands between 70% and 88% and "
+                    "MPS returns between +8% and +16%, with mean latency still "
+                    "in single-digit seconds. If latency is again in the tens "
+                    "of seconds the knee is below 28 and the tier should be "
+                    "re-run at 24. "
+                    "Identical tenants, so per section 0 there is no deep/"
+                    "shallow split to report and the aggregate figure applies "
+                    "to both -- which is exactly what makes it quotable."),
     "T21": dict(scenario="llm2-llm2", rate=40.0, duration=240, source="sharegpt",
                 why="A SYMMETRIC PAIR THAT ACTUALLY SATURATES. T13 at 10 req/s "
                     "and T15 at 20 req/s both answered the FAIRNESS question -- "

@@ -678,6 +678,17 @@ def main():
                          "needs something to blast")
     ap.add_argument("--victim", default="llm",
                     help="the tenant whose experience is measured")
+    # vram-hog needs a card with HEADROOM. Five attempts ran it against two
+    # tenants holding ~11.5 GiB of a 12,288 MiB card, so the hog was stopped by
+    # physics rather than by HAMi -- it obtained a ~250 MiB CUDA context, got
+    # itself attached to the MPS daemon as a third client, and then failed its
+    # next allocation because there was genuinely nothing left to take. That
+    # measures the card being full, not HAMi containing anything. Dropping to
+    # one tenant leaves roughly 8 GiB for the hog to steal, which is the only
+    # configuration in which the magnitude of the escape can be measured.
+    ap.add_argument("--roles", default=",".join(ROLES),
+                    help="tenants to deploy, comma-separated. Default is the "
+                         "pair. Use --roles llm for the one-tenant variant.")
     ap.add_argument("--escaper", default="llm2",
                     help="vram-escape only: the tenant that tries to exceed "
                          "its own grant. Must not be --victim, or the blast "
@@ -690,6 +701,10 @@ def main():
     ap.add_argument("--out", default=os.path.join(HERE, "results"))
     ap.add_argument("--list", action="store_true")
     a = ap.parse_args()
+    ROLES[:] = [r.strip() for r in a.roles.split(",") if r.strip()]
+    if a.victim not in ROLES:
+        raise SystemExit("--victim %r is not in --roles %r; the measured "
+                         "tenant has to be deployed" % (a.victim, ROLES))
     ESCAPE_ROLE[0] = a.escaper
     if a.fault == "vram-escape" and a.escaper == a.victim:
         raise SystemExit("--escaper and --victim are both %r; the point is to "
@@ -730,8 +745,10 @@ def main():
     print("    mps daemon: %s (%s)" % ("up" if a.arm == "hami-mps" else "down", how))
 
     rdir = os.path.join(d, "rendered")
+    # --only per role, so --roles llm renders one tenant instead of the pair.
     rc, out = H.sh([PY, os.path.join(HERE, "render.py"), "--scenario", SCENARIO,
-                    "--arm", a.arm, "--out", rdir], timeout=120)
+                    "--arm", a.arm, "--out", rdir]
+                   + sum([["--only", r] for r in ROLES], []), timeout=120)
     if rc != 0:
         raise SystemExit("render failed:\n" + out[-2000:])
 
