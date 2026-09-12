@@ -43,23 +43,47 @@ because the logs look clean ·
 | **T14** raw prompts @10 | is the effect an artifact of the trace generator | DONE | 2 at each of Σ200/150/100 | no: **bigger** with real text. The study's best tier |
 | **T15** `llm2-llm2` @20 | a saturated symmetric pair | DONE, **failed its job** | 1 | still 99.5% of solo sum. A saturated symmetric pair is unrun |
 | **T16** `gpucores 25/25`, `default` | does the quota bind under contention | DONE | 2 | no: 429.30 vs 429.27. Agreement 0.007% |
-| **T18** `dense3` @9 | three tenants | REFUSED | — | guard: 9,524 MiB needed, 7,559 available. **This is the three-tenant answer** |
-| **T19–T24** | see "Tiers worth defining" | PROPOSED | — | mechanisms argued below, no runnable definitions |
+| **T18** `dense3` @9 | three tenants | **REFUSED ×2** | — | 9,524 MiB needed against 7,559 free, then 7,812 with the observability stack parked. **This is the three-tenant answer** |
+| **T20** `llm-llm` @6, Azure arrivals | does a real arrival process change anything | RAN 2026-09-12 | 4/4 arms | first replay of production inter-arrival gaps in the study; not yet analysed |
+| **T21** `llm2-llm2` @40 | a symmetric pair that actually saturates | RAN 2026-09-12 | 4/4 arms | the capacity question T13 and T15 both failed to reach; not yet analysed |
+| **T22** `dense3b` @14 | three bodies, two of them identical | RUNNING 2026-09-12 | — | the solo arms fit; the three-tenant arms are expected to be refused for the same reason as T18 |
+| **T19, T23–T26** | see "Tiers worth defining" | PROPOSED | — | mechanisms argued below, no runnable definitions |
 
 ### What has no answer at all
 
-Four questions, and only these four, are still completely open:
+**Revised 2026-09-12.** All four questions listed here on 2026-09-09 have
+moved, three of them decisively. They are kept below with their outcomes
+because a list of open questions that never closes is not a list anyone
+trusts.
 
-1. **Does a global-scope GPU fault propagate under MPS?** The only fault class
-   tested is the most containable one in NVIDIA's taxonomy. Until
-   `global-fault` runs with the corrected probe, **this study does not support
-   a fault-isolation claim** — say so in any summary.
-2. **Can an unmanaged pod reach the card behind HAMi?** Three attempts, three
-   pods that never started.
-3. **Three or more tenants.** Every co-tenancy result here is two-body. The
-   depth law, the fairness reversal and the overbook curve are all pair
-   results and nothing says they extend.
-4. **Anything past 300 seconds.** No soak has run.
+| asked 2026-09-09 | status now |
+|---|---|
+| Does a global-scope fault propagate under MPS? | **ANSWERED.** Contained under `hami` (0 of 516 lost), **propagates** under `hami-mps` (307 of 515, 59.6%). FINDINGS §15 |
+| Can an unmanaged pod reach the card behind HAMi? | **PARTLY.** The escape route is confirmed open — a pod requesting no `nvidia.com/*` resource took a ~250 MiB CUDA context on a full card and attached to the MPS daemon as a third client. How *much* it can take is still unmeasured. FINDINGS §15.4 |
+| Three or more tenants | **ANSWERED, as a refusal.** Not measurable on this node; see below |
+| Anything past 300 seconds | **ANSWERED.** T12 ran 4 h per arm, 86,504 measured requests per arm, and nothing drifted. FINDINGS §12.1 |
+
+What is genuinely open now, in order of what it would change:
+
+1. **How much VRAM an unmanaged pod can actually take.** The escape is proven;
+   the magnitude is not. Every attempt so far ran against a card two tenants
+   had already filled, so the hog was stopped by physics rather than by HAMi.
+   It needs one tenant, not two — a card with headroom to steal.
+2. **Whether any two-body result extends to three.** The depth law, the
+   fairness reversal and the overbook curve are all pair results.
+   **This node cannot answer it**, and the arithmetic is not close. Against
+   the 7,812 MiB available with the observability stack parked, using
+   *measured steady-state* RSS and **no safety headroom whatsoever**:
+   `dense3` (T18) needs 8,339 MiB, short by **527 MiB**; `dense3b` (T22)
+   needs 8,448 MiB, short by **636 MiB**. With the harness's 1,024 MiB
+   margin the shortfalls are 1,712 and 1,812 MiB. Host RAM per vLLM tenant
+   does not scale with model size (§HOST_RSS_MIB), so there is no smaller
+   third tenant to substitute. It needs a node with ≥ 24 GiB.
+3. **The `default` policy's latch mechanism** (T23 below) and
+   **`deviceMemoryScaling`** (T24 below), neither of which is measurable
+   without a node that can be rebuilt.
+4. **T20 and T21 ran on 2026-09-12 and are not yet analysed.** Their
+   conclusions are absent from this file on purpose rather than by oversight.
 
 ### Settled since the last revision (2026-09-09 → 09-10)
 
@@ -293,11 +317,42 @@ more than half the SMs to begin with**: the tier runs at 99.2% of the solo
 throughput sum, so nothing was being withheld from anyone. A ceiling only
 closes when set below what the tenant would otherwise take.
 
-### T18 — `dense3` @ 9 req/s · **defined, not yet run**
-Three tenants. Every co-tenancy result in this study is two-body, and this is
-the largest structural gap in the matrix. It may be refused by the host-RAM
-guard before it deploys — **if so, that refusal is the result.** See item 11
-under "What to run next".
+### T18 — `dense3` @ 9 req/s · **REFUSED twice; the refusal is the result**
+Three tenants. Every co-tenancy result in this study is two-body, and this was
+the largest structural gap in the matrix. It was refused by the host-RAM guard
+before deploying, on both attempts:
+
+| attempt | needed | available | outcome |
+|---|---|---|---|
+| 2026-09-11 | 9,524 MiB | 7,559 MiB | refused, solo arms only |
+| 2026-09-12, observability stack parked | 9,524 MiB | 7,812 MiB | refused, 3/5 sub-runs, aborted on two consecutive failures |
+
+Parking Grafana, the HAMi web UI and the DCGM exporter freed **263 MiB** on the
+second attempt. The gap is 1,712 MiB. Even discarding the harness's entire
+1,024 MiB safety headroom — the headroom that exists *because* T4's OOM killed
+two vLLM engines and Prometheus mid-run — the tier is still short by 688 MiB
+of its budgeted RSS (8,500 against 7,812), and short by **527 MiB** of the
+*measured* steady-state figure (3,045 + 2,358 + 2,936 = 8,339).
+
+**Swap does not rescue it.** `host_memory_problems()` in `harness.py` compares
+demand against `MemAvailable` only; `SwapTotal` is recorded in the event and
+quoted in the refusal message but never added to the budget. That is the right
+behaviour — admitting a tier because it can page would measure paging — but it
+means a swapfile cannot change the admission decision, and T22 below was
+refused with 6,143 MiB of swap sitting idle.
+
+### T22 — `dense3b` @ 14 req/s · the falsifiable three-body test
+T18's `dense3` is one decoder beside two pooling models, so "the deepest tenant
+wins" is true there **by construction** — it tests density, not the depth law.
+`dense3b` is T13's symmetric pair with a third body: `llm2a` + `llm2b` +
+`embed-small`, two *identical* Qwen2.5-1.5B instances at equal in-flight depth
+plus one shallow tenant. The law then makes a real prediction — the two
+decoders stay equal to each other while the embedder is made worst-off — and
+if MPS instead splits the two identical tenants apart, **every fairness claim
+in this study needs a tenant-count caveat.**
+
+VRAM is comfortable at 3,840 + 3,840 + 2,304 = 9,984 of 12,288 MiB (81.2%).
+Host RAM is the whole difficulty, and it is the same wall T18 hit.
 
 ---
 
@@ -780,7 +835,16 @@ two-body tiers. A three-body run is the first chance for that to fail.
 
 ## Tiers worth defining if the matrix is extended
 
-Ranked by what each could still change. The first four have concrete
+**Numbering, corrected 2026-09-12.** This section previously proposed
+"T19–T24" while `run.py` was independently using T20, T21 and T22 for tiers
+that have since run — so the same three identifiers named two different
+things, one of them in directory names on disk. **`run.py` is authoritative**:
+result directories are named from it. The proposals below were renumbered to
+T19 and T23–T26, and the old "T22, a global-scope fault" is not renumbered at
+all because it ran. Cross-references elsewhere in this file and in the tier
+reports were updated with it.
+
+Ranked by what each could still change. The first two have concrete
 mechanisms behind them; the last two are coverage.
 
 ### T19 — the true MPS SM-percentage curve, at real saturation
@@ -792,7 +856,7 @@ sweep at a rate that saturates every point, and the curve becomes quotable.
 `llm-only`, MPS at 100 / 75 / 50 / 25, rate raised until the 100% arm is itself
 saturated. Four arms, ~40 min.
 
-### T20 — does `default` latch off, and when
+### T23 — does `default` latch off, and when
 `GPU_CORE_UTILIZATION_POLICY=default` measurably never limits, three ways.
 The source says it should: `get_utilization_switch()` returns a region value
 initialised to 1 and never written to 0. The candidate mechanism is that
@@ -802,7 +866,7 @@ limiter latches off for the pod's lifetime. One run with the pod started
 **already loaded** would separate "never armed" from "armed then latched off",
 and it is decisive either way.
 
-### T21 — `deviceMemoryScaling = 1.5`, the untested cell with the worst failure mode
+### T24 — `deviceMemoryScaling = 1.5`, the untested cell with the worst failure mode
 Memory overcommit is the one HAMi knob nobody here has touched, and its failure
 mode is an OOM inside a tenant rather than a slowdown. Note that
 `deviceCoreScaling` is a **one-way door** — above 1 the exclusivity gate
@@ -810,20 +874,23 @@ mode is an OOM inside a tenant rather than a slowdown. Note that
 `deviceMemoryScaling` should be assumed to behave the same until shown
 otherwise. Test on a node you can rebuild.
 
-### T22 — a global-scope fault
-`tenant-fault` raises `CUDA_EXCEPTION_12`, scoped **per warp** — the most
-containable class there is. The `global-fault` probe in `23-failure-inject.py`
-raises `CUDA_EXCEPTION_10` instead, an illegal global address, via
-`torch.as_strided` (no bounds check, needs no nvcc in the image). **Until this
-runs on both arms, this study does not support a fault-isolation claim.**
+### ~~A global-scope fault~~ — **RAN 2026-09-11, see FINDINGS §15**
+Kept here only so the renumbering above is traceable. This was proposed as
+"T22" and is now a measured result, which is why the three-body tier could
+take the T22 slot. `torch.as_strided` was validated on the host and never
+reached the device; a hand-written PTX kernel storing to an unmapped address
+finally raised `CUDA_EXCEPTION_10`. The surviving neighbour lost **0 of 516**
+requests under `hami` and **307 of 515 (59.6%)** under `hami-mps`. Fault
+containment turns on the fault's *scope*, and MPS is what converts a
+global-scope fault into a neighbour outage.
 
-### T23 — where the depth law's re-ranking turns over
+### T25 — where the depth law's re-ranking turns over
 MPS reallocates toward in-flight depth, and nine runs agree. The open question
 is the crossover: at what depth ratio does the advantage change hands? A sweep
 of one pair at several rate splits would turn a qualitative law into a
 threshold an operator could schedule against.
 
-### T24 — `gpucores` above the admission ceiling, by the only route there is
+### T26 — `gpucores` above the admission ceiling, by the only route there is
 `Fit()` rejects on `Totalcore − Usedcores < Coresreq` and `Coresreq` is
 independently validated 0–100, so **the per-card sum is hard-capped at 100**:
 75/75 and 100/100 are unschedulable, full stop. The only way to a sum above 100
@@ -861,7 +928,8 @@ mechanism, scope and vocabulary.
 - *CUDA-GDB* — the exception table that scopes each fault.
   `CUDA_EXCEPTION_12` (device-side assert) is **per warp**;
   `CUDA_EXCEPTION_10` (illegal global address) and hardware stack overflow are
-  **global**. This is the source of the fault-scope taxonomy in T10 and T22.
+  **global**. This is the source of the fault-scope taxonomy used by the T10
+  fault tiers.
   <https://docs.nvidia.com/cuda/cuda-gdb/>
 - *NVML / `nvidia-smi`* — and the reason `DCGM_FI_DEV_GPU_UTIL` is **not** SM
   occupancy: a card reads 100% with a single SM busy. `DCGM_FI_PROF_*` is

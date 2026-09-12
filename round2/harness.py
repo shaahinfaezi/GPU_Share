@@ -196,6 +196,13 @@ HOST_RSS_MIB = {
     "embed":       3000,
     "llm2":        3100,
     "rerank":      3100,
+    # T22 deploys TWO instances of llm2 as llm2a and llm2b. Without these two
+    # entries both fell through to HOST_RSS_DEFAULT (2,800) and the guard
+    # under-counted the three-body tier by 600 MiB -- flattering exactly the
+    # tier whose entire difficulty is host RAM. They are the same container
+    # and the same model, so they carry llm2's measured figure.
+    "llm2a":       3100,
+    "llm2b":       3100,
 }
 # Only vl still falls back to this. 3,100 (the highest measured role) left
 # vl+rerank -- which is T3, run cleanly twice -- with 76 MiB of margin, close
