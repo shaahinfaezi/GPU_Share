@@ -43,6 +43,7 @@ because the logs look clean ·
 | **T14** raw prompts @10 | is the effect an artifact of the trace generator | DONE | 2 at each of Σ200/150/100 | no: **bigger** with real text. The study's best tier |
 | **T15** `llm2-llm2` @20 | a saturated symmetric pair | DONE, **failed its job** | 1 | still 99.5% of solo sum. A saturated symmetric pair is unrun |
 | **T16** `gpucores 25/25`, `default` | does the quota bind under contention | DONE | 2 | no: 429.30 vs 429.27. Agreement 0.007% |
+| **T17** `llm2-llm2` @28 | a saturated point that is not overload | **DONE** | 1 | **saturation 80.9%, MPS +19.0%**, and mean latency 30.7 s → 8.8 s. The tier the capacity claim should rest on |
 | **T18** `dense3` @9 | three tenants | **REFUSED ×2** | — | 9,524 MiB needed against 7,559 free, then 7,812 with the observability stack parked. **This is the three-tenant answer** |
 | **T20** `llm-llm` @6, Azure arrivals | does a real arrival process change anything | **DONE** | 1 | **no: +0.06% throughput.** Real gaps measure CV 1.057 against Poisson's 1.000, so the substitution used by every other tier is vindicated. But pooled time in system falls **18.75%** and the depth law holds on real arrivals |
 | **T21** `llm2-llm2` @40 | a symmetric pair that actually saturates | **DONE** | 1 | **saturation 55.9%**, the most saturated tier in the study, and **MPS +20.8%** — the largest gain in round two. Fairness spread stays 1.00/1.01 |
