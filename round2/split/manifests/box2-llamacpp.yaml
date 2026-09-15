@@ -1,0 +1,83 @@
+# llama.cpp with a partial GPU offload, made shareable.
+#
+# CHANGED FROM THE ORIGINAL, and why each line had to move:
+#
+#   + nvidia.com/gpumem / gpucores
+#       The original requested only nvidia.com/gpu. Under HAMi that means no
+#       memory cap at all and -- because Fit() compares Coresreq against the
+#       remaining cores and an absent Coresreq is zero -- no scheduler quota
+#       consumed either. Two such pods do not share a card, they race for it,
+#       and the arm measures a collision instead of a policy.
+#
+#       1536 MiB is sized for the offload actually requested: Qwen2.5-0.5B
+#       q8_0 is ~530 MiB for all 24 layers, so --n-gpu-layers 10 puts roughly
+#       220 MiB of weights on the card, plus the 2048-token KV and ~300 MiB of
+#       CUDA context. Raise it if --n-gpu-layers goes up; llama.cpp does not
+#       fall back gracefully when an allocation is refused, it aborts.
+#
+#   + r2-role / r2-series labels
+#       So the load driver and any teardown can select these pods.
+#
+# NOT CHANGED: --n-gpu-layers 10 and --ctx-size 2048 are the coworker's
+# offload boundary and are the thing under test.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen-multitier-offload
+  namespace: llm-demo
+  annotations:
+    serving.kserve.io/deploymentMode: RawDeployment
+  labels:
+    r2-role: llamacpp
+    r2-series: split-box2
+spec:
+  predictor:
+    containers:
+      - name: kserve-container
+        image: ghcr.io/ggml-org/llama.cpp:server-cuda
+        args:
+          - "--model"
+          - "/mnt/models/qwen2.5-0.5b-instruct-q8_0.gguf"
+          - "--n-gpu-layers"
+          - "10"
+          - "--ctx-size"
+          - "2048"
+          - "--host"
+          - "0.0.0.0"
+          - "--port"
+          - "8080"
+          - "-v"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          limits:
+            cpu: '2'
+            memory: "2Gi"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "1536"
+            nvidia.com/gpucores: "30"
+          requests:
+            cpu: '500m'
+            memory: "1Gi"
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "1536"
+            nvidia.com/gpucores: "30"
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          periodSeconds: 10
+          failureThreshold: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          periodSeconds: 10
+        volumeMounts:
+          - name: model-storage
+            mountPath: /mnt/models
+    volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: qwen-gguf-pvc

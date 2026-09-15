@@ -1,0 +1,100 @@
+# The custom transformers runtime, made shareable.
+#
+# CHANGED FROM THE ORIGINAL. The first of these is not a tuning choice -- left
+# as it was, this pod does not participate in HAMi's isolation at all.
+#
+#   - CUDA_VISIBLE_DEVICES: "0"          REMOVED
+#       HAMi allocates a virtual device and communicates it to the container by
+#       SETTING CUDA_VISIBLE_DEVICES itself, alongside the libvgpu.so it
+#       injects via LD_PRELOAD. A hardcoded "0" in the pod spec overwrites that
+#       assignment. The container then addresses whatever the driver calls
+#       device 0 rather than the device it was given, which on a two-card box
+#       is how a "shared" tenant ends up on the wrong card -- or on the right
+#       one with the limiter bypassed. model.py already pins to cuda:0, which
+#       is correct: that is index 0 of the devices HAMi exposed, not of the box.
+#
+#   + nvidia.com/gpumem / gpucores       ADDED
+#       Same reason as the llama.cpp manifest: a pod that names neither gets an
+#       uncapped allocation AND consumes no scheduler quota, so HAMi will admit
+#       it onto a card that is already full. Round two established this as the
+#       real oversubscription path, not a theoretical one.
+#
+#       6144 MiB assumes a ~0.5B-2B model in fp16 (model.py loads
+#       torch_dtype=float16) plus the CUDA context. VERIFY against the actual
+#       weights on the PVC before the run: if the model needs more than the
+#       quota, torch raises on load and the pod crashloops rather than degrades.
+#       gpucores 70 + llama.cpp's 30 = 100, exactly the per-card ceiling that
+#       HAMi's 0-100 validation on Coresreq enforces.
+#
+#   + minReplicas/RawDeployment
+#       Knative's KPA would scale this to zero between load phases and the
+#       second arm would measure a cold start. The other box-2 tenant is
+#       already RawDeployment, so this also makes the pair symmetric.
+#
+# ALSO FIX BEFORE BUILDING THE IMAGE -- model.py as pasted will not start:
+#     logging.getLogger(name)      ->  logging.getLogger(__name__)
+#     if name == "main":           ->  if __name__ == "__main__":
+# Both look like dunder underscores lost in a copy-paste. Without the second
+# one the module defines everything and then exits without ever calling
+# load_model() or uvicorn.run(), so the container goes Ready-never and the
+# readinessProbe fails for 20 attempts before anyone reads the log.
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen2-hf-runtime
+  namespace: llm-demo
+  annotations:
+    serving.kserve.io/deploymentMode: RawDeployment
+  labels:
+    r2-role: custom
+    r2-series: split-box2
+spec:
+  predictor:
+    minReplicas: 1
+    containers:
+      - name: kserve-container
+        image: 10.42.0.1:5000/kserve/qwen-hf-runtime:v1
+        command: ["python3", "/app/model.py"]
+        env:
+          - name: HF_HOME
+            value: "/mnt/models"
+          - name: TOKENIZERS_PARALLELISM
+            value: "false"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          limits:
+            cpu: "2"
+            memory: 12Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "6144"
+            nvidia.com/gpucores: "70"
+          requests:
+            cpu: "100m"
+            memory: 4Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "6144"
+            nvidia.com/gpucores: "70"
+        readinessProbe:
+          httpGet:
+            path: /v1/models/qwen2-custom
+            port: 8080
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          failureThreshold: 20
+        livenessProbe:
+          httpGet:
+            path: /v1/models/qwen2-custom
+            port: 8080
+          initialDelaySeconds: 180
+          periodSeconds: 30
+        volumeMounts:
+          - name: model-storage
+            mountPath: /mnt/models
+            readOnly: true
+    volumes:
+      - name: model-storage
+        hostPath:
+          path: /mnt/nfs/models/autoscale-qwen-model-pvc-pvc-717f9270-0363-4205-b75f-6f118afff3b6/qwen
+          type: Directory
