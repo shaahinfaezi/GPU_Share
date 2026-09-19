@@ -108,11 +108,8 @@ READY=$(${PY} - <<'EOF'
 import sys, os
 sys.path.insert(0, os.path.dirname(os.getcwd()))
 import harness as H
-try:
-    H.wait_ready(["tp"], timeout=600)
-    print("yes")
-except Exception as e:
-    print("no: %s" % e)
+ready, diag = H.wait_ready(["tp"], timeout=600)
+print("yes" if ready else "no: %s" % diag)
 EOF
 )
 case "${READY}" in
@@ -155,7 +152,9 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.getcwd()))
 import harness as H
 try:
-    H.wait_ready(["tp"], timeout=600)
+    ready, diag = H.wait_ready(["tp"], timeout=600)
+    if not ready:
+        raise RuntimeError(diag)
     eps = H.endpoints(["tp"])
     m = H.served_model(eps["tp"]) or "Qwen/Qwen2.5-0.5B-Instruct"
     H.smoke_test(eps, {"tp": m}, {"tp": "chat"}, timeout=120)

@@ -1,0 +1,56 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: qwen-zero-download
+  namespace: llm-demo
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: new2
+      containers:
+        - name: download
+          # This image is imported directly into new2 by build-on-new2.sh.
+          image: box2.local/deepspeed-zero-kserve:qwen-test
+          imagePullPolicy: Never
+          command: ["bash", "-lc"]
+          args:
+            - |
+              set -euo pipefail
+              target=/models/qwen2.5-0.5b-instruct
+              mkdir -p "$target"
+              python3 - <<'PY'
+              from pathlib import Path
+              from huggingface_hub import snapshot_download
+
+              target = Path('/models/qwen2.5-0.5b-instruct')
+              snapshot_download(
+                  repo_id='Qwen/Qwen2.5-0.5B-Instruct',
+                  local_dir=str(target),
+                  max_workers=4,
+              )
+              required = [target / 'config.json']
+              required.extend(target.glob('*.safetensors'))
+              if not all(path.is_file() for path in required):
+                  raise SystemExit(f'incomplete Hugging Face model directory: {target}')
+              print(f'model ready at {target}')
+              PY
+          env:
+            - name: HF_HUB_DISABLE_XET
+              value: "1"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          volumeMounts:
+            - name: models
+              mountPath: /models
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: qwen-zero-models-pvc

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# STAGE 2 of 2. Both split tenants on the same two cards, HAMi then HAMi+MPS.
+# STAGE 2 of 2. One split-sharing arm per invocation.
 #
 # S3  hami      tp + pp co-resident, HAMi quotas, no MPS
 # S4  hami-mps  identical, MPS daemon up, every client at 100%
@@ -41,20 +41,28 @@
 # multi-device roles; see the note at the end of the README.
 #
 #   cd /opt/GPU_Share/round2/split && chmod +x *.sh
-#   nohup ./53-split-share.sh > logs/share.log 2>&1 &
+#   nohup ./53-split-share.sh hami > logs/share-hami.log 2>&1 &
+#   nohup ./53-split-share.sh hami-mps > logs/share-hami-mps.log 2>&1 &
 #   tail -f logs/share.log
 set -uo pipefail
 cd "$(dirname "$0")"
 
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
-RUN="results/S-share-${STAMP}"
-LOG="logs/share-${STAMP}.log"
+ARM="${1:-${ARM:-}}"
+case "${ARM}" in
+  hami|hami-mps) ;;
+  *) echo "Usage: $0 {hami|hami-mps}" >&2; exit 2 ;;
+esac
+SERIES="${SERIES:-S-share-${STAMP}}"
+RUN="results/${SERIES}"
+LOG="logs/share-${ARM}-${STAMP}.log"
 NS="${R2_NS:-llm-demo}"
 PY=python3
 mkdir -p logs "${RUN}"
 export PYTHONPATH="$(cd .. && pwd):${PYTHONPATH:-}"
 
 SECS="${SECS:-240}"
+DASHBOARD_HOLD_SECS="${DASHBOARD_HOLD_SECS:-120}"
 
 log() { echo "$(date -u +%FT%TZ) $*" | tee -a "${LOG}"; }
 
@@ -80,7 +88,6 @@ EOF
 
 trap 'log "INTERRUPTED"; teardown; exit 130' INT TERM
 
-for ARM in hami hami-mps; do
   OUT="${RUN}/${ARM}__tp+pp"
   mkdir -p "${OUT}/rendered"
   log ""
@@ -106,18 +113,26 @@ try:
 
     # The daemon must be up BEFORE the pods, or the clients start without it
     # and the arm silently measures plain HAMi under an MPS label.
-    H.set_mps_daemon(arm == "hami-mps", ev=ev)
+    ok, detail = H.set_mps_daemon(arm == "hami-mps", ev=ev)
+    if not ok:
+        raise RuntimeError("could not set MPS state: %s" % detail)
 
     host = H.HostSampler(os.path.join(out, "host.csv")); host.start()
     ev.mark("apply")
     H.kubectl(["apply", "-f", os.path.join(out, "rendered")], check=True)
 
-    H.wait_ready(roles, timeout=900, ev=ev)
+    ready, readiness = H.wait_ready(roles, timeout=900, ev=ev)
+    with open(os.path.join(out, "readiness.json"), "w", encoding="utf-8") as fh:
+        json.dump({"ok": ready, "diagnostics": readiness}, fh, indent=2)
+    if not ready:
+        raise RuntimeError("readiness timed out; diagnostics saved to readiness.json")
     ev.mark("ready")
 
     # Assert, do not assume. Round two shipped an arm whose "co-tenants" had
     # been spread onto separate cards; it looked clean and meant nothing.
-    H.assert_mps_matches_arm(arm, roles, ev=ev)
+    ok, detail = H.assert_mps_matches_arm(arm, roles, ev=ev)
+    if not ok:
+        raise RuntimeError("MPS state does not match arm: %s" % detail)
     place = H.placement(roles)
     json.dump(place, open(os.path.join(out, "placement.json"), "w"), indent=2)
     ev.mark("placement", detail=json.dumps(place))
@@ -133,12 +148,25 @@ try:
     eps = H.endpoints(roles, ev=ev)
     models = {r: (H.served_model(eps[r]) or "Qwen/Qwen2.5-0.5B-Instruct")
               for r in roles}
-    H.smoke_test(eps, models, {r: "chat" for r in roles}, ev=ev)
+    smoke_ok, smoke_detail = H.smoke_test(eps, models,
+                                           {r: "chat" for r in roles}, ev=ev)
+    if not smoke_ok:
+        raise RuntimeError("smoke test failed: %s" % smoke_detail)
 
-    prob = H.host_memory_problems(roles, ev=ev)
-    json.dump({"host": H.host_mem_mib(), "vllm_rss_mib": H.vllm_rss_mib(),
-               "problems": prob},
+    mem = H.host_mem_mib()
+    rss = H.vllm_rss_mib()
+    prob, detail = H.host_memory_problems(roles, ev=ev)
+    # This gate is based on the live four-rank process set, not a role-name
+    # estimate. A replay under an already OOM-bound host is not a benchmark.
+    live_problem = []
+    if mem.get("available", 0) < H.HOST_HEADROOM_MIB:
+        live_problem.append("only %d MiB host RAM available after both tenants became Ready"
+                            % mem.get("available", 0))
+    json.dump({"host": mem, "vllm_rss_mib": rss,
+               "problems": prob + live_problem, "estimate": detail},
               open(os.path.join(out, "hostmem.json"), "w"), indent=2)
+    if live_problem:
+        raise RuntimeError("host-memory admission failed: %s" % live_problem[0])
 
     trace = os.path.join(out, "trace.json")
     subprocess.check_call([sys.executable,
@@ -169,6 +197,7 @@ try:
 except Exception as e:
     ev.mark("arm_failed", error=str(e))
     print("ARM %s FAILED: %s" % (arm, e))
+    raise
 finally:
     for s in (gpu, host):
         if s:
@@ -177,9 +206,18 @@ finally:
     ev.mark("arm_end")
     ev.close()
 EOF
-  log "=== arm ${ARM} finished rc=$?"
+  RC=$?
+  if [ "${RC}" -ne 0 ]; then
+    log "=== arm ${ARM} FAILED rc=${RC}; diagnostic artifacts retained in ${OUT}"
+    teardown
+    exit "${RC}"
+  fi
+  log "=== arm ${ARM} finished successfully"
+  log "=== dashboard capture window: ${DASHBOARD_HOLD_SECS}s (workloads remain live)"
+  log "=== Grafana: kubectl -n default port-forward svc/prometheus-grafana 3000:80"
+  log "=== Open the GPU Sharing - Round 2 dashboard and capture the ${ARM} arm now."
+  sleep "${DASHBOARD_HOLD_SECS}"
   teardown
-done
 
 ${PY} - >>"${LOG}" 2>&1 <<'EOF' || true
 import sys, os
@@ -189,5 +227,5 @@ H.set_mps_daemon(False)
 EOF
 
 log ""
-log "=== both arms done. Collect with:"
+log "=== arm done. Collect both separately-run arms with:"
 log "===   python3 54-split-collect.py ${RUN}"

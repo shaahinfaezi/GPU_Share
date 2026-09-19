@@ -96,7 +96,12 @@ role, out, rate, secs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 here = os.getcwd()
 root = os.path.dirname(here)
 
-H.wait_ready([role], timeout=900)
+ready, readiness = H.wait_ready([role], timeout=900)
+with open(os.path.join(out, "readiness.json"), "w", encoding="utf-8") as fh:
+    json.dump({"ok": ready, "diagnostics": readiness}, fh, indent=2)
+if not ready:
+    raise RuntimeError("%s readiness timed out; diagnostics saved to readiness.json"
+                       % role)
 eps = H.endpoints([role])
 model = H.served_model(eps[role]) or "Qwen/Qwen2.5-0.5B-Instruct"
 print("endpoint %s -> %s (model %s)" % (role, eps[role], model))
@@ -149,11 +154,15 @@ for role in ("tp", "pp"):
         print("MISSING %s -- stage 2 cannot be calibrated from a partial run" % p)
         continue
     s = json.load(open(p, encoding="utf-8"))["per_service"][role]
+    mem_path = os.path.join(run, "dedicated__%s" % role, "hostmem.json")
+    mem = json.load(open(mem_path, encoding="utf-8")) if os.path.exists(mem_path) else {}
     cal["solo"][role] = {
         "tokens_per_second":   s["tokens_per_second"],
         "requests_per_second": s["requests_per_second"],
         "latency_mean":        s["latency_e2e"]["mean"],
         "ttft_mean":           s["ttft"]["mean"],
+        "vllm_rss_mib":        mem.get("vllm_rss_mib", [None, None])[0],
+        "host_available_mib":  mem.get("available_mib"),
     }
     print("%s solo: %.1f tok/s, %.2f req/s, mean latency %.2f s"
           % (role, s["tokens_per_second"], s["requests_per_second"],
@@ -169,13 +178,17 @@ if len(cal["solo"]) == 2:
     print("combined measured capacity %.2f req/s -> stage 2 rate %.1f req/s"
           % (cap, cal["cotenancy_rate"]))
 else:
-    cal["cotenancy_rate"] = 20.0
-    print("INCOMPLETE: falling back to 20 req/s. Read the log before trusting stage 2.")
+    raise SystemExit("INCOMPLETE: both solo baselines are required; refusing to invent a co-tenancy rate")
 
 json.dump(cal, open(os.path.join(run, "calibration.json"), "w"), indent=2)
 # Stage 2 reads this path; a stable name saves passing the stamp around.
 json.dump(cal, open("calibration.json", "w"), indent=2)
 EOF
+CAL_RC=$?
+if [ "${CAL_RC}" -ne 0 ]; then
+  log "=== calibration failed rc=${CAL_RC}; do not start a sharing arm"
+  exit "${CAL_RC}"
+fi
 
 log ""
 log "=== solo stage done. Next:"

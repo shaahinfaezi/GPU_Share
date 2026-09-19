@@ -1,0 +1,92 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qwen-zero-offload
+  namespace: llm-demo
+  annotations:
+    serving.kserve.io/deploymentMode: RawDeployment
+spec:
+  predictor:
+    # Pin both the GPU workload and the node-local PVs to the worker. Confirm
+    # the exact node name with `kubectl get nodes` before applying.
+    nodeSelector:
+      kubernetes.io/hostname: new2
+    minReplicas: 1
+    containers:
+      - name: kserve-container
+        image: box2.local/deepspeed-zero-kserve:qwen-test
+        imagePullPolicy: Never
+        args:
+          - --workers=1
+          - --http_port=8080
+          - --model_name=qwen-zero-offload
+          - --enable_grpc=false
+        env:
+          - name: MODEL_PATH
+            value: /models/qwen2.5-0.5b-instruct
+          - name: ZERO_NVME_PATH
+            value: /opt/zero-nvme
+          - name: HF_HUB_OFFLINE
+            value: "1"
+          - name: TRANSFORMERS_OFFLINE
+            value: "1"
+          - name: TOKENIZERS_PARALLELISM
+            value: "false"
+          - name: RANK
+            value: "0"
+          - name: LOCAL_RANK
+            value: "0"
+          - name: WORLD_SIZE
+            value: "1"
+          - name: MASTER_ADDR
+            value: 127.0.0.1
+          - name: MASTER_PORT
+            value: "29500"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "2"
+            memory: 4Gi
+            ephemeral-storage: 1Gi
+            nvidia.com/gpu: "1"
+          limits:
+            cpu: "4"
+            memory: 8Gi
+            ephemeral-storage: 4Gi
+            nvidia.com/gpu: "1"
+        startupProbe:
+          httpGet:
+            path: /v1/models/qwen-zero-offload
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 120
+        readinessProbe:
+          httpGet:
+            path: /v1/models/qwen-zero-offload
+            port: 8080
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /v1/models/qwen-zero-offload
+            port: 8080
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+          - name: models
+            mountPath: /models
+            readOnly: true
+          - name: zero-nvme
+            mountPath: /opt/zero-nvme
+    volumes:
+      - name: models
+        persistentVolumeClaim:
+          claimName: qwen-zero-models-pvc
+      - name: zero-nvme
+        persistentVolumeClaim:
+          claimName: qwen-zero-scratch-pvc
