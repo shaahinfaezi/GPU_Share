@@ -61,7 +61,7 @@ PY=python3
 mkdir -p logs "${RUN}"
 export PYTHONPATH="$(cd .. && pwd):${PYTHONPATH:-}"
 
-SECS="${SECS:-240}"
+SECS="${SECS:-300}"
 DASHBOARD_HOLD_SECS="${DASHBOARD_HOLD_SECS:-120}"
 
 log() { echo "$(date -u +%FT%TZ) $*" | tee -a "${LOG}"; }
