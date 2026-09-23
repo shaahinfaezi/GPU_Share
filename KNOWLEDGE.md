@@ -2,6 +2,49 @@
 
 Last reviewed: 2026-09-18. Repository HEAD during investigation: `c46cace`.
 
+Latest split continuation: 2026-09-23 (the older report/investigation sections
+below are historical snapshots, not a statement that today's report is final).
+
+- The owner confirmed Box1 only, both RTX 3080 Ti GPUs on `mr-gholami`, the same
+  15988 MiB host, no RAM upgrade, no SSH by the assistant, and one agent only.
+- User-supplied September 23 idle evidence: MemAvailable 7609 MiB, no swap,
+  both GPUs idle, only the model-image pinner in `llm-demo`. Their September 19
+  solo calibration reports TP/PP RSS 6656/6159 MiB and 940.135/165.888 token/s.
+  The pasted `solo.log` was September 15. September 19 CSV request success
+  counts are not yet verified. Expired events do not establish why old shared
+  pods failed to appear.
+- Local split corrections add an opt-in `SPLIT_PROFILE=lowmem-eager` with
+  `--enforce-eager` in every arm. It is a candidate for reducing memory, not a
+  proven fit in 16 GiB. New solo baselines are mandatory. TP2/PP2, model,
+  context/sequence limits and GPU quotas stay the same. Solo now records
+  idle-to-peak host memory deltas; sharing uses their sum plus 1024 MiB
+  headroom. Host deltas include other host activity and are estimates.
+- Shared traffic remains Poisson, 300 seconds of arrivals per arm, separately
+  invoked. New tenant mix is capacity-weighted rather than equal: the old
+  7.7 req/s equal mix over-offered the slower PP tenant. State this experimental
+  change in any new report. A series freezes its trace and calibration; role
+  remapping updates the digest. Acceptance checks include request errors,
+  missing rows and client scheduling-delay p99 <= 0.5 s. This is not an SLO.
+- `round2/split/55-split-diagnose.py` reads solo quality, process PSS and node
+  allocation without changing cluster state. README documents rerun commands.
+  Local validation: seven offline tests, Bash/embedded Python syntax, twelve
+  rendered YAML variants. No deployment or benchmark was executed by the agent.
+- The owner additionally selected a separate TP2 + `embed-small` experiment:
+  Qwen/Qwen2.5-0.5B-Instruct split over two GPUs, alongside the different model
+  BAAI/bge-large-en-v1.5 on one of the same GPUs. See
+  `round2/split/TP_EMBED_PLAN.md`. This is a planned three-GPU-worker scenario,
+  not an executed result or an extra tenant added to TP2+PP2. Current `52`/`53`
+  still only implement TP2+PP2; mixed endpoint handling, placement checks and
+  BGE calibration must be added before running the new scenario.
+- Report follow-up remains pending successful split execution: vertically
+  aligned charts with identical bins for request arrivals, p95/p99 latency and
+  throughput; preserve raw data and explicitly label any arrival smoothing.
+  Never turn a Poisson arrival time series into an invented bell curve. Main
+  result plots should show service metrics; keep the full dashboard and the
+  requested screenshots. Add sourced technical explanation of HAMi/MPS and
+  YAML controls. Do not claim a universal MPS rule from depth above 100 percent;
+  depth, duty/oversubscription percentage and throughput ratio are different.
+
 This document preserves the context from the repository/history investigation and the owner's subsequent clarifications. It is a navigation and evidence guide, not a replacement for source code, raw results, or the research reports. Recheck affected code and data before changing them. Paths below are relative to this repository unless explicitly marked as workspace paths.
 
 ## 1. Owner's intent and current scope

@@ -138,7 +138,10 @@ MPS_ENV = """          - name: CUDA_MPS_PIPE_DIRECTORY
 """
 
 
-def render(role, arm, mps_percent):
+def render(role, arm, mps_percent, profile=None):
+    profile = profile or os.environ.get('SPLIT_PROFILE', 'original')
+    if profile not in ('original', 'lowmem-eager'):
+        raise ValueError('Unknown SPLIT_PROFILE: %s' % profile)
     r = ROLES[role]
     share = arm in ("hami", "hami-mps")
     mem = '            nvidia.com/gpumem: "%d"\n' % GPUMEM
@@ -151,7 +154,8 @@ def render(role, arm, mps_percent):
         "model": r["model"], "uri": r["uri"], "gpus": r["gpus"],
         "mem_lim": mem, "core_lim": core,
         "mem_req": mem, "core_req": core,
-        "extra": r["extra"], "util": UTIL, "mps": mps,
+        "extra": r["extra"] + (' --enforce-eager' if profile == 'lowmem-eager' else ''),
+        "util": UTIL, "mps": mps,
     }
 
 

@@ -37,6 +37,19 @@ NS="${R2_NS:-llm-demo}"
 PY=python3
 FAIL=0
 export PYTHONPATH="$(cd .. && pwd):${PYTHONPATH:-}"
+mkdir -p logs
+# Do not let the EXIT cleanup own a deployment started elsewhere.
+${PY} - <<'EOF'
+import harness as H
+if H.pods_for('tp') or H.pods_for('pp'):
+    raise SystemExit('Existing split pods found; inspect before preflight')
+if not H.wait_gpu_idle(timeout=30):
+    raise SystemExit('GPUs are not idle')
+ok, detail = H.set_mps_daemon(False)
+if not ok:
+    raise SystemExit('Cannot disable MPS: %s' % detail)
+EOF
+[ $? -eq 0 ] || exit 2
 
 ok()   { echo "  PASS  $*"; }
 bad()  { echo "  FAIL  $*"; FAIL=1; }
@@ -53,7 +66,16 @@ import harness as H
 H.wait_gpu_idle(timeout=180)
 EOF
 }
-trap cleanup EXIT
+finish() {
+  cleanup
+  ${PY} - <<'EOF'
+import harness as H
+ok, detail = H.set_mps_daemon(False)
+if not ok:
+    raise SystemExit('Cannot restore MPS off: %s' % detail)
+EOF
+}
+trap finish EXIT
 
 # ------------------------------------------------------------------ 1. cards
 head_ "1. cards"
@@ -100,6 +122,7 @@ else
 fi
 
 # ------------------------------------- 4. does HAMi honour a 2-GPU request?
+[ "${FAIL}" -eq 0 ] || exit 1
 head_ "4. HAMi multi-device: nvidia.com/gpu=2 with a gpumem quota"
 note "applying the tp tenant alone on the hami arm"
 rm -rf rendered-preflight && mkdir -p rendered-preflight
@@ -143,8 +166,11 @@ ${PY} - <<'EOF'
 import sys, os
 sys.path.insert(0, os.path.dirname(os.getcwd()))
 import harness as H
-H.set_mps_daemon(True)
+ok, detail = H.set_mps_daemon(True)
+if not ok:
+    raise SystemExit('Cannot enable MPS: %s' % detail)
 EOF
+[ $? -eq 0 ] || exit 2
 rm -rf rendered-preflight && mkdir -p rendered-preflight
 ${PY} 50-render-split.py --arm hami-mps --only tp --out rendered-preflight >/dev/null
 kubectl apply -f rendered-preflight/ >/dev/null 2>&1
@@ -172,10 +198,10 @@ EOF
 )
 case "${MPSREADY}" in
   yes) ok "tensor-parallel vLLM served a request with MPS in the path"
-       ok "NCCL and MPS coexist on this node -- arm 4 is safe to run" ;;
+       ok "single-tenant MPS smoke passed; four-rank memory admission remains separate" ;;
   *)   bad "TP under MPS did not serve -- ${MPSREADY}"
        echo "        THIS IS THE ONE THAT MATTERS. If it failed, do NOT run"
-       echo "        53-split-share.sh's hami-mps stage; it will hang, not crash."
+       echo "        53-split-share.sh's hami-mps stage until the cause is resolved."
        echo "        Save pod/controller events and logs before attributing the cause."
        echo "        A startup failure alone does not establish NCCL incompatibility." ;;
 esac
@@ -203,11 +229,12 @@ need = 4 * 2400
 if avail >= need:
     print("  PASS  %d MiB >= %d MiB estimated for 4 ranks" % (avail, need))
 else:
-    print("  FAIL  %d MiB < %d MiB estimated for 4 ranks" % (avail, need))
-    print("        The solo stage measures the true per-rank RSS. If it lands")
-    print("        above ~2.4 GiB, reduce the node's other resident workloads or")
-    print("        add RAM. Separate arms still each need all four ranks at once.")
-    sys.exit(1)
+    print("  WARN  %d MiB < %d MiB rough estimate for four ranks" % (avail, need))
+    print("        Solo is permitted to MEASURE one tenant at a time. Sharing is")
+    print("        not admitted here; stage 2 checks the measured peak host deltas.")
+    if avail < 1024:
+        print('  FAIL  Less than 1024 MiB host headroom')
+        sys.exit(1)
 EOF
 [ $? -ne 0 ] && FAIL=1
 

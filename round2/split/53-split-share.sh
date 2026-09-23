@@ -64,7 +64,7 @@ flock -n 9 || { echo "Another split stage is running" >&2; exit 2; }
 export PYTHONPATH="$(cd .. && pwd):${PYTHONPATH:-}"
 
 SECS="${SECS:-300}"
-DASHBOARD_HOLD_SECS="${DASHBOARD_HOLD_SECS:-120}"
+DASHBOARD_HOLD_SECS="${DASHBOARD_HOLD_SECS:-300}"
 
 log() { echo "$(date -u +%FT%TZ) $*" | tee -a "${LOG}"; }
 
@@ -88,7 +88,17 @@ EOF
   sleep 10
 }
 
-trap 'log "INTERRUPTED"; teardown; exit 130' INT TERM
+restore_mps() {
+  if [ -f "${OUT}/mps-state-touched" ]; then
+    ${PY} - >>"${LOG}" 2>&1 <<'EOF'
+import harness as H
+ok, detail = H.set_mps_daemon(False)
+if not ok:
+    raise SystemExit('Failed to restore MPS off: %s' % detail)
+EOF
+  fi
+}
+trap 'log "INTERRUPTED"; if [ -f "${OUT:-}/apply-started" ]; then teardown; fi; restore_mps; exit 130' INT TERM
 
   OUT="${RUN}/${ARM}__tp+pp"
   [ ! -e "${OUT}" ] || { log "Refusing to overwrite ${OUT}; use a new SERIES"; exit 2; }
@@ -103,10 +113,11 @@ trap 'log "INTERRUPTED"; teardown; exit 130' INT TERM
   # apply and the replay, and the MPS daemon state has to be asserted against
   # the arm AFTER the pods exist, not before.
   ${PY} - "${ARM}" "${OUT}" "${RATE}" "${SECS}" >>"${LOG}" 2>&1 <<'EOF'
-import sys, os, json, subprocess, time
+import sys, os, json, subprocess, time, shutil
 sys.path.insert(0, os.path.dirname(os.getcwd()))
 import harness as H
-from split_checks import memory_budget, same_two_devices, snapshot
+from split_checks import (memory_budget, same_two_devices, snapshot, config_identity,
+                          remap_trace, ensure_fd_limit, replay_quality)
 
 arm, out, rate, secs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 root = os.path.dirname(os.getcwd())
@@ -120,6 +131,17 @@ try:
     if not H.wait_gpu_idle(timeout=30, ev=ev):
         raise RuntimeError('GPUs are not idle; inspect the resident workloads first')
     cal = json.load(open('calibration.json', encoding='utf-8'))
+    if not cal.get('validated') or cal.get('config') != config_identity():
+        raise RuntimeError('Rerun solo using this SPLIT_PROFILE and updated renderer; '
+                           'old or unvalidated baselines cannot calibrate this run')
+    series = os.path.dirname(out)
+    frozen_cal = os.path.join(series, 'calibration.json')
+    if os.path.exists(frozen_cal):
+        if json.load(open(frozen_cal, encoding='utf-8')) != cal:
+            raise RuntimeError('Calibration differs from the first arm in this SERIES')
+    else:
+        H.write_json(frozen_cal, cal)
+    ensure_fd_limit()
     gate = memory_budget(cal, H.host_mem_mib().get('available', 0))
     H.write_json(os.path.join(out, 'admission.json'), gate)
     if not gate['ok']:
@@ -129,6 +151,7 @@ try:
 
     # The daemon must be up BEFORE the pods, or the clients start without it
     # and the arm silently measures plain HAMi under an MPS label.
+    open(os.path.join(out, 'mps-state-touched'), 'w').close()
     ok, detail = H.set_mps_daemon(arm == "hami-mps", ev=ev)
     if not ok:
         raise RuntimeError("could not set MPS state: %s" % detail)
@@ -156,6 +179,12 @@ try:
     if not same_two_devices(place):
         raise RuntimeError('Both tenants must be allocated the same two GPU UUIDs: %s' % place)
     nodes = {p.get('spec', {}).get('nodeName') for r in roles for p in H.pods_for(r)}
+    for role in roles:
+        pods = H.pods_for(role)
+        if len(pods) != 1 or pods[0]['metadata'].get('deletionTimestamp') or not any(
+                c.get('type') == 'Ready' and c.get('status') == 'True'
+                for c in pods[0].get('status', {}).get('conditions', [])):
+            raise RuntimeError('Both roles must be Ready simultaneously: %s' % role)
     if len(nodes) != 1 or None in nodes:
         raise RuntimeError('Split tenants must be on one verified node: %s' % nodes)
 
@@ -177,7 +206,6 @@ try:
 
     mem = H.host_mem_mib()
     rss = H.vllm_rss_mib()
-    prob, detail = H.host_memory_problems(roles, ev=ev)
     # This gate is based on the live four-rank process set, not a role-name
     # estimate. A replay under an already OOM-bound host is not a benchmark.
     live_problem = []
@@ -185,21 +213,33 @@ try:
         live_problem.append("only %d MiB host RAM available after both tenants became Ready"
                             % mem.get("available", 0))
     json.dump({"host": mem, "vllm_rss_mib": rss,
-               "problems": prob + live_problem, "estimate": detail},
+               "problems": live_problem},
               open(os.path.join(out, "hostmem.json"), "w"), indent=2)
     if live_problem:
         raise RuntimeError("host-memory admission failed: %s" % live_problem[0])
 
     trace = os.path.join(out, "trace.json")
-    subprocess.check_call([sys.executable,
-        os.path.join(root, "workload", "gen_trace.py"),
-        "--scenario", "llm2-llm2", "--rate", rate, "--duration", secs,
-        "--source", "sharegpt", "--out", trace])
-    doc = json.load(open(trace, encoding="utf-8"))
-    ren = {"llm2a": "tp", "llm2b": "pp"}
-    for r in doc["requests"]:
-        r["service"] = ren.get(r["service"], r["service"])
-    json.dump(doc, open(trace, "w", encoding="utf-8"))
+    frozen_trace = os.path.join(series, 'trace.json')
+    if not os.path.exists(frozen_trace):
+        candidate = os.path.join(out, 'trace.candidate.json')
+        subprocess.check_call([sys.executable,
+            os.path.join(root, "workload", "gen_trace.py"),
+            "--scenario", "llm2-llm2", "--rate", rate, "--duration", secs,
+            '--mix', 'llm2a=%s,llm2b=%s' % (cal['mix']['tp'], cal['mix']['pp']),
+            "--source", "sharegpt", "--out", candidate])
+        doc = json.load(open(candidate, encoding='utf-8'))
+        if doc['params']['source'] != 'sharegpt':
+            raise RuntimeError('ShareGPT unavailable; refusing synthetic fallback')
+        remap_trace(doc)
+        doc['params']['split_mix'] = cal['mix']
+        H.write_json(frozen_trace, doc)
+    doc = json.load(open(frozen_trace, encoding='utf-8'))
+    original_id = doc['trace_id']
+    if (doc['params']['duration'] != float(secs) or doc['params']['rate'] != float(rate)
+            or doc['params'].get('split_mix') != cal['mix']
+            or remap_trace(doc)['trace_id'] != original_id):
+        raise RuntimeError('Stored series trace settings or digest do not match')
+    shutil.copyfile(frozen_trace, trace)
 
     gpu = H.GpuSampler(os.path.join(out, "gpu.csv")); gpu.start()
     t0 = ev.mark("replay_start")
@@ -211,11 +251,25 @@ try:
         "--out-dir", out, "--max-inflight", "4096",
         "--note", "S-share %s tp+pp" % arm])
     t1 = ev.mark("replay_end")
+    quality = replay_quality(out, roles)
+    if host.min_available is None or host.min_available < H.HOST_HEADROOM_MIB:
+        quality['ok'] = False
+        quality['issues'].append('Host RAM fell below headroom during startup/replay')
+    H.write_json(os.path.join(out, 'quality.json'), quality)
+    if not quality['ok']:
+        raise RuntimeError('Replay failed acceptance: %s' % quality['issues'])
+    ok, detail = H.assert_mps_matches_arm(arm, roles, ev=ev)
+    if not ok:
+        raise RuntimeError('MPS state changed during replay: %s' % detail)
+    H.write_json(os.path.join(out, 'dashboard-window.json'),
+                 {'replay_start_epoch': t0, 'replay_end_epoch': t1,
+                  'note': 'Use this historical interval for the screenshot; hold time has no load.'})
 
     try:
         H.prom_collect(os.path.join(out, "prom.json"), t0, t1, ev=ev)
     except Exception as e:
         ev.mark("prom_failed", error=str(e))   # never fatal; gpu.csv is the copy
+    H.write_json(os.path.join(out, 'completed.json'), {'ok': True})
 except Exception as e:
     ev.mark("arm_failed", error=str(e))
     try:
@@ -236,21 +290,18 @@ EOF
   if [ "${RC}" -ne 0 ]; then
     log "=== arm ${ARM} FAILED rc=${RC}; diagnostic artifacts retained in ${OUT}"
     if [ -f "${OUT}/apply-started" ]; then teardown; fi
+    restore_mps
     exit "${RC}"
   fi
   log "=== arm ${ARM} finished successfully"
   log "=== dashboard capture window: ${DASHBOARD_HOLD_SECS}s (workloads remain live)"
   log "=== Grafana: kubectl -n default port-forward svc/prometheus-grafana 3000:80"
   log "=== Open the GPU Sharing - Round 2 dashboard and capture the ${ARM} arm now."
+  log "=== Select the replay interval in ${OUT}/dashboard-window.json; the hold is idle."
   sleep "${DASHBOARD_HOLD_SECS}"
   teardown
 
-${PY} - >>"${LOG}" 2>&1 <<'EOF' || true
-import sys, os
-sys.path.insert(0, os.path.dirname(os.getcwd()))
-import harness as H
-H.set_mps_daemon(False)
-EOF
+restore_mps || exit 2
 
 log ""
 log "=== arm done. Collect both separately-run arms with:"

@@ -94,7 +94,10 @@ def main():
     share = sys.argv[1].rstrip("/\\")
     root = os.path.dirname(share) or "."
 
-    cal = load("calibration.json") or load(os.path.join(root, "calibration.json"))
+    cal = load(os.path.join(share, 'calibration.json'))
+    if not cal:
+        sys.exit('No series-local calibration.json; historical outputs need a separate '
+                 'audit, not an arbitrary current baseline')
     if not cal:
         solos = sorted(glob.glob(os.path.join(root, "S-solo-*", "calibration.json")))
         cal = load(solos[-1]) if solos else None
@@ -107,8 +110,19 @@ def main():
         d = os.path.join(share, "%s__tp+pp" % arm)
         if not os.path.isdir(d):
             continue
+        quality = load(os.path.join(d, 'quality.json'))
+        if not load(os.path.join(d, 'completed.json')) or not quality or not quality.get('ok'):
+            print('!! excluding incomplete/invalid arm: %s' % arm)
+            continue
         arms[arm] = {"dir": d, "gpu": gpu_stats(d),
+                     'replay': load(os.path.join(d, 'replay.summary.json')),
                      "roles": {r: summary(d, r) for r in ROLES}}
+
+    if len(arms) == 2:
+        ids = [load(os.path.join(a['dir'], 'replay.summary.json')).get('trace_id')
+               for a in arms.values()]
+        if None in ids or len(set(ids)) != 1:
+            sys.exit('Mismatched or missing trace IDs; no MPS comparison is valid')
 
     missing = [a for a in ("hami", "hami-mps") if a not in arms]
     if missing:
@@ -157,7 +171,9 @@ def main():
         a = arms.get(arm)
         if not a or not all(a["roles"].get(r) for r in ROLES):
             continue
-        tot[arm] = sum(a["roles"][r]["tok_s"] for r in ROLES)
+        # Both tenants share one wall-clock denominator. Summing each role's
+        # independently timed throughput can overstate joint performance.
+        tot[arm] = a['replay']['aggregate']['tokens_per_second']
         sat = 100.0 * tot[arm] / solo_total if solo_total else 0.0
         print("  %-9s combined %8.1f tok/s   saturation %5.1f%% of solo sum"
               % (arm, tot[arm], sat))
@@ -169,19 +185,8 @@ def main():
         print("  measured at %.1f%% saturation on the HAMi arm." % sat_h)
         # The standing rule: never quote an MPS number without the regime it
         # was measured in, and never without the depth asymmetry beside it.
-        if sat_h > 95:
-            print("  REGIME: the card was NOT saturated. Round two measured")
-            print("  +0.06% at 99.6% and +8.6% at 86.3%; a small number here")
-            print("  says the rate was low, NOT that MPS fails on split models.")
-            print("  Re-run 53-split-share.sh with SECS=240 and a higher rate")
-            print("  before drawing any conclusion about MPS.")
-        elif sat_h > 88:
-            print("  REGIME: lightly saturated. Comparable to round two's 86.3%")
-            print("  point (+8.6%). A modest gain here is consistent, not weak.")
-        else:
-            print("  REGIME: genuinely saturated, the band where round two saw")
-            print("  +19.0% (80.9%) and +20.8% (55.9%). This is the point the")
-            print("  capacity claim for split models should rest on.")
+        print('  This is a throughput ratio, not measured GPU utilization or proof of saturation.')
+        print('  Interpret alongside latency, queue depth, offered rates and request errors.')
 
         print("\n  per tenant, each against its OWN solo baseline:")
         for r in ROLES:

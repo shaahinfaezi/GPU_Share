@@ -45,7 +45,9 @@ export PYTHONPATH="$(cd .. && pwd):${PYTHONPATH:-}"
 # Deliberately ABOVE what either tenant can serve. The achieved completion
 # rate under overload IS the capacity, and capacity is what stage 2 needs.
 # Measuring it at a polite rate would only measure the rate.
-PROBE_RATE="${PROBE_RATE:-40}"
+# Per-role arrival rates, not a 50/50 split of one aggregate rate.
+PROBE_RATE_TP="${PROBE_RATE_TP:-8}"
+PROBE_RATE_PP="${PROBE_RATE_PP:-2}"
 PROBE_SECS="${PROBE_SECS:-180}"
 
 log() { echo "$(date -u +%FT%TZ) $*" | tee -a "${LOG}"; }
@@ -64,7 +66,8 @@ EOF
 
 # A stage that fails must not kill the script -- the other tenant's baseline is
 # still worth having, and a half-populated calibration is better than none.
-trap 'log "INTERRUPTED"; teardown; exit 130' INT TERM
+CURRENT_APPLIED=0
+trap 'log "INTERRUPTED"; if [ "${CURRENT_APPLIED}" = 1 ]; then teardown; fi; exit 130' INT TERM
 
 log "=== split solo baselines, run ${RUN}"
 log "=== MPS must be OFF for a dedicated arm"
@@ -72,19 +75,39 @@ ${PY} - >>"${LOG}" 2>&1 <<'EOF'
 import sys, os
 sys.path.insert(0, os.path.dirname(os.getcwd()))
 import harness as H
-H.set_mps_daemon(False)
+if H.pods_for('tp') or H.pods_for('pp'):
+    raise SystemExit('Existing split pods found; inspect before starting solo')
+if not H.wait_gpu_idle(timeout=30):
+    raise SystemExit('GPUs are not idle')
+ok, detail = H.set_mps_daemon(False)
+if not ok:
+    raise SystemExit('Cannot disable MPS: %s' % detail)
 EOF
-teardown
+[ $? -eq 0 ] || exit 2
 
 for ROLE in tp pp; do
   OUT="${RUN}/dedicated__${ROLE}"
   mkdir -p "${OUT}/rendered"
   log ""
   log "=== ${ROLE} dedicated: render + apply"
+  if [ "${ROLE}" = tp ]; then PROBE_RATE="${PROBE_RATE_TP}"; else PROBE_RATE="${PROBE_RATE_PP}"; fi
+
+  ${PY} - "${OUT}" >>"${LOG}" 2>&1 <<'EOF'
+import sys, os
+sys.path.insert(0, os.path.dirname(os.getcwd()))
+import harness as H
+if not H.wait_gpu_idle(timeout=240):
+    raise SystemExit('Previous workload did not release GPUs')
+H.write_json(os.path.join(sys.argv[1], 'idle-hostmem.json'), H.host_mem_mib())
+EOF
+  [ $? -eq 0 ] || exit 2
 
   ${PY} 50-render-split.py --arm dedicated --only "${ROLE}" \
         --out "${OUT}/rendered" >>"${LOG}" 2>&1
+  [ $? -eq 0 ] || exit 2
+  CURRENT_APPLIED=1
   kubectl apply -f "${OUT}/rendered/" >>"${LOG}" 2>&1
+  if [ $? -ne 0 ]; then teardown; exit 2; fi
 
   # One python block does readiness, endpoint resolution, the served-model
   # name and the trace, because each step needs the previous one's answer and
@@ -93,17 +116,24 @@ for ROLE in tp pp; do
 import sys, os, json, subprocess
 sys.path.insert(0, os.path.dirname(os.getcwd()))
 import harness as H
+from split_checks import ensure_fd_limit, remap_trace, replay_quality, snapshot
 
 role, out, rate, secs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 here = os.getcwd()
 root = os.path.dirname(here)
+ensure_fd_limit()
+host = H.HostSampler(os.path.join(out, 'host.csv')); host.start()
 
 ready, readiness = H.wait_ready([role], timeout=900)
 with open(os.path.join(out, "readiness.json"), "w", encoding="utf-8") as fh:
     json.dump({"ok": ready, "diagnostics": readiness}, fh, indent=2)
 if not ready:
+    snapshot(H, os.path.join(out, 'diagnostics'))
     raise RuntimeError("%s readiness timed out; diagnostics saved to readiness.json"
                        % role)
+ok, detail = H.assert_mps_matches_arm('dedicated', [role])
+if not ok:
+    raise RuntimeError('Dedicated MPS state mismatch: %s' % detail)
 eps = H.endpoints([role])
 model = H.served_model(eps[role]) or "Qwen/Qwen2.5-0.5B-Instruct"
 print("endpoint %s -> %s (model %s)" % (role, eps[role], model))
@@ -122,11 +152,12 @@ trace = os.path.join(out, "trace.json")
 subprocess.check_call([sys.executable,
     os.path.join(root, "workload", "gen_trace.py"),
     "--scenario", "llm2-llm2", "--rate", rate, "--duration", secs,
+    "--mix", 'llm2a=1,llm2b=0' if role == 'tp' else 'llm2a=0,llm2b=1',
     "--source", "sharegpt", "--out", trace])
 doc = json.load(open(trace, encoding="utf-8"))
-ren = {"llm2a": "tp", "llm2b": "pp"}
-for r in doc["requests"]:
-    r["service"] = ren.get(r["service"], r["service"])
+if doc['params']['source'] != 'sharegpt':
+    raise RuntimeError('ShareGPT corpus unavailable; refusing synthetic fallback')
+remap_trace(doc)
 json.dump(doc, open(trace, "w", encoding="utf-8"))
 
 subprocess.check_call([sys.executable,
@@ -137,20 +168,47 @@ subprocess.check_call([sys.executable,
     "--only", role, "--out-dir", out,
     "--max-inflight", "4096",
     "--note", "S-solo dedicated %s" % role])
+host.stop()
+quality = replay_quality(out, [role])
+H.write_json(os.path.join(out, 'quality.json'), quality)
+if not quality['ok']:
+    raise RuntimeError('Replay cannot calibrate: %s' % quality['issues'])
+H.write_json(os.path.join(out, 'completed.json'), {'ok': True})
 EOF
-  log "=== ${ROLE} dedicated finished rc=$?"
+  RC=$?
+  log "=== ${ROLE} dedicated finished rc=${RC}"
+  if [ "${RC}" -ne 0 ]; then
+    ${PY} - "${OUT}" >>"${LOG}" 2>&1 <<'EOF'
+import sys, os
+sys.path.insert(0, os.path.dirname(os.getcwd()))
+import harness as H
+from split_checks import snapshot
+snapshot(H, os.path.join(sys.argv[1], 'diagnostics'))
+EOF
+    teardown
+    exit "${RC}"
+  fi
   teardown
+  CURRENT_APPLIED=0
 done
 
 # ------------------------------------------------------- write the calibration
 log ""
 log "=== calibration"
 ${PY} - "${RUN}" >>"${LOG}" 2>&1 <<'EOF'
-import sys, os, json
+import sys, os, json, csv
+from split_checks import config_identity, replay_quality
 
 run = sys.argv[1]
-cal = {"solo": {}}
+cal = {"solo": {}, "config": config_identity(), "source_run": run,
+       "validated": True, "mix_policy": "capacity-weighted"}
 for role in ("tp", "pp"):
+    directory = os.path.join(run, 'dedicated__%s' % role)
+    if not os.path.exists(os.path.join(directory, 'completed.json')):
+        raise SystemExit('Solo role did not complete successfully: %s' % role)
+    quality = replay_quality(directory, [role])
+    if not quality['ok']:
+        raise SystemExit('Invalid replay: %s' % quality['issues'])
     p = os.path.join(run, "dedicated__%s" % role, "replay.summary.json")
     if not os.path.exists(p):
         print("MISSING %s -- stage 2 cannot be calibrated from a partial run" % p)
@@ -158,6 +216,11 @@ for role in ("tp", "pp"):
     s = json.load(open(p, encoding="utf-8"))["per_service"][role]
     mem_path = os.path.join(run, "dedicated__%s" % role, "hostmem.json")
     mem = json.load(open(mem_path, encoding="utf-8")) if os.path.exists(mem_path) else {}
+    idle = json.load(open(os.path.join(directory, 'idle-hostmem.json')))['available']
+    with open(os.path.join(directory, 'host.csv'), newline='') as fh:
+        minimum = min(float(row['mem_available']) for row in csv.DictReader(fh))
+    if minimum < 1024 or idle <= minimum:
+        raise SystemExit('Host-memory measurement lacks headroom or a positive delta: %s' % role)
     cal["solo"][role] = {
         "tokens_per_second":   s["tokens_per_second"],
         "requests_per_second": s["requests_per_second"],
@@ -165,6 +228,10 @@ for role in ("tp", "pp"):
         "ttft_mean":           s["ttft"]["mean"],
         "vllm_rss_mib":        mem.get("vllm_rss_mib", [None, None])[0],
         "host_available_mib":  mem.get("available_mib"),
+        "idle_available_mib": idle,
+        "minimum_available_mib": minimum,
+        "peak_host_delta_mib": max(0, idle - minimum),
+        "quality": quality,
     }
     print("%s solo: %.1f tok/s, %.2f req/s, mean latency %.2f s"
           % (role, s["tokens_per_second"], s["requests_per_second"],
@@ -176,6 +243,7 @@ if len(cal["solo"]) == 2:
     # comparable load and landed at 80.9% achieved saturation, the point where
     # the MPS effect is largest while both arms still finish the trace.
     cal["cotenancy_rate"] = round(0.95 * cap, 1)
+    cal['mix'] = {r: cal['solo'][r]['requests_per_second'] / cap for r in ('tp', 'pp')}
     cal["solo_tokens_total"] = sum(v["tokens_per_second"] for v in cal["solo"].values())
     print("combined measured capacity %.2f req/s -> stage 2 rate %.1f req/s"
           % (cap, cal["cotenancy_rate"]))

@@ -14,6 +14,8 @@ card is simultaneously a sharing target and a splitting target.
 
 ```bash
 cd /opt/GPU_Share/round2/split && chmod +x *.sh *.py
+mkdir -p logs results
+export SPLIT_PROFILE=lowmem-eager
 
 # 1. gates (~15 min, foreground — you want to read it)
 ./51-split-preflight.sh 2>&1 | tee logs/preflight-$(date -u +%Y%m%d-%H%M%S).log
@@ -34,10 +36,13 @@ SECS=300 DASHBOARD_HOLD_SECS=300 ./53-split-share.sh hami-mps
 python3 54-split-collect.py results/S-share-<stamp>
 ```
 
-The share stage now requires measured TP and PP `vllm_rss_mib` in
-`calibration.json`. It conservatively budgets the sum of solo RSS plus 1024 MiB
-headroom **before** creating workloads. RSS can double-count shared pages; this
-is an admission estimate, not proof of an OOM cause. Do not reduce Kubernetes
+The share stage requires fresh, validated baselines from the same rendering
+configuration. It budgets the sum of measured idle-to-peak `MemAvailable` drops
+plus 1024 MiB headroom **before** creating workloads. `host.csv` includes startup
+and replay; the delta also includes changes in other host processes, so it is an
+estimate, not exact pod accounting or a guarantee against OOM. Legacy RSS-only
+diagnostics remain conservative because RSS can double-count shared pages.
+Do not reduce Kubernetes
 memory requests just to bypass admission. Each arm needs four ranks concurrently,
 even when HAMI and HAMI+MPS are run on different days.
 
@@ -48,6 +53,66 @@ Shared output directories cannot be reused. A failure after deployment writes
 pod logs before teardown. Missing pod IP alone does not identify the cause.
 
 Offline checks: `python3 test_split_checks.py` and `bash -n 53-split-share.sh`.
+
+Additional Box1 experiment selected by the owner: **TP2 + BGE embedding**.
+See [the experiment design](TP_EMBED_PLAN.md) for placement, calibration and
+evidence requirements. This scenario is planned; the current runners still
+execute TP2+PP2 only.
+
+### September 23: 16 GiB rerun profile
+
+The owner confirmed the same Box1, two GPUs on one node, and no RAM increase.
+The supplied idle snapshot had 7609 MiB available; the September 19 solo RSS
+was 6656 + 6159 MiB. This does not admit the old four-rank configuration under
+the conservative RSS estimate. Expired Kubernetes events do not identify the
+cause of earlier missing pods.
+
+`SPLIT_PROFILE=lowmem-eager` adds only `--enforce-eager` to both split roles in
+every arm. TP2/PP2, sequence limits, context length, model, and GPU quotas are
+unchanged. Disabling graph capture is supported by
+[vLLM 0.15.1](https://docs.vllm.ai/en/v0.15.1/configuration/conserving_memory/).
+This is a candidate memory reduction, **not a verified fit in 16 GiB**. It may
+change throughput; old solo values cannot be reused. No cluster monitoring
+services are disabled. Use the same exported profile in preflight, solo and
+both shared invocations, including after opening a new terminal.
+
+Solo probes now default to 8 requests/s for TP and 2 requests/s for PP for
+180 seconds of arrivals (`PROBE_RATE_TP`, `PROBE_RATE_PP`, `PROBE_SECS`). These
+are starting probes based on the supplied old rates; verify they exercise the
+new runtime sufficiently before describing achieved throughput as capacity.
+The shared aggregate rate is 95% of the sum of achieved solo rates, with
+**capacity-weighted** tenant selection. The previous equal split of 7.7 req/s
+offered PP 3.85 req/s against roughly 1.30 achieved req/s. The new policy is a
+different experiment and must be stated in the report. It does not guarantee
+stability under sharing. Both arms reuse the same frozen Poisson request file,
+with a digest recalculated after role remapping; no silent synthetic fallback.
+
+Calibration/comparison acceptance requires every scheduled live request to be
+recorded, no request or warm-up errors, and client scheduling-delay p99 <= 0.5 s.
+This delay threshold is an experiment validity guard, not an application SLO.
+The launcher raises its inherited open-file soft limit for 4096 workers when
+the existing hard limit permits; it never alters the system-wide limit. A
+thread/socket-limited replay remains invalid even when its process exits zero.
+All rejected artifacts remain available for diagnosis.
+
+Each shared arm offers arrivals for 300 seconds, then drains outstanding
+requests. Startup, warm-up, draining, and the 300-second screenshot hold add
+time. `dashboard-window.json` gives the replay interval; set Grafana to that
+historical interval during the idle hold. HAMi UI/Grafana are not launched on
+your local browser by a server shell script; keep the existing dashboard open.
+
+Inspect the supplied run without modifying cluster state:
+
+```bash
+python3 55-split-diagnose.py --run results/S-solo-20260919-055502 \
+  | tee logs/diagnose-20260919.txt
+```
+
+The collector uses the calibration stored **inside the shared series**, refuses
+invalid arms and mismatched traces, and computes combined token throughput
+using one shared wall-clock interval. A throughput ratio alone does not prove
+GPU saturation. One pair of arms is exploratory evidence, not a confidence
+interval or a universally applicable MPS threshold.
 
 | arm | what |
 |---|---|
