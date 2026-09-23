@@ -22,13 +22,32 @@ cd /opt/GPU_Share/round2/split && chmod +x *.sh *.py
 nohup ./52-split-solo.sh  > logs/solo.log  2>&1 &
 tail -f logs/solo.log
 
-# 3. hami then hami-mps (~35 min)
-nohup ./53-split-share.sh > logs/share.log 2>&1 &
-tail -f logs/share.log
+# 3. After inspecting solo calibration and hostmem, run ONE arm at a time.
+# Keep this SERIES value for both invocations. Five minutes of arrivals per arm;
+# startup, warm-up and draining outstanding requests take additional time.
+export SERIES="S-share-$(date -u +%Y%m%d-%H%M%S)"
+SECS=300 DASHBOARD_HOLD_SECS=300 ./53-split-share.sh hami
+# Inspect the first arm before starting the next command.
+SECS=300 DASHBOARD_HOLD_SECS=300 ./53-split-share.sh hami-mps
 
 # 4. read it
 python3 54-split-collect.py results/S-share-<stamp>
 ```
+
+The share stage now requires measured TP and PP `vllm_rss_mib` in
+`calibration.json`. It conservatively budgets the sum of solo RSS plus 1024 MiB
+headroom **before** creating workloads. RSS can double-count shared pages; this
+is an admission estimate, not proof of an OOM cause. Do not reduce Kubernetes
+memory requests just to bypass admission. Each arm needs four ranks concurrently,
+even when HAMI and HAMI+MPS are run on different days.
+
+All three stages use the same local `flock` lock. This protects invocations of
+these updated scripts from the same checkout, not scripts running elsewhere.
+Shared output directories cannot be reused. A failure after deployment writes
+`diagnostics/` with controller state, namespace events, and current/previous
+pod logs before teardown. Missing pod IP alone does not identify the cause.
+
+Offline checks: `python3 test_split_checks.py` and `bash -n 53-split-share.sh`.
 
 | arm | what |
 |---|---|

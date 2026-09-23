@@ -31,6 +31,8 @@
 #   tail -f logs/solo.log
 set -uo pipefail
 cd "$(dirname "$0")"
+exec 9>.split-run.lock
+flock -n 9 || { echo "Another split stage is running" >&2; exit 2; }
 
 STAMP="$(date -u +%Y%m%d-%H%M%S)"
 RUN="results/S-solo-${STAMP}"
@@ -192,4 +194,4 @@ fi
 
 log ""
 log "=== solo stage done. Next:"
-log "===   nohup ./53-split-share.sh > logs/share.log 2>&1 &"
+log "===   ./53-split-share.sh hami"

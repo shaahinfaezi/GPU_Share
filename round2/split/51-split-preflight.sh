@@ -30,6 +30,8 @@
 #   ./51-split-preflight.sh 2>&1 | tee logs/preflight-$(date -u +%Y%m%d-%H%M%S).log
 set -uo pipefail
 cd "$(dirname "$0")"
+exec 9>.split-run.lock
+flock -n 9 || { echo "Another split stage is running" >&2; exit 2; }
 
 NS="${R2_NS:-llm-demo}"
 PY=python3
@@ -157,7 +159,12 @@ try:
         raise RuntimeError(diag)
     eps = H.endpoints(["tp"])
     m = H.served_model(eps["tp"]) or "Qwen/Qwen2.5-0.5B-Instruct"
-    H.smoke_test(eps, {"tp": m}, {"tp": "chat"}, timeout=120)
+    ok, detail = H.assert_mps_matches_arm('hami-mps', ['tp'])
+    if not ok:
+        raise RuntimeError(detail)
+    ok, detail = H.smoke_test(eps, {"tp": m}, {"tp": "chat"}, timeout=120)
+    if not ok:
+        raise RuntimeError(detail)
     print("yes")
 except Exception as e:
     print("no: %s" % e)
@@ -169,8 +176,8 @@ case "${MPSREADY}" in
   *)   bad "TP under MPS did not serve -- ${MPSREADY}"
        echo "        THIS IS THE ONE THAT MATTERS. If it failed, do NOT run"
        echo "        53-split-share.sh's hami-mps stage; it will hang, not crash."
-       echo "        Report it as a finding: MPS is incompatible with tensor"
-       echo "        parallelism on this driver, which is itself a real result." ;;
+       echo "        Save pod/controller events and logs before attributing the cause."
+       echo "        A startup failure alone does not establish NCCL incompatibility." ;;
 esac
 cleanup
 ${PY} - <<'EOF'
@@ -198,8 +205,8 @@ if avail >= need:
 else:
     print("  FAIL  %d MiB < %d MiB estimated for 4 ranks" % (avail, need))
     print("        The solo stage measures the true per-rank RSS. If it lands")
-    print("        above ~2.4 GiB, run the two co-tenancy arms on separate")
-    print("        days rather than letting the OOM killer pick a winner.")
+    print("        above ~2.4 GiB, reduce the node's other resident workloads or")
+    print("        add RAM. Separate arms still each need all four ranks at once.")
     sys.exit(1)
 EOF
 [ $? -ne 0 ] && FAIL=1

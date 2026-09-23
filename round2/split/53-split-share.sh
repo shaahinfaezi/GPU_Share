@@ -59,6 +59,8 @@ LOG="logs/share-${ARM}-${STAMP}.log"
 NS="${R2_NS:-llm-demo}"
 PY=python3
 mkdir -p logs "${RUN}"
+exec 9>.split-run.lock
+flock -n 9 || { echo "Another split stage is running" >&2; exit 2; }
 export PYTHONPATH="$(cd .. && pwd):${PYTHONPATH:-}"
 
 SECS="${SECS:-300}"
@@ -89,11 +91,13 @@ EOF
 trap 'log "INTERRUPTED"; teardown; exit 130' INT TERM
 
   OUT="${RUN}/${ARM}__tp+pp"
+  [ ! -e "${OUT}" ] || { log "Refusing to overwrite ${OUT}; use a new SERIES"; exit 2; }
   mkdir -p "${OUT}/rendered"
   log ""
   log "=== arm ${ARM} starting"
 
   ${PY} 50-render-split.py --arm "${ARM}" --out "${OUT}/rendered" >>"${LOG}" 2>&1
+  [ $? -eq 0 ] || exit 2
 
   # Everything for this arm in one process: the samplers have to outlive the
   # apply and the replay, and the MPS daemon state has to be asserted against
@@ -102,6 +106,7 @@ trap 'log "INTERRUPTED"; teardown; exit 130' INT TERM
 import sys, os, json, subprocess, time
 sys.path.insert(0, os.path.dirname(os.getcwd()))
 import harness as H
+from split_checks import memory_budget, same_two_devices, snapshot
 
 arm, out, rate, secs = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 root = os.path.dirname(os.getcwd())
@@ -110,6 +115,17 @@ ev = H.Events(os.path.join(out, "events.jsonl"))
 host = None; gpu = None
 try:
     ev.mark("arm_start", arm=arm)
+    if H.pods_for('tp') or H.pods_for('pp'):
+        raise RuntimeError('Existing split pods remain; inspect and clean up before starting a new arm')
+    if not H.wait_gpu_idle(timeout=30, ev=ev):
+        raise RuntimeError('GPUs are not idle; inspect the resident workloads first')
+    cal = json.load(open('calibration.json', encoding='utf-8'))
+    gate = memory_budget(cal, H.host_mem_mib().get('available', 0))
+    H.write_json(os.path.join(out, 'admission.json'), gate)
+    if not gate['ok']:
+        raise RuntimeError('Host admission needs %s MiB available; found %s MiB. '
+                           'Separate arms still require BOTH split tenants concurrently.'
+                           % (gate['required_mib'], gate['available_mib']))
 
     # The daemon must be up BEFORE the pods, or the clients start without it
     # and the arm silently measures plain HAMi under an MPS label.
@@ -119,6 +135,7 @@ try:
 
     host = H.HostSampler(os.path.join(out, "host.csv")); host.start()
     ev.mark("apply")
+    open(os.path.join(out, 'apply-started'), 'w').close()
     H.kubectl(["apply", "-f", os.path.join(out, "rendered")], check=True)
 
     ready, readiness = H.wait_ready(roles, timeout=900, ev=ev)
@@ -136,6 +153,11 @@ try:
     place = H.placement(roles)
     json.dump(place, open(os.path.join(out, "placement.json"), "w"), indent=2)
     ev.mark("placement", detail=json.dumps(place))
+    if not same_two_devices(place):
+        raise RuntimeError('Both tenants must be allocated the same two GPU UUIDs: %s' % place)
+    nodes = {p.get('spec', {}).get('nodeName') for r in roles for p in H.pods_for(r)}
+    if len(nodes) != 1 or None in nodes:
+        raise RuntimeError('Split tenants must be on one verified node: %s' % nodes)
 
     busy = [d for d in H.devices_in_use(floor_mib=500)]
     ev.mark("devices_in_use", n=len(busy), devices=json.dumps(busy))
@@ -196,6 +218,10 @@ try:
         ev.mark("prom_failed", error=str(e))   # never fatal; gpu.csv is the copy
 except Exception as e:
     ev.mark("arm_failed", error=str(e))
+    try:
+        snapshot(H, os.path.join(out, 'diagnostics'))
+    except Exception as diagnostic_error:
+        ev.mark('diagnostics_failed', error=str(diagnostic_error))
     print("ARM %s FAILED: %s" % (arm, e))
     raise
 finally:
@@ -209,7 +235,7 @@ EOF
   RC=$?
   if [ "${RC}" -ne 0 ]; then
     log "=== arm ${ARM} FAILED rc=${RC}; diagnostic artifacts retained in ${OUT}"
-    teardown
+    if [ -f "${OUT}/apply-started" ]; then teardown; fi
     exit "${RC}"
   fi
   log "=== arm ${ARM} finished successfully"
