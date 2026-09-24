@@ -2,8 +2,70 @@
 
 Last reviewed: 2026-09-18. Repository HEAD during investigation: `c46cace`.
 
+Latest report continuation: 2026-09-24. The owner explicitly wants to keep the
+DOCX as the primary editable report. Chart repair is complete in
+`../reports-findings/GPU_SHARE_RESEARCH_REPORT_FA.docx`; its companion PDF is a
+Word-rendered inspection/export copy, not a replacement for the DOCX.
+
+- Fixed corrupted Persian chart strings, oversized image bounds, overlapping
+  legends and labels, and horizontal miniature panels. Persian text uses B Mitra.
+- The current report has 68 independently captioned figures and 26 data tables.
+  Figures start at the top of a page and preserve their aspect ratios. The
+  Word-rendered PDF has 92 pages; all 68 figures fit and have captions on the
+  same page. These facts supersede the old 65-chart/25-group layout below.
+- Service timelines align arrival rate, successful-completion p95/p99 latency,
+  completions/s and output tokens attributed to completion bins. Arrival counts
+  include failed requests. Missing latency bins are not zero. Arrival smoothing
+  is explicitly disclosed and does not establish a Poisson distribution.
+- Historical depth is a time-weighted in-flight request count, not a percentage
+  or a universal MPS activation threshold. Raw benchmark inputs were untouched.
+- Independently reconciled 35 plotted series against source CSVs, including
+  every p95/p99 bin; all 70 existing arm-summary records across 19 tiers were
+  preserved. Architecture and both HAMi dashboard images are byte-identical
+  to the backup. Four focused metric tests passed.
+- Rebuild from the workspace root with
+  `python reports-findings/build_research_report_assets.py`, then
+  `python reports-findings/build_gpu_share_research_report_v2.py`. Validate with
+  `python reports-findings/validate_gpu_share_research_report.py` and
+  `python reports-findings/validate_report_charts.py`. Helpers are
+  `report_chart_data.py` and `report_chart_render.py` in that directory.
+- Backup: `../reports-findings/_chart_repair_backup_20260923-113058.zip`.
+  No new remote split results were added, no SSH was used, and benchmark
+  scripts were not modified during this report repair. New split results and
+  the planned TP2+BGE implementation remain separate pending work.
+
 Latest split continuation: 2026-09-23 (the older report/investigation sections
 below are historical snapshots, not a statement that today's report is final).
+
+September 24 owner-supplied result for `S-solo-20260923-160938`:
+TP completed 1437/1437 live requests at 404.6 token/s and 3.09 request/s;
+PP completed 391/401 at 67.5 token/s and 0.50 request/s. All ten PP errors
+were HTTP read timeouts. Client scheduling-delay p99 was 0.00848 s for TP and
+0.00289 s for PP. PP quality rejection correctly prevented writing run-local
+calibration; do not reuse the root calibration from an older run.
+Measured idle/minimum MemAvailable was 7438/1510 MiB for TP and 7571/1893
+MiB for PP, giving peak host deltas 5928 and 5678 MiB. The current additive
+admission estimate is 12630 MiB including a 1024 MiB reserve, against 7720
+MiB available after teardown: TP2+PP2 is NOT admitted (4910 MiB short).
+These host deltas include other node activity; they are not exact pod PSS
+or evidence that an OOM occurred. Lower rates or longer timeouts alone do
+not clear the memory gate. Under the same estimate TP2 leaves only 768 MiB
+for a BGE companion after the reserve, so TP2+BGE is also unproven. Inspect
+resident host/process and pod memory before launching another benchmark;
+the mixed runner remains unimplemented. Preserve this run as measured data.
+
+September 24 serving work: added opt-in `lowmem-serve` in `50-render-split.py`
+and `56-serving-probe.py`; see `round2/split/SERVING_MEMORY_PROBE.md`. The
+candidate explicitly launches vLLM within the existing LLMInferenceService,
+keeps Qwen/8K context/2 GPU ranks/per-GPU quota, bounds TP sequences to 8 and
+prefill to 1024 tokens, and applies allocator/thread controls plus a 6 GiB
+container limit. Savings are NOT measured. The probe compares eager/candidate
+sequentially with identical short synthetic Poisson traffic, samples before
+creation, attributes process PSS by pod UID, and tears down its own object.
+It never writes calibration or authorizes sharing. Existing scripts/settings
+remain selectable; renderer identity changes require fresh calibration.
+Do not revive the invalid historical swap-space saving or assume an async
+vLLM engine can be merged into its frontend with a single environment flag.
 
 - The owner confirmed Box1 only, both RTX 3080 Ti GPUs on `mr-gholami`, the same
   15988 MiB host, no RAM upgrade, no SSH by the assistant, and one agent only.
@@ -36,9 +98,10 @@ below are historical snapshots, not a statement that today's report is final).
   not an executed result or an extra tenant added to TP2+PP2. Current `52`/`53`
   still only implement TP2+PP2; mixed endpoint handling, placement checks and
   BGE calibration must be added before running the new scenario.
-- Report follow-up remains pending successful split execution: vertically
-  aligned charts with identical bins for request arrivals, p95/p99 latency and
-  throughput; preserve raw data and explicitly label any arrival smoothing.
+- Report integration of new split results remains pending successful execution.
+  The existing report now has vertically aligned service charts with identical
+  bins for request arrivals, p95/p99 latency and throughput (see latest report
+  continuation above); preserve raw data and label any arrival smoothing.
   Never turn a Poisson arrival time series into an invented bell curve. Main
   result plots should show service metrics; keep the full dashboard and the
   requested screenshots. Add sourced technical explanation of HAMi/MPS and

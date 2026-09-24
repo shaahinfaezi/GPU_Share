@@ -9,6 +9,13 @@ HAMi node can give. Everything else would not change what anyone does on Monday.
 
 ## Box 1 — this box (`mr-gholami`, 2× 3080 Ti)
 
+**September 24 serving investigation:** TP2+PP2 currently fails measured host
+memory admission. Do not start another full series using the commands below
+until that is resolved. An opt-in `lowmem-serve` profile and a sequential,
+single-tenant comparison probe are documented in
+[SERVING_MEMORY_PROBE.md](SERVING_MEMORY_PROBE.md). They do not establish a RAM
+saving or produce a valid calibration until measured on Box1.
+
 Two 2-way-split vLLM tenants on two cards = **four ranks, two per card**. Every
 card is simultaneously a sharing target and a splitting target.
 

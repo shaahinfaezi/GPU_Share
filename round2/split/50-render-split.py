@@ -60,6 +60,7 @@ only on the sharing arms, matching --dedicated-cores whole.
     python3 50-render-split.py --arm hami --out rendered/
 """
 import argparse
+import json
 import os
 
 NS = os.environ.get("R2_NS", "llm-demo")
@@ -108,10 +109,10 @@ spec:
     containers:
       - name: main
         image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
-        resources:
+%(launch)s        resources:
           limits:
             cpu: '2'
-            memory: 12Gi
+            memory: %(host_limit)s
             nvidia.com/gpu: "%(gpus)d"
 %(mem_lim)s%(core_lim)s          requests:
             cpu: '100m'
@@ -122,7 +123,7 @@ spec:
             value: "/mnt/models"
           - name: VLLM_ADDITIONAL_ARGS
             value: "%(extra)s --gpu-memory-utilization %(util)s"
-%(mps)s"""
+%(extra_env)s%(mps)s"""
 
 MPS_ENV = """          - name: CUDA_MPS_PIPE_DIRECTORY
             value: /tmp/nvidia-mps
@@ -140,7 +141,7 @@ MPS_ENV = """          - name: CUDA_MPS_PIPE_DIRECTORY
 
 def render(role, arm, mps_percent, profile=None):
     profile = profile or os.environ.get('SPLIT_PROFILE', 'original')
-    if profile not in ('original', 'lowmem-eager'):
+    if profile not in ('original', 'lowmem-eager', 'lowmem-serve'):
         raise ValueError('Unknown SPLIT_PROFILE: %s' % profile)
     r = ROLES[role]
     share = arm in ("hami", "hami-mps")
@@ -149,12 +150,46 @@ def render(role, arm, mps_percent, profile=None):
     mps = ""
     if arm == "hami-mps":
         mps = MPS_ENV % {"pct": mps_percent}
+    launch, extra_env = '', ''
+    extra = r['extra']
+    if profile != 'original':
+        extra += ' --enforce-eager'
+    if profile == 'lowmem-serve':
+        # Candidate serving envelope, not a proven host-memory saving. Keep
+        # model/context/quota and split degree; bound TP batch concurrency and
+        # prefill work. Explicit TP=1 for PP prevents auto-detected TP expansion.
+        extra = ('--tensor-parallel-size %d --pipeline-parallel-size %d '
+                 '--max-num-seqs %d --max-model-len 8192 --enforce-eager '
+                 '--max-num-batched-tokens 1024 --enable-chunked-prefill '
+                 '--distributed-executor-backend mp') % (
+                     2 if role == 'tp' else 1, 2 if role == 'pp' else 1,
+                     8 if role == 'tp' else 4)
+        args = ['--model', '/mnt/models', '--served-model-name', r['model'],
+                '--host', '0.0.0.0', '--port', '8000'] + extra.split() + [
+                    '--gpu-memory-utilization', str(UTIL)]
+        launch = ('        command: ["python", "-m", "vllm.entrypoints.openai.api_server"]\n'
+                  '        args: %s\n'
+                  '        startupProbe:\n'
+                  '          httpGet: {path: /health, port: 8000}\n'
+                  '          periodSeconds: 5\n'
+                  '          failureThreshold: 180\n'
+                  '        readinessProbe:\n'
+                  '          httpGet: {path: /health, port: 8000}\n'
+                  '          periodSeconds: 5\n') % json.dumps(args)
+        # These are allocator/thread controls, not model-weight offloading or
+        # a promise to collapse the required vLLM engine/worker processes.
+        extra_env = ('          - {name: MALLOC_ARENA_MAX, value: "2"}\n'
+                     '          - {name: TOKENIZERS_PARALLELISM, value: "false"}\n'
+                     '          - {name: OMP_NUM_THREADS, value: "1"}\n'
+                     '          - {name: CUDA_MODULE_LOADING, value: "LAZY"}\n')
     return BODY % {
         "role": role, "ns": NS, "arm": arm,
         "model": r["model"], "uri": r["uri"], "gpus": r["gpus"],
         "mem_lim": mem, "core_lim": core,
         "mem_req": mem, "core_req": core,
-        "extra": r["extra"] + (' --enforce-eager' if profile == 'lowmem-eager' else ''),
+        "extra": extra,
+        "launch": launch, "extra_env": extra_env,
+        "host_limit": '6Gi' if profile == 'lowmem-serve' else '12Gi',
         "util": UTIL, "mps": mps,
     }
 
