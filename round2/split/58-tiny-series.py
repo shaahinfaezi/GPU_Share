@@ -41,6 +41,7 @@ def digest(rows):
 
 def make_trace(rate, duration, output_tokens, seed):
     rows = []
+    kind = getattr(tiny, 'TRACE_KIND', 'completion')
     prompts = (
         'A research team measured how two computers process data. Their report explains',
         'The experiment compared the time required to finish identical tasks. The method was',
@@ -50,7 +51,7 @@ def make_trace(rate, duration, output_tokens, seed):
     for index, role in enumerate(ROLES):
         rng = random.Random(seed + index)
         for warm in range(2):
-            rows.append(dict(t=0.0, service=role, kind='completion', warmup=True,
+            rows.append(dict(t=0.0, service=role, kind=kind, warmup=True,
                              prompt=prompts[warm], max_tokens=32, ignore_eos=True))
         t, number = 0.0, 0
         while True:
@@ -60,7 +61,7 @@ def make_trace(rate, duration, output_tokens, seed):
             # Unique identifiers avoid a trace consisting entirely of one
             # repeated prefix; actual server token counts remain in the CSV.
             prompt = 'Record %s-%d. ' % (role, number) + prompts[number % len(prompts)]
-            rows.append(dict(t=round(t, 6), service=role, kind='completion', warmup=False,
+            rows.append(dict(t=round(t, 6), service=role, kind=kind, warmup=False,
                              prompt=prompt, max_tokens=output_tokens, ignore_eos=True))
             number += 1
     rows.sort(key=lambda row: (not row['warmup'], row['t'], row['service']))
@@ -68,7 +69,7 @@ def make_trace(rate, duration, output_tokens, seed):
                 params=dict(duration=duration, rate=2 * rate, rate_per_tenant=rate,
                             seed=seed, source='synthetic', model=tiny.MODEL,
                             model_revision=tiny.REVISION, output_tokens=output_tokens,
-                            ignore_eos=True, max_model_len=2048, api='completion',
+                            ignore_eos=True, max_model_len=getattr(tiny, 'CONTEXT', 2048), api=kind,
                             purpose='controlled-load TP2+TP2; not capacity calibration'))
 
 
@@ -92,7 +93,7 @@ def admission(solos, available):
 def render(role, arm, token=None):
     body = tiny.render_tenant(role, arm)
     body = tiny.replace_once(body, '    r2-series: split\n',
-                             '    r2-series: tiny-tp2\n' +
+                             '    r2-series: %s\n' % getattr(tiny, 'SERIES_LABEL', 'tiny-tp2') +
                              ('    r2-probe: %s\n' % token if token else ''))
     return tiny.replace_once(body, '  template:\n',
                              '  template:\n    nodeSelector: {kubernetes.io/hostname: mr-gholami}\n')
@@ -223,7 +224,8 @@ def run_arm(root, name, arm, roles, trace, args, solos=None, identity=None):
     (out / 'rendered').mkdir()
     token, attempted, pods = uuid.uuid4().hex, [], {}
     result = dict(ok=False, arm=arm, roles=list(roles), model=tiny.MODEL,
-                  model_revision=tiny.REVISION, profile='lowmem-fork', calibration=False)
+                  model_revision=tiny.REVISION,
+                  profile=getattr(tiny, 'PROFILE', 'lowmem-fork'), calibration=False)
     monitor, gpu = None, None
     try:
         if any(get_pods(role) for role in ROLES) or not H.wait_gpu_idle(timeout=30):
@@ -293,7 +295,7 @@ def run_arm(root, name, arm, roles, trace, args, solos=None, identity=None):
         cmd = [sys.executable, str(HERE.parent / 'workload' / 'replay.py'),
                '--trace', str(out / 'trace.json'), '--arm', arm, '--out-dir', str(out),
                '--max-inflight', '128', '--timeout', '120',
-               '--note', 'Pythia TP2+TP2 fixed synthetic Poisson load; not Qwen/capacity calibration']
+               '--note', tiny.MODEL + ' TP2+TP2 fixed synthetic Poisson load; not capacity calibration']
         for role, url in endpoints.items():
             cmd += ['--endpoint', role + '=' + url, '--model', role + '=' + tiny.MODEL]
         try:
@@ -399,7 +401,7 @@ def write_comparison(root, results):
         per_tenant=comparisons,
         mps_to_hami_tokens_per_second_ratio=results['hami-mps']['aggregate']['tokens_per_second'] /
                                               results['hami']['aggregate']['tokens_per_second'],
-        note='Within-model ratios at the same offered load. Not ratios to Qwen or proof of a saturation threshold.'))
+        note='Within-model, same-profile ratios at the same offered load. Not ratios to other models/profiles or proof of a saturation threshold.'))
 
 
 def write_intervals(out, roles, width=5):
@@ -431,15 +433,18 @@ def write_intervals(out, roles, width=5):
                                      output_tokens_per_s=sum(int(r['output_tokens']) for r in ok) / width))
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--rate-per-tenant', type=float, default=2.0)
+def main(argv=None, model=None):
+    global tiny
+    if model is not None:
+        tiny = model
+    parser = argparse.ArgumentParser(description=getattr(tiny, 'DESCRIPTION', __doc__))
+    parser.add_argument('--rate-per-tenant', type=float, default=getattr(tiny, 'DEFAULT_RATE', 2.0))
     parser.add_argument('--seconds', type=int, default=300)
-    parser.add_argument('--output-tokens', type=int, default=128)
+    parser.add_argument('--output-tokens', type=int, default=getattr(tiny, 'DEFAULT_OUTPUT', 128))
     parser.add_argument('--hold-seconds', type=int, default=300)
     parser.add_argument('--seed', type=int, default=20260924)
     parser.add_argument('--render-only', type=Path, help='Write reviewable YAML and trace; no cluster access')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if not math.isfinite(args.rate_per_tenant) or not 0 < args.rate_per_tenant <= 10:
         parser.error('rate-per-tenant must be >0 and <=10 for this bounded series')
     if not 60 <= args.seconds <= 900 or not 1 <= args.output_tokens <= 256 or not 0 <= args.hold_seconds <= 3600:
@@ -474,11 +479,12 @@ def main():
         def interrupt(signum, frame):
             raise KeyboardInterrupt('Series interrupted')
         signal.signal(signal.SIGTERM, interrupt)
-        root = HERE / 'results' / ('S-tiny-tp2-' + time.strftime('%Y%m%d-%H%M%S', time.gmtime()))
+        root = HERE / 'results' / (getattr(tiny, 'RESULT_PREFIX', 'S-tiny-tp2-') +
+                                 time.strftime('%Y%m%d-%H%M%S', time.gmtime()))
         root.mkdir(parents=True, exist_ok=False)
         log('SERIES DIRECTORY: ' + str(root))
         (HERE / 'logs').mkdir(exist_ok=True)
-        (HERE / 'logs' / 'tiny-series-latest.txt').write_text(str(root), encoding='utf-8')
+        (HERE / 'logs' / getattr(tiny, 'LATEST_FILE', 'tiny-series-latest.txt')).write_text(str(root), encoding='utf-8')
         P.write(root / 'trace.json', trace)
         P.write(root / 'settings.json', {**vars(args), 'render_only': None,
                 'model': tiny.MODEL, 'revision': tiny.REVISION, 'node': NODE,
@@ -486,11 +492,30 @@ def main():
                 'files_sha256': {str(p.relative_to(HERE.parent)): hashlib.sha256(p.read_bytes()).hexdigest()
                                   for p in [Path(__file__), HERE / '57-tiny-tp-probe.py',
                                             HERE / '56-serving-probe.py', HERE / '50-render-split.py',
-                                            HERE.parent / 'workload/replay.py']}})
+                                            HERE.parent / 'workload/replay.py',
+                                            Path(getattr(tiny, 'CANDIDATE_FILE', HERE / '57-tiny-tp-probe.py'))]}})
         results, identity = {}, None
         status = dict(ok=False, model=tiny.MODEL, results=results)
         try:
-            tiny.prepare_model()
+            provenance = tiny.prepare_model()
+            if provenance is not None:
+                P.write(root / 'model-provenance.json', provenance)
+            if getattr(tiny, 'SCREEN_FIRST', False):
+                # One light-load rejection screen, not permission to skip full
+                # same-profile baselines. A failing screen ends this attempt.
+                screen_args = argparse.Namespace(rate_per_tenant=.25, seconds=60, hold_seconds=0)
+                screen_trace = make_trace(.25, 60, 64, args.seed)
+                log('START short memory screen; no retries or profile auto-tuning')
+                results['screen'] = run_arm(root, 'screen', 'dedicated', [ROLES[0]],
+                                            screen_trace, screen_args)
+                identity = results['screen']['runtime']
+                available, _ = P.stable_idle()
+                screen_gate = admission({role: results['screen'] for role in ROLES}, available)
+                screen_gate['method'] = 'twice ONE light-load host delta plus reserve; screening estimate only'
+                P.write(root / 'screen-admission.json', screen_gate)
+                if not screen_gate['ok']:
+                    raise RuntimeError('One-attempt memory screen failed: estimated %.0f MiB needed, %.0f available; '
+                                       'full series was not started' % (screen_gate['required_mib'], available))
             for role in ROLES:
                 name = 'dedicated__' + role
                 log('START ' + name)
