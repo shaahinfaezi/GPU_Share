@@ -22,6 +22,17 @@ probe = load('serving_probe', '56-serving-probe.py')
 
 
 class ServingTests(unittest.TestCase):
+    def test_fork_changes_only_worker_method_not_model_or_resource_budget(self):
+        for role in ('tp', 'pp'):
+            for arm in ('dedicated', 'hami', 'hami-mps'):
+                base = yaml.safe_load(renderer.render(role, arm, '100', 'lowmem-serve'))
+                fork = yaml.safe_load(renderer.render(role, arm, '100', 'lowmem-fork'))
+                env = fork['spec']['template']['containers'][0]['env']
+                method = [item for item in env if item['name'] == 'VLLM_WORKER_MULTIPROC_METHOD']
+                self.assertEqual(method, [{'name': 'VLLM_WORKER_MULTIPROC_METHOD', 'value': 'fork'}])
+                env.remove(method[0])
+                self.assertEqual(fork, base)
+
     def test_candidate_is_explicitly_two_workers_in_every_arm(self):
         for role in ('tp', 'pp'):
             for arm in ('dedicated', 'hami', 'hami-mps'):
@@ -71,10 +82,11 @@ class ServingTests(unittest.TestCase):
                 p.mkdir()
                 (p / 'cgroup').write_text('0::/kubepods/' + group)
                 (p / 'comm').write_text('worker')
-                (p / 'smaps_rollup').write_text('Pss: 2048 kB\nRss: 4096 kB\n')
+                (p / 'smaps_rollup').write_text('Pss: 2048 kB\nRss: 4096 kB\nShared_Dirty: 1024 kB\n')
             result = probe.pod_pss('abc-def', root)
             self.assertEqual(result['pss_mib'], 4)
             self.assertEqual(len(result['processes']), 2)
+            self.assertEqual(result['processes'][0]['Shared_Dirty_mib'], 1)
             self.assertTrue(result['complete'])
             self.assertFalse(probe.pod_pss('absent', root)['complete'])
 

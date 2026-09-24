@@ -67,6 +67,33 @@ remain selectable; renderer identity changes require fresh calibration.
 Do not revive the invalid historical swap-space saving or assume an async
 vLLM engine can be merged into its frontend with a single environment flag.
 
+September 24 probe outcome supplied by owner: `S-serving-probe-20260924-084949`,
+both TP profiles passed identical trace `1b0e71199aaada4c`. Eager idle/minimum
+MemAvailable was 7475/2603 MiB (delta 4872), pod PSS 5230.15 MiB. Candidate
+idle/minimum was 7425/2558 MiB (delta 4867), pod PSS 5302.90 MiB. Only 5 MiB
+less observed host delta, 72.75 MiB more snapshot PSS: NO meaningful saving
+demonstrated. Do not describe `lowmem-serve` as the RAM solution or attribute
+the smaller light-load peak versus overloaded solo to a serving improvement.
+Do not rerun full calibration or start sharing. Inspect the existing saved
+per-process PSS/versions/pod spec/startup logs next; raw files have not yet been
+provided locally. No additional GPU probe is required to retrieve those files.
+
+Subsequent owner-provided startup logs/PSS confirm both profiles used vLLM
+0.15.1, Torch 2.9.1, TP=2/PP=1/world_size=2. The old profile already launched
+vLLM directly: API PSS 787.45, EngineCore 702.11, workers 1865.49/1863.89 MiB;
+candidate API 794.49, EngineCore 703.43, workers 1899.07/1897.49 MiB. There
+was no extra KServe inference process to remove. CUDA graphs were disabled;
+custom all-reduce fell back due to missing/failed P2P. Do not infer the cause
+of host RAM from that warning, or interpret the 8 GiB swap configuration
+warning as measured resident RAM.
+New unmeasured candidate `lowmem-fork` changes only
+`VLLM_WORKER_MULTIPROC_METHOD=fork` relative to `lowmem-serve`, retaining vLLM's
+automatic spawn safeguard. Motivation: upstream serving CLI defaults to
+spawn, whereas fork may share imported pages. No saving is promised. Probe
+accepts `--profiles lowmem-fork`, records shared/private smaps fields, captures
+more startup logs, and rejects an observed spawn override. Fourteen offline
+tests pass. No additional server workload was executed by the assistant.
+
 - The owner confirmed Box1 only, both RTX 3080 Ti GPUs on `mr-gholami`, the same
   15988 MiB host, no RAM upgrade, no SSH by the assistant, and one agent only.
 - User-supplied September 23 idle evidence: MemAvailable 7609 MiB, no swap,

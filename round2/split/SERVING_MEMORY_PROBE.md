@@ -1,5 +1,79 @@
 # Box1 serving-memory candidate — 2026-09-24
 
+## First measured outcome: no meaningful host-memory reduction
+
+The owner supplied the completed output of
+`S-serving-probe-20260924-084949`. Both TP passes succeeded with identical
+trace ID `1b0e71199aaada4c`:
+
+| Profile | Idle available MiB | Minimum available MiB | Peak host delta MiB | Post-replay pod PSS MiB |
+|---|---:|---:|---:|---:|
+| lowmem-eager | 7475 | 2603 | 4872 | 5230.15 |
+| lowmem-serve | 7425 | 2558 | 4867 | 5302.90 |
+
+The candidate reduced the observed host delta by only 5 MiB (about 0.10%) and
+had 72.75 MiB higher post-replay PSS. One sequential pair does not establish
+statistical equivalence or a regression, but it provides no useful memory
+saving for the multi-GiB admission shortfall. Do not promote the candidate as
+a fix, repeat full calibration, or run PP simply to repeat this comparison.
+The lower deltas than the earlier overloaded solo run reflect a different
+workload; do not attribute that difference to the candidate profile. No shared
+admission or TP2+BGE fit has been established. Next inspect the already-saved
+process PSS, versions, pod command/imageID and startup logs before selecting a
+different serving architecture. The owner subsequently supplied the versions,
+per-process PSS and startup logs; their interpretation follows.
+
+## Process attribution and second candidate
+
+Both profiles actually ran vLLM 0.15.1 / Torch 2.9.1, with TP=2, PP=1 and
+world_size=2. The original was already a vLLM API server, not an additional
+Hugging Face inference server wrapped around vLLM. The removed shell accounted
+for only 2.65 MiB PSS. Do not claim removing a KServe inference process saved RAM.
+
+| Process group | Eager PSS MiB | Direct candidate PSS MiB |
+|---|---:|---:|
+| API server | 787.45 | 794.49 |
+| EngineCore | 702.11 | 703.43 |
+| Two TP workers | 3729.38 | 3796.56 |
+
+Both logs show eager execution, disabled CUDA graphs, and NCCL initialization
+with two ranks. Custom all-reduce was disabled because GPU P2P capability was
+unavailable or its test failed; this is not a demonstrated cause of the host
+RAM footprint. The configured swap-space warning is not proof of an 8 GiB
+resident allocation. Do not revive the invalid swap-space attribution test.
+
+**Second candidate: `lowmem-fork`.** It differs from `lowmem-serve` by exactly
+one environment setting: `VLLM_WORKER_MULTIPROC_METHOD=fork`. Upstream's
+[CLI setup](https://github.com/vllm-project/vllm/blob/v0.15.1/vllm/entrypoints/utils.py)
+sets `spawn` when the variable is unset, including the direct Python API-server
+entrypoint. Fork may share some imported host-memory pages through copy-on-write;
+it does not remove the engine or either GPU worker, nor guarantee savings.
+The deployed method of the earlier runs is inferred from this source, not
+directly measured in their PSS files. The comparison must verify startup and
+memory rather than infer success merely from an environment value.
+
+vLLM's [process context safeguards](https://github.com/vllm-project/vllm/blob/v0.15.1/vllm/utils/system_utils.py)
+remain intact: initialized CUDA/Ray/WSL conditions may override the request
+back to spawn. The probe records an observed override as failure to exercise
+the requested candidate. No monkey patches, forkserver hacks, or CUDA safety
+bypasses are used. If startup hangs or fails, keep diagnostics and stop.
+The revised probe also records shared/private smaps fields, and captures 500
+startup-log lines to retain override messages. Shared memory figures from
+different processes must not be summed as unique physical memory; use PSS.
+
+After installing the revised renderer and probe, run just the new TP candidate:
+
+```bash
+cd /opt/GPU_Share/round2/split
+python3 -u 56-serving-probe.py --role tp --profiles lowmem-fork
+```
+
+This reuses the same short trace as the first probe. A comparison against that
+earlier pass is sequential across different times, not a randomized causal
+estimate. No new full benchmark, PP probe, or shared run is authorized by a
+light-load success. If this candidate yields a useful reduction, new full-load
+baselines and NCCL/MPS verification are still necessary before comparison arms.
+
 The existing TP2+PP2 series is **not admitted**. The owner's September 23 solo
 run measured peak host-memory deltas of 5928/5678 MiB. Adding the existing
 1024 MiB reserve gives 12630 MiB, versus the latest 7572 MiB available. All ten

@@ -141,7 +141,7 @@ MPS_ENV = """          - name: CUDA_MPS_PIPE_DIRECTORY
 
 def render(role, arm, mps_percent, profile=None):
     profile = profile or os.environ.get('SPLIT_PROFILE', 'original')
-    if profile not in ('original', 'lowmem-eager', 'lowmem-serve'):
+    if profile not in ('original', 'lowmem-eager', 'lowmem-serve', 'lowmem-fork'):
         raise ValueError('Unknown SPLIT_PROFILE: %s' % profile)
     r = ROLES[role]
     share = arm in ("hami", "hami-mps")
@@ -154,7 +154,7 @@ def render(role, arm, mps_percent, profile=None):
     extra = r['extra']
     if profile != 'original':
         extra += ' --enforce-eager'
-    if profile == 'lowmem-serve':
+    if profile in ('lowmem-serve', 'lowmem-fork'):
         # Candidate serving envelope, not a proven host-memory saving. Keep
         # model/context/quota and split degree; bound TP batch concurrency and
         # prefill work. Explicit TP=1 for PP prevents auto-detected TP expansion.
@@ -182,6 +182,12 @@ def render(role, arm, mps_percent, profile=None):
                      '          - {name: TOKENIZERS_PARALLELISM, value: "false"}\n'
                      '          - {name: OMP_NUM_THREADS, value: "1"}\n'
                      '          - {name: CUDA_MODULE_LOADING, value: "LAZY"}\n')
+        if profile == 'lowmem-fork':
+            # Separate candidate: vLLM CLI defaults to spawn, which reloads
+            # imports in each process. Fork may share some host pages. Leave
+            # upstream's CUDA-initialized -> spawn safeguard intact; savings
+            # and NCCL/MPS compatibility must be measured, not assumed.
+            extra_env += '          - {name: VLLM_WORKER_MULTIPROC_METHOD, value: "fork"}\n'
     return BODY % {
         "role": role, "ns": NS, "arm": arm,
         "model": r["model"], "uri": r["uri"], "gpus": r["gpus"],
@@ -189,7 +195,7 @@ def render(role, arm, mps_percent, profile=None):
         "mem_req": mem, "core_req": core,
         "extra": extra,
         "launch": launch, "extra_env": extra_env,
-        "host_limit": '6Gi' if profile == 'lowmem-serve' else '12Gi',
+        "host_limit": '6Gi' if profile in ('lowmem-serve', 'lowmem-fork') else '12Gi',
         "util": UTIL, "mps": mps,
     }
 

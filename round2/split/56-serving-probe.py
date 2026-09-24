@@ -63,7 +63,8 @@ def pod_pss(uid, proc_root=Path('/proc')):
             fields = {}
             for line in (proc / 'smaps_rollup').read_text().splitlines():
                 key, _, value = line.partition(':')
-                if key in ('Pss', 'Rss', 'Private_Dirty', 'Anonymous'):
+                if key in ('Pss', 'Rss', 'Private_Dirty', 'Private_Clean',
+                           'Shared_Dirty', 'Shared_Clean', 'Anonymous'):
                     fields[key + '_mib'] = round(float(value.split()[0]) / 1024, 2)
             rows.append(dict(pid=int(proc.name), name=(proc / 'comm').read_text().strip(),
                              **fields))
@@ -184,6 +185,8 @@ def run_profile(renderer, role, profile, root, trace):
     monitor = Monitor(out)
     result = dict(profile=profile, role=role, ok=False, calibration=False,
                   idle_available_mib=idle, trace_id=trace['trace_id'])
+    if profile == 'lowmem-fork':
+        result['requested_worker_method'] = 'fork'
     monitor.start()  # Before kubectl create, including storage/startup peaks.
     try:
         print('Starting %s %s alone; idle %s MiB' % (role, profile, idle), flush=True)
@@ -247,6 +250,15 @@ def run_profile(renderer, role, profile, root, trace):
         write(out / 'quality.json', quality)
         if not quality['ok']:
             raise RuntimeError('Replay quality failed: %s' % quality['issues'])
+        startup_log = kube(['logs', pod['metadata']['name'], '-c', 'main', '--tail=500'],
+                           monitor=monitor)
+        (out / 'server.log').write_text(startup_log, encoding='utf-8')
+        if profile == 'lowmem-fork':
+            overridden = any('Overriding VLLM_WORKER_MULTIPROC_METHOD' in line and
+                             'spawn' in line for line in startup_log.splitlines())
+            result['spawn_override_detected'] = overridden
+            if overridden:
+                raise RuntimeError('vLLM forced spawn; the requested fork candidate was not exercised')
         monitor.sample()
         if monitor.abort.is_set():
             raise RuntimeError(monitor.reason)
@@ -266,7 +278,7 @@ def run_profile(renderer, role, profile, root, trace):
             try:
                 for p in H.pods_for(role):
                     rc, logs = H.kubectl(['logs', '-n', H.NS, p['metadata']['name'],
-                                         '--all-containers=true', '--tail=160'], timeout=20)
+                                         '--all-containers=true', '--tail=500'], timeout=20)
                     (out / 'server.log').write_text(logs, encoding='utf-8')
                 rc, events = H.kubectl(['get', 'events', '-n', H.NS,
                                        '--sort-by=.lastTimestamp'], timeout=20)
@@ -287,7 +299,7 @@ def run_profile(renderer, role, profile, root, trace):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--role', choices=['tp', 'pp'], default='tp')
-    parser.add_argument('--profiles', nargs='+', choices=['lowmem-eager', 'lowmem-serve'],
+    parser.add_argument('--profiles', nargs='+', choices=['lowmem-eager', 'lowmem-serve', 'lowmem-fork'],
                         default=['lowmem-eager', 'lowmem-serve'])
     args = parser.parse_args()
     if len(set(args.profiles)) != len(args.profiles):
