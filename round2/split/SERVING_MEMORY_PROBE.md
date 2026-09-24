@@ -1,5 +1,44 @@
 # Box1 serving-memory candidate — 2026-09-24
 
+## Latest outcome: fork reduced the measured light-load footprint
+
+PP also passed in `S-serving-probe-20260924-093527/lowmem-fork/`: 13/13 live
+requests, client-delay p99 0.009795 s, idle/minimum available 7505/3887 MiB,
+peak host delta 3618 MiB and post-replay PSS 4038.05 MiB. The log confirms
+TP=1, PP=2, two NCCL ranks, vLLM 0.15.1 / Torch 2.9.1, with no captured spawn
+override. Host CSV, process PSS sum and replay quality were independently
+reconciled against the local raw artifacts for all four serving probes.
+
+The light-load screening sum is **3949 + 3618 + 1024 = 8591 MiB**, versus
+7505 MiB available at the latest idle baseline: **1086 MiB short**. Summing
+separate host peaks is conservative and includes unrelated node activity;
+it is not an observed simultaneous allocation or proof of an OOM. It still
+does not clear the existing admission gate. Two simultaneous TP2 instances
+would screen at **8922 MiB** using twice the TP observation plus the reserve.
+Sequential TP2 runs have only one tenant resident; they can compare serving
+configurations but cannot demonstrate sharing between independent models.
+Neither short probe is a full-load calibration or an MPS comparison.
+
+Local evidence: workspace `S-serving-probe-20260924-091358/lowmem-fork/`.
+Independently verified host CSV minimum and process PSS sum; replay quality
+passed for 13/13 live requests. Idle available RAM was 7499 MiB, minimum
+3550 MiB, peak host delta 3949 MiB, post-replay pod PSS 4392.82 MiB. The
+requested method was fork and no spawn override was found in the captured log.
+Versions remain vLLM 0.15.1 / Torch 2.9.1, TP=2, PP=1.
+
+Against the earlier `lowmem-serve` observation, the host delta fell 918 MiB
+(18.86%) and post-replay PSS fell 910.08 MiB (17.16%). The earlier observation
+now also has local raw artifacts, reconciled against the same checks.
+The shared trace remains `1b0e71199aaada4c`. This is a promising single
+light-load result, not proof of saturated fit or MPS benefit. PP's separate
+light-load result is recorded above.
+
+The owner explicitly requires the RAM motivation, all profile changes and
+the ample-RAM restoration guidance in both the final report and YAML handoff.
+See [the Persian report/handoff text](RAM_PROFILE_HANDOFF_FA.md). Full calibration
+and shared admission remain pending; do not replace the measured heavy-load
+memory gate with this short probe's lower consumption.
+
 ## First measured outcome: no meaningful host-memory reduction
 
 The owner supplied the completed output of

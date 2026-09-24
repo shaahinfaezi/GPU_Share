@@ -70,7 +70,7 @@ def size_connection_pool(n):
 
 
 # --------------------------------------------------------------- endpoints
-def resolve_chat(base, model, timeout, insecure):
+def resolve_chat(base, model, timeout, insecure, kind="chat"):
     """Find the chat route this deployment actually serves.
 
     The acceptance test used to be `status_code < 500`, and a 404 is < 500. So
@@ -89,8 +89,12 @@ def resolve_chat(base, model, timeout, insecure):
     """
     probe = {"model": model, "max_tokens": 1,
              "messages": [{"role": "user", "content": "ping"}]}
+    paths = ("/v1/chat/completions", "/openai/v1/chat/completions")
+    if kind == "completion":
+        probe = {"model": model, "max_tokens": 1, "prompt": "Once upon a time"}
+        paths = ("/v1/completions", "/openai/v1/completions")
     fallback = None
-    for path in ("/v1/chat/completions", "/openai/v1/chat/completions"):
+    for path in paths:
         url = base.rstrip("/") + path
         try:
             r = SESSION.post(url, json=probe, timeout=15, verify=not insecure)
@@ -102,7 +106,7 @@ def resolve_chat(base, model, timeout, insecure):
             fallback = (url, r.status_code)
     if fallback:
         return fallback
-    return base.rstrip("/") + "/v1/chat/completions", 404
+    return base.rstrip("/") + paths[0], 404
 
 
 def resolve_simple(base, suffixes):
@@ -110,7 +114,7 @@ def resolve_simple(base, suffixes):
 
 
 # --------------------------------------------------------------- one request
-def do_chat(url, model, row, timeout, insecure, origin, sched):
+def do_chat(url, model, row, timeout, insecure, origin, sched, kind="chat"):
     sent = time.perf_counter()
     rec = dict(t_sched=sched, t_sent=sent - origin, t_first=None, t_last=None,
                prompt_tokens=0, output_tokens=0, chunks=0, itl=[], ok=False,
@@ -123,6 +127,9 @@ def do_chat(url, model, row, timeout, insecure, origin, sched):
         "stream": True,
         "stream_options": {"include_usage": True},
     }
+    if kind == "completion":
+        del payload["messages"]
+        payload["prompt"] = row["prompt"]
     if row.get("ignore_eos"):
         payload["ignore_eos"] = True
     try:
@@ -151,7 +158,8 @@ def do_chat(url, model, row, timeout, insecure, origin, sched):
                 choices = obj.get("choices") or []
                 if not choices:
                     continue
-                delta = (choices[0].get("delta") or {}).get("content")
+                delta = (choices[0].get("text") if kind == "completion" else
+                         (choices[0].get("delta") or {}).get("content"))
                 if not delta:
                     continue
                 now = time.perf_counter()
@@ -402,15 +410,15 @@ def main():
         base = eps[role]
         kind = next(r["kind"] for r in rows_in if r["service"] == role)
         mdl = models.get(role, "model")
-        if kind == "chat":
-            chat_url[role], _st = resolve_chat(base, mdl, a.timeout, a.insecure)
+        if kind in ("chat", "completion"):
+            chat_url[role], _st = resolve_chat(base, mdl, a.timeout, a.insecure, kind)
             if _st != 200:
-                sys.exit("replay: %s has no working chat route (probe returned "
+                sys.exit("replay: %s has no working generation route (probe returned "
                          "%s at %s). Refusing to replay a whole trace into an "
                          "endpoint that does not answer -- that is exactly how "
                          "T1 produced 0/885 successes."
                          % (role, _st, chat_url[role]))
-            print("  %-6s chat route %s" % (role, chat_url[role]), flush=True)
+            print("  %-6s %s route %s" % (role, kind, chat_url[role]), flush=True)
         elif kind == "embed":
             pool_url[role] = resolve_simple(base, ("/v1/embeddings", "/openai/v1/embeddings"))
         else:
@@ -426,8 +434,8 @@ def main():
         role, kind = row["service"], row["kind"]
         mdl = models.get(role, "model")
         sched = row["t"] if not row["warmup"] else 0.0
-        if kind == "chat":
-            rec = do_chat(chat_url[role], mdl, row, a.timeout, a.insecure, origin, sched)
+        if kind in ("chat", "completion"):
+            rec = do_chat(chat_url[role], mdl, row, a.timeout, a.insecure, origin, sched, kind)
         else:
             rec = do_pooling(pool_url[role], mdl, row, a.timeout, a.insecure,
                              origin, sched, kind)

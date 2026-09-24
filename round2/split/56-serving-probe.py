@@ -185,6 +185,9 @@ def run_profile(renderer, role, profile, root, trace):
     monitor = Monitor(out)
     result = dict(profile=profile, role=role, ok=False, calibration=False,
                   idle_available_mib=idle, trace_id=trace['trace_id'])
+    result['model'] = renderer.ROLES[role]['model']
+    if trace['params'].get('model_revision'):
+        result['model_revision'] = trace['params']['model_revision']
     if profile == 'lowmem-fork':
         result['requested_worker_method'] = 'fork'
     monitor.start()  # Before kubectl create, including storage/startup peaks.
@@ -296,12 +299,13 @@ def run_profile(renderer, role, profile, root, trace):
     return result
 
 
-def main():
+def main(argv=None, renderer_override=None, trace_factory=None,
+         root_prefix='S-serving-probe-', prepare=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--role', choices=['tp', 'pp'], default='tp')
     parser.add_argument('--profiles', nargs='+', choices=['lowmem-eager', 'lowmem-serve', 'lowmem-fork'],
                         default=['lowmem-eager', 'lowmem-serve'])
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if len(set(args.profiles)) != len(args.profiles):
         parser.error('Profiles must be unique')
     if sys.platform != 'linux' or os.geteuid() != 0:
@@ -313,9 +317,12 @@ def main():
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise SystemExit('Another split stage is running')
-        spec = importlib.util.spec_from_file_location('split_renderer', HERE / '50-render-split.py')
-        renderer = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(renderer)
+        if renderer_override is None:
+            spec = importlib.util.spec_from_file_location('split_renderer', HERE / '50-render-split.py')
+            renderer = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(renderer)
+        else:
+            renderer = renderer_override
         # Validate the updated renderer before making any cluster change.
         for profile in args.profiles:
             renderer.render(args.role, 'dedicated', '100', profile)
@@ -325,6 +332,8 @@ def main():
             raise SystemExit('Existing inference workloads found; inspect before probing')
         if not H.wait_gpu_idle(timeout=30):
             raise SystemExit('GPUs are not idle')
+        if prepare is not None:
+            prepare()  # Model preparation also holds the shared stage lock.
         # Match the dedicated arm, using the existing benchmark MPS controller.
         ok, detail = H.set_mps_daemon(False)
         if not ok:
@@ -332,10 +341,10 @@ def main():
         def interrupt(signum, frame):
             raise KeyboardInterrupt('Probe interrupted')
         signal.signal(signal.SIGTERM, interrupt)
-        root = HERE / 'results' / ('S-serving-probe-' + time.strftime('%Y%m%d-%H%M%S', time.gmtime()))
+        root = HERE / 'results' / (root_prefix + time.strftime('%Y%m%d-%H%M%S', time.gmtime()))
         root.mkdir(parents=True, exist_ok=False)
         print('Probe directory: %s' % root, flush=True)
-        trace = make_trace(args.role)
+        trace = (trace_factory or make_trace)(args.role)
         results = []
         for profile in args.profiles:
             results.append(run_profile(renderer, args.role, profile, root, trace))

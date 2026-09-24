@@ -37,6 +37,23 @@ Word-rendered inspection/export copy, not a replacement for the DOCX.
 Latest split continuation: 2026-09-23 (the older report/investigation sections
 below are historical snapshots, not a statement that today's report is final).
 
+September 24 latest verified PP result (supersedes pending-PP notes below):
+workspace `../S-serving-probe-20260924-093527/lowmem-fork/` passed 13/13
+requests, client-delay p99 0.009795 s. Idle/minimum available 7505/3887 MiB,
+peak host delta 3618 MiB, pod PSS 4038.05 MiB; TP=1/PP=2, two NCCL ranks,
+vLLM 0.15.1 / Torch 2.9.1, no captured spawn override. Independently checked
+host minima, PSS sums and replay quality for all four local serving probes;
+the earlier eager/serve raw artifacts are now also present locally.
+Light-load TP+PP screening: 3949+3618+1024=8591 MiB versus 7505 available,
+1086 MiB short. Not full calibration, an actual concurrent peak, or an MPS
+comparison. Two simultaneous TP2 tenants screen at 8922 MiB. Sequential
+single-tenant TP2 configuration tests are a different experiment and cannot
+establish sharing between models. The owner asked about "TP2 and then TP2";
+sequential versus simultaneous intent is pending clarification. Do not
+silently replace the selected mixed-model plan or start a shared series.
+Updated `RAM_PROFILE_HANDOFF_FA.md` retains these findings for later DOCX
+integration; the DOCX was not rebuilt during this probe review.
+
 September 24 owner-supplied result for `S-solo-20260923-160938`:
 TP completed 1437/1437 live requests at 404.6 token/s and 3.09 request/s;
 PP completed 391/401 at 67.5 token/s and 0.50 request/s. All ten PP errors
@@ -93,6 +110,31 @@ spawn, whereas fork may share imported pages. No saving is promised. Probe
 accepts `--profiles lowmem-fork`, records shared/private smaps fields, captures
 more startup logs, and rejects an observed spawn override. Fourteen offline
 tests pass. No additional server workload was executed by the assistant.
+
+Owner reporting requirement (September 24): explain in the final Persian
+report AND production YAML handoff that these serving changes were motivated
+by insufficient available host RAM, not required by HAMi/MPS or TP itself.
+Include what to restore when more RAM is available. The maintained explanation
+is `round2/split/RAM_PROFILE_HANDOFF_FA.md`; integrate it into technical
+documentation when completing the report, keeping probe results separate from
+shared benchmark performance. Do not silently present low-memory settings as
+universal production defaults.
+
+The fork probe now has local raw evidence at workspace
+`../S-serving-probe-20260924-091358/lowmem-fork/`. Verified host.csv minimum
+3550 MiB against idle 7499 => peak delta 3949 MiB; summed process PSS 4392.82
+MiB; 13/13 live requests succeeded, client-delay p99 0.011264 s. Trace is
+`1b0e71199aaada4c`, vLLM 0.15.1 / Torch 2.9.1, no logged spawn override, two
+NCCL ranks. Compared with the earlier direct candidate: host delta lower by
+918 MiB (18.86%), post-replay PSS lower by 910.08 MiB (17.16%). This is a
+single sequential light-load observation, not a saturated calibration or
+proof TP2+PP2/BGE fits. Prior comparison values came from owner-pasted results;
+the current fork result was independently checked against local artifacts.
+No full series or MPS comparison has been cleared. With ample host RAM,
+consider restoring standard spawn and original batching/graph defaults via
+`SPLIT_PROFILE=original`, followed by new preflight, same-profile baselines,
+host-peak measurement and comparison arms. Size pod requests/limits from
+measurements; more host RAM does not expand the GPU VRAM quota.
 
 - The owner confirmed Box1 only, both RTX 3080 Ti GPUs on `mr-gholami`, the same
   15988 MiB host, no RAM upgrade, no SSH by the assistant, and one agent only.
