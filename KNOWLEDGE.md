@@ -2,17 +2,19 @@
 
 Last reviewed: 2026-09-18. Repository HEAD during investigation: `c46cace`.
 
-Latest report continuation: 2026-09-24. The owner explicitly wants to keep the
+Latest report/package continuation: 2026-09-25. The owner explicitly wants to keep the
 DOCX as the primary editable report. Chart repair is complete in
 `../reports-findings/GPU_SHARE_RESEARCH_REPORT_FA.docx`; its companion PDF is a
 Word-rendered inspection/export copy, not a replacement for the DOCX.
 
 - Fixed corrupted Persian chart strings, oversized image bounds, overlapping
   legends and labels, and horizontal miniature panels. Persian text uses B Mitra.
-- The current report has 68 independently captioned figures and 26 data tables.
-  Figures start at the top of a page and preserve their aspect ratios. The
-  Word-rendered PDF has 92 pages; all 68 figures fit and have captions on the
-  same page. These facts supersede the old 65-chart/25-group layout below.
+- The current report has 68 independently captioned figures and 27 data tables
+  (all 26 previous tables plus the deployment pool table). Figures preserve their
+  aspect ratios, at most 14.6 cm wide and 15 cm high. Forced figure page breaks
+  were removed at the owner's request for more compact graphs. Figure 3 now
+  shows raw arrival counts and a disclosed three-bin smoothed curve. These facts
+  supersede both the 92-page layout and the old 65-chart/25-group layout below.
 - Service timelines align arrival rate, successful-completion p95/p99 latency,
   completions/s and output tokens attributed to completion bins. Arrival counts
   include failed requests. Missing latency bins are not zero. Arrival smoothing
@@ -23,6 +25,31 @@ Word-rendered inspection/export copy, not a replacement for the DOCX.
   every p95/p99 bin; all 70 existing arm-summary records across 19 tiers were
   preserved. Architecture and both HAMi dashboard images are byte-identical
   to the backup. Four focused metric tests passed.
+- The expanded numerical audit recomputed 99 saved summaries and compared all
+  350 numeric cells in the 70 rows of the 19 generic result tables. Corrections:
+  T12 has 86504 successful / 86670 scheduled and 166 failed in EACH arm; T10's
+  96/173 and 253/343 are failures. The host admission chart belongs to T22.
+  T15's raw MPS effect is 0.3668777%, not the source plot's noise-floor display zero.
+  T10 global MPS 307/515 and five stable host-RSS values remain explicitly
+  source-reported, not independently verified from primary measurement files.
+- Close HAMi/MPS throughput is supported by the CSVs: T20 is 1033.854 vs
+  1034.479 token/s. Similar open-loop arrivals/completions can leave throughput
+  nearly unchanged while latency changes. Do not invent a throughput gain.
+- `deliverable/` is the production CONFIGURATION handoff for dedicated, HAMi and
+  HAMi+MPS pools. `OPERATIONS_FA.md` feeds section 6 of the DOCX through
+  `../reports-findings/report_deployment_section.py`. Includes site renderer,
+  schema checks, local/cluster preflight, pool-scoped apply/rollback, MPS supervisor,
+  UUID placement checks, image/model preparation, monitoring/dashboard and an
+  indexed original-source archive. Examples deliberately cannot be applied.
+- Package defaults use the measured RTX 3080 Ti catalog; three real node names,
+  image digests and measured host budgets still need site configuration. Nine
+  local package tests pass. KServe CRD validation is local; CEL/admission, Helm
+  rendering, actual GPU behavior and production readiness must be verified on
+  the operator's cluster. No SSH or deployment was performed. Split experiments
+  remain paused; the package is not proof that two TP2 engines fit Box1.
+- Full audit notes: `../reports-findings/REPORT_DATA_VALIDATION_FA.md`; machine
+  receipts: `report_data_audit.json`, `chart_validation.json`. An additional
+  pre-validation backup is `_report_validation_backup_20260924-120450.zip`.
 - Rebuild from the workspace root with
   `python reports-findings/build_research_report_assets.py`, then
   `python reports-findings/build_gpu_share_research_report_v2.py`. Validate with

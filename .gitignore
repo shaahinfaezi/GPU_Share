@@ -30,3 +30,8 @@ FINDINGS.md
 
 # calibration outputs are per-machine measurements, not source
 round2/calibration/*/
+
+# Generated local delivery package (source benchmarks remain tracked)
+/deliverable/
+/gpu-share-deliverable-*.zip
+/gpu-share-deliverable-*.sha256

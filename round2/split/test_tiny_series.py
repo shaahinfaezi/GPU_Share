@@ -125,6 +125,13 @@ class TinyTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             S.admission({r: {'peak_host_delta_mib': float('nan')} for r in S.ROLES}, 7505)
 
+    def test_explicit_budget_cannot_be_overridden_by_extra_free_ram(self):
+        solos = {r: {'peak_host_delta_mib': 3949} for r in S.ROLES}
+        self.assertFalse(S.admission(solos, 12000, 8400)['ok'])
+        self.assertTrue(S.admission(solos, 9200, 9100)['ok'])
+        self.assertFalse(S.admission(solos, 8800, 9100)['ok'])
+        self.assertEqual(S.admission(solos, 12000, 8400)['effective_available_mib'], 8400)
+
     def test_completion_resolver_does_not_probe_chat(self):
         response = SimpleNamespace(status_code=200)
         with patch.object(R.SESSION, 'post', return_value=response) as post:
@@ -185,7 +192,7 @@ class TinyTests(unittest.TestCase):
             self.assertEqual(deleted, ['r2-tp-b'])
 
     def test_memory_refusal_writes_failed_result_without_creating_tenants(self):
-        args = SimpleNamespace(rate_per_tenant=2, seconds=300, hold_seconds=0)
+        args = SimpleNamespace(rate_per_tenant=2, seconds=300, hold_seconds=0, host_budget_mib=None)
         solos = {r: {'peak_host_delta_mib': 3949} for r in S.ROLES}
         with tempfile.TemporaryDirectory() as tmp, \
              patch.object(S, 'get_pods', return_value=[]), \

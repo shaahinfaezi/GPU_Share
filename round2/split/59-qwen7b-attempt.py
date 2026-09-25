@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One bounded vLLM-parameter attempt with the existing Qwen 7B AWQ model.
 
-No model/image download. A 60-second single-TP2 memory screen runs first;
+No model/image download. Separate 60-second TP2 and PP2 memory screens run first;
 if it clears screening, fresh solos and the separate HAMi/MPS series follow.
 All shared arms still require full-baseline admission. No automatic retries.
 """
@@ -26,13 +26,13 @@ KV_BYTES = 256 * 1024 * 1024
 
 
 def render_tenant(role, arm, percent='100'):
-    if role not in series.ROLES or arm not in ('dedicated', 'hami', 'hami-mps'):
+    if role not in ('tp', 'pp') or arm not in ('dedicated', 'hami', 'hami-mps'):
         raise ValueError('Unknown Qwen attempt role or arm')
-    body = base.render('tp', arm, percent, 'lowmem-fork')
-    body = replace_once(body, '  name: r2-tp\n', '  name: r2-' + role + '\n')
-    body = replace_once(body, '    r2-role: tp\n', '    r2-role: ' + role + '\n')
-    body = replace_once(body, '    name: ' + base.ROLES['tp']['model'], '    name: ' + MODEL)
-    body = replace_once(body, '    uri: ' + base.ROLES['tp']['uri'],
+    body = base.render(role, arm, percent, 'lowmem-fork')
+    body = replace_once(body, '  name: r2-' + role + '\n', '  name: r2-' + role + '\n')
+    body = replace_once(body, '    r2-role: ' + role + '\n', '    r2-role: ' + role + '\n')
+    body = replace_once(body, '    name: ' + base.ROLES[role]['model'], '    name: ' + MODEL)
+    body = replace_once(body, '    uri: ' + base.ROLES[role]['uri'],
                         '    uri: pvc://' + PVC + '/' + SUBPATH)
     # Replace the explicit command's args as a parsed list, keeping the original
     # Qwen/Pythia renderer and its default behavior intact.
@@ -109,9 +109,11 @@ def prepare_model():
 
 def model_adapter():
     return SimpleNamespace(MODEL=MODEL, REVISION=REVISION, PROFILE=PROFILE,
-                           DESCRIPTION=__doc__,
+                           DESCRIPTION=__doc__, ROLES=('tp', 'pp'),
+                           PARALLELISM={'tp': (2, 1), 'pp': (1, 2)},
+                           DESIGN='TP2+PP2',
                            CONTEXT=1024, TRACE_KIND='chat', DEFAULT_RATE=.5, DEFAULT_OUTPUT=64,
-                           SERIES_LABEL='qwen7b-tp2', RESULT_PREFIX='S-qwen7b-attempt-',
+                           SERIES_LABEL='qwen7b-tp2-pp2', RESULT_PREFIX='S-qwen7b-attempt-',
                            LATEST_FILE='qwen7b-attempt-latest.txt', SCREEN_FIRST=True,
                            CANDIDATE_FILE=__file__, render_tenant=render_tenant,
                            replace_once=replace_once, prepare_model=prepare_model)

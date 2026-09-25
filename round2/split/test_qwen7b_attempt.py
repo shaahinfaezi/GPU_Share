@@ -16,15 +16,16 @@ spec.loader.exec_module(Q)
 class QwenAttemptTests(unittest.TestCase):
     def test_rendered_settings_are_bounded_and_preserve_four_rank_shared_design(self):
         for arm in ('dedicated', 'hami', 'hami-mps'):
-            for role in Q.series.ROLES:
-                with patch.object(Q.series, 'tiny', Q.model_adapter()):
+            for role in Q.model_adapter().ROLES:
+                with patch.object(Q.series, 'tiny', Q.model_adapter()), patch.object(Q.series, 'ROLES', ('tp', 'pp')):
                     doc = yaml.safe_load(Q.series.render(role, arm, 'owned'))
                 self.assertEqual(doc['spec']['model'], {
                     'name': 'Qwen/Qwen2.5-7B-Instruct-AWQ', 'uri': 'pvc://r2-models-pvc/models/llm'})
                 pod = doc['spec']['template']
                 main = pod['containers'][0]
                 args = main['args']
-                expected = {'--tensor-parallel-size': '2', '--pipeline-parallel-size': '1',
+                expected = {'--tensor-parallel-size': '2' if role == 'tp' else '1',
+                            '--pipeline-parallel-size': '1' if role == 'tp' else '2',
                             '--max-num-seqs': '2', '--max-model-len': '1024',
                             '--max-num-batched-tokens': '256', '--kv-cache-memory-bytes': '268435456',
                             '--safetensors-load-strategy': 'lazy', '--quantization': 'awq_marlin',
@@ -46,6 +47,15 @@ class QwenAttemptTests(unittest.TestCase):
                 self.assertEqual('CUDA_MPS_PIPE_DIRECTORY' in env, arm == 'hami-mps')
                 self.assertIn('--kv-cache-memory-bytes 268435456', env['VLLM_ADDITIONAL_ARGS'])
 
+    def test_entrypoint_renders_tp_and_pp_roles(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(Q.series, 'tiny'), patch.object(Q.series, 'ROLES'):
+            out = Path(tmp) / 'rendered'
+            Q.series.main(['--render-only', str(out), '--host-budget-mib', '8488'], model=Q.model_adapter())
+            self.assertEqual(len(list(out.glob('*.yaml'))), 6)
+            trace = json.loads((out / 'trace.json').read_text())
+            self.assertEqual(trace['services'], ['tp', 'pp'])
+            self.assertIn('TP2+PP2', trace['params']['purpose'])
+
     def test_mismatched_or_unquantized_model_is_refused(self):
         config = dict(model_type='qwen2', hidden_size=3584, num_hidden_layers=28,
                       num_attention_heads=28, num_key_value_heads=4,
@@ -57,13 +67,13 @@ class QwenAttemptTests(unittest.TestCase):
             Q.validate_config(dict(config, hidden_size=896))
 
     def test_chat_trace_carries_new_model_and_context_and_keeps_solo_subset(self):
-        with patch.object(Q.series, 'tiny', Q.model_adapter()):
+        with patch.object(Q.series, 'tiny', Q.model_adapter()), patch.object(Q.series, 'ROLES', ('tp', 'pp')):
             trace = Q.series.make_trace(.5, 300, 64, 20260924)
             self.assertEqual(trace['params']['model'], Q.MODEL)
             self.assertEqual(trace['params']['max_model_len'], 1024)
             self.assertTrue(all(r['kind'] == 'chat' for r in trace['requests']))
-            self.assertEqual(Q.series.selected_trace(trace, ['tp-a'])['requests'],
-                             [r for r in trace['requests'] if r['service'] == 'tp-a'])
+            self.assertEqual(Q.series.selected_trace(trace, ['tp'])['requests'],
+                             [r for r in trace['requests'] if r['service'] == 'tp'])
 
 
 if __name__ == '__main__':

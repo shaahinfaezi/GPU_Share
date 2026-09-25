@@ -70,7 +70,7 @@ def make_trace(rate, duration, output_tokens, seed):
                             seed=seed, source='synthetic', model=tiny.MODEL,
                             model_revision=tiny.REVISION, output_tokens=output_tokens,
                             ignore_eos=True, max_model_len=getattr(tiny, 'CONTEXT', 2048), api=kind,
-                            purpose='controlled-load TP2+TP2; not capacity calibration'))
+                            purpose='controlled-load ' + getattr(tiny, 'DESIGN', 'TP2+TP2') + '; not capacity calibration'))
 
 
 def selected_trace(trace, roles):
@@ -80,12 +80,14 @@ def selected_trace(trace, roles):
                             rate=trace['params']['rate_per_tenant'] * len(roles)))
 
 
-def admission(solos, available):
+def admission(solos, available, budget_mib=None):
     deltas = [solos[role]['peak_host_delta_mib'] for role in ROLES]
     if any(not isinstance(x, (int, float)) or not math.isfinite(x) or x <= 0 for x in deltas):
         raise ValueError('Both solo peak host-memory measurements must be positive and finite')
     required = sum(deltas) + RESERVE
-    return dict(ok=available >= required, available_mib=available, required_mib=required,
+    effective = min(available, budget_mib) if budget_mib is not None else available
+    return dict(ok=effective >= required, available_mib=available, budget_mib=budget_mib,
+                effective_available_mib=effective, required_mib=required,
                 headroom_mib=RESERVE, solo_peak_delta_mib=deltas,
                 method='sum of separate host MemAvailable drops; includes other node activity')
 
@@ -166,9 +168,10 @@ def collect_logs(pods, out, monitor=None):
         (out / (role + '-server.log')).write_text(text, encoding='utf-8')
         if 'Overriding VLLM_WORKER_MULTIPROC_METHOD' in text and 'spawn' in text:
             raise RuntimeError('vLLM overrode fork; preserve this result as a different configuration')
-        if not all(term in text for term in ('tensor_parallel_size=2', 'pipeline_parallel_size=1',
+        tp, pp = getattr(tiny, 'PARALLELISM', {}).get(role, (2, 1))
+        if not all(term in text for term in ('tensor_parallel_size=%d' % tp, 'pipeline_parallel_size=%d' % pp,
                                               'world_size=2 rank=0', 'world_size=2 rank=1')):
-            raise RuntimeError('Startup log does not confirm TP2/PP1 and both NCCL ranks for ' + role)
+            raise RuntimeError('Startup log does not confirm TP%d/PP%d and both NCCL ranks for %s' % (tp, pp, role))
 
 
 def cleanup_roles(roles, token):
@@ -234,21 +237,25 @@ def run_arm(root, name, arm, roles, trace, args, solos=None, identity=None):
         result['idle_available_mib'] = idle
         P.write(out / 'idle-hostmem.json', dict(available=idle, samples=samples))
         if solos is not None:
-            gate = admission(solos, idle)
+            gate = admission(solos, idle, args.host_budget_mib)
             P.write(out / 'admission.json', gate)
             if not gate['ok']:
-                raise RuntimeError('Pair needs %.0f MiB including reserve; only %.0f MiB available' %
-                                   (gate['required_mib'], idle))
+                raise RuntimeError('Pair needs %.0f MiB including reserve; only %.0f MiB permitted by available RAM/budget' %
+                                   (gate['required_mib'], gate['effective_available_mib']))
         ok, detail = H.set_mps_daemon(arm == 'hami-mps')
         if not ok:
             raise RuntimeError('Could not set MPS state: ' + str(detail))
         # MPS itself costs host memory; recheck admission after its state changes.
         if solos is not None:
-            gate = admission(solos, H.host_mem_mib().get('available', 0))
+            gate = admission(solos, H.host_mem_mib().get('available', 0), args.host_budget_mib)
             P.write(out / 'admission-after-mps.json', gate)
             if not gate['ok']:
                 raise RuntimeError('Pair no longer passes memory admission after changing MPS state')
-        monitor = P.Monitor(out, reserve=RESERVE)
+        floor = max(RESERVE, idle - args.host_budget_mib + RESERVE) if args.host_budget_mib else RESERVE
+        P.write(out / 'memory-budget.json', dict(idle_available_mib=idle,
+                budget_mib=args.host_budget_mib, stop_below_available_mib=floor,
+                reserve_mib=RESERVE, enforcement='sampled host guard, not a hard cgroup cap'))
+        monitor = P.Monitor(out, reserve=floor)
         monitor.start()  # Includes first storage/startup allocations.
         gpu = H.GpuSampler(str(out / 'gpu.csv'))
         gpu.start()
@@ -295,7 +302,7 @@ def run_arm(root, name, arm, roles, trace, args, solos=None, identity=None):
         cmd = [sys.executable, str(HERE.parent / 'workload' / 'replay.py'),
                '--trace', str(out / 'trace.json'), '--arm', arm, '--out-dir', str(out),
                '--max-inflight', '128', '--timeout', '120',
-               '--note', tiny.MODEL + ' TP2+TP2 fixed synthetic Poisson load; not capacity calibration']
+               '--note', tiny.MODEL + ' ' + getattr(tiny, 'DESIGN', 'TP2+TP2') + ' fixed synthetic Poisson load; not capacity calibration']
         for role, url in endpoints.items():
             cmd += ['--endpoint', role + '=' + url, '--model', role + '=' + tiny.MODEL]
         try:
@@ -434,14 +441,17 @@ def write_intervals(out, roles, width=5):
 
 
 def main(argv=None, model=None):
-    global tiny
+    global tiny, ROLES
     if model is not None:
         tiny = model
+        ROLES = getattr(model, 'ROLES', ('tp-a', 'tp-b'))
     parser = argparse.ArgumentParser(description=getattr(tiny, 'DESCRIPTION', __doc__))
     parser.add_argument('--rate-per-tenant', type=float, default=getattr(tiny, 'DEFAULT_RATE', 2.0))
     parser.add_argument('--seconds', type=int, default=300)
     parser.add_argument('--output-tokens', type=int, default=getattr(tiny, 'DEFAULT_OUTPUT', 128))
     parser.add_argument('--hold-seconds', type=int, default=300)
+    parser.add_argument('--host-budget-mib', type=int, default=None,
+                        help='Total host envelope including 1024 MiB reserve; sampled guard, not a hard cap')
     parser.add_argument('--seed', type=int, default=20260924)
     parser.add_argument('--render-only', type=Path, help='Write reviewable YAML and trace; no cluster access')
     args = parser.parse_args(argv)
@@ -449,6 +459,8 @@ def main(argv=None, model=None):
         parser.error('rate-per-tenant must be >0 and <=10 for this bounded series')
     if not 60 <= args.seconds <= 900 or not 1 <= args.output_tokens <= 256 or not 0 <= args.hold_seconds <= 3600:
         parser.error('seconds 60..900, output-tokens 1..256, hold-seconds 0..3600')
+    if args.host_budget_mib is not None and args.host_budget_mib <= RESERVE:
+        parser.error('host-budget-mib must exceed the 1024 MiB reserve')
     trace = make_trace(args.rate_per_tenant, args.seconds, args.output_tokens, args.seed)
     if args.render_only:
         args.render_only.mkdir(parents=True, exist_ok=False)
@@ -503,19 +515,24 @@ def main(argv=None, model=None):
             if getattr(tiny, 'SCREEN_FIRST', False):
                 # One light-load rejection screen, not permission to skip full
                 # same-profile baselines. A failing screen ends this attempt.
-                screen_args = argparse.Namespace(rate_per_tenant=.25, seconds=60, hold_seconds=0)
+                screen_args = argparse.Namespace(rate_per_tenant=.25, seconds=60, hold_seconds=0,
+                                                 host_budget_mib=args.host_budget_mib)
                 screen_trace = make_trace(.25, 60, 64, args.seed)
-                log('START short memory screen; no retries or profile auto-tuning')
-                results['screen'] = run_arm(root, 'screen', 'dedicated', [ROLES[0]],
-                                            screen_trace, screen_args)
-                identity = results['screen']['runtime']
+                screens = {}
+                for role in ROLES:
+                    log('START short memory screen: ' + role)
+                    screens[role] = run_arm(root, 'screen__' + role, 'dedicated', [role],
+                                           screen_trace, screen_args, identity=identity)
+                    results['screen__' + role] = screens[role]
+                    identity = screens[role]['runtime']
                 available, _ = P.stable_idle()
-                screen_gate = admission({role: results['screen'] for role in ROLES}, available)
-                screen_gate['method'] = 'twice ONE light-load host delta plus reserve; screening estimate only'
+                screen_gate = admission(screens, available, args.host_budget_mib)
+                screen_gate['method'] = 'sum of separate light-load role deltas plus reserve; screening only'
                 P.write(root / 'screen-admission.json', screen_gate)
                 if not screen_gate['ok']:
-                    raise RuntimeError('One-attempt memory screen failed: estimated %.0f MiB needed, %.0f available; '
-                                       'full series was not started' % (screen_gate['required_mib'], available))
+                    raise RuntimeError('Memory screen failed: estimated %.0f MiB needed, %.0f permitted; '
+                                       'full series was not started' % (screen_gate['required_mib'],
+                                                                      screen_gate['effective_available_mib']))
             for role in ROLES:
                 name = 'dedicated__' + role
                 log('START ' + name)
