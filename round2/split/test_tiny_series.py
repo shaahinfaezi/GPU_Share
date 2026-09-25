@@ -132,6 +132,17 @@ class TinyTests(unittest.TestCase):
         self.assertFalse(S.admission(solos, 8800, 9100)['ok'])
         self.assertEqual(S.admission(solos, 12000, 8400)['effective_available_mib'], 8400)
 
+    def test_optional_prometheus_preserves_other_preconditions(self):
+        with patch.object(S.H, 'sh', return_value=(1, '')), \
+             patch.object(S.H, 'gpu_used_mib', return_value={0: 700}), \
+             patch.object(S.H, 'host_mem_mib', return_value={'available': 9000, 'swap_total': 0}), \
+             patch.object(S.H, 'prometheus_url', return_value=None) as prom:
+            problems = S.H.preconditions(require_prometheus=False)
+            prom.assert_not_called()
+            self.assertTrue(any('GPU 0' in p for p in problems))
+            self.assertFalse(any('Prometheus' in p for p in problems))
+            self.assertTrue(any('Prometheus' in p for p in S.H.preconditions()))
+
     def test_completion_resolver_does_not_probe_chat(self):
         response = SimpleNamespace(status_code=200)
         with patch.object(R.SESSION, 'post', return_value=response) as post:

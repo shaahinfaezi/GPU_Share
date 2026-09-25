@@ -333,19 +333,29 @@ def run_arm(root, name, arm, roles, trace, args, solos=None, identity=None):
                       url='http://127.0.0.1:3000/d/r2-gpu-sharing?from=%d&to=%d&var-node=%s' %
                       (1000 * summary['epoch_start'], 1000 * summary['epoch_end'], NODE),
                       note='Historical loaded interval. The screenshot hold has no generated load.')
+        without_prometheus = getattr(args, 'without_prometheus', False)
+        result['prometheus_enabled'] = not without_prometheus
+        if without_prometheus:
+            window.update(url=None, available=False,
+                          note='Prometheus explicitly disabled; no server metrics or fresh dashboard data.')
+            P.write(out / 'prom-skipped.json', dict(reason=window['note']))
+        else:
+            try:
+                H.prom_collect(str(out / 'prom.json'), summary['epoch_start'], summary['epoch_end'])
+            except Exception as exc:
+                P.write(out / 'prom-warning.json', dict(error=str(exc)))
         P.write(out / 'dashboard-window.json', window)
-        try:
-            H.prom_collect(str(out / 'prom.json'), summary['epoch_start'], summary['epoch_end'])
-        except Exception as exc:
-            P.write(out / 'prom-warning.json', dict(error=str(exc)))
         result.update(runtime=identity, peak_host_delta_mib=idle - monitor.minimum,
                       minimum_available_mib=monitor.minimum,
                       pss_after_replay_mib={role: value['pss_mib'] for role, value in pss.items()},
                       requests_ok=summary['requests_ok'], requests_total=summary['requests_total'],
                       aggregate=summary['aggregate'], per_service=summary['per_service'])
-        log('%s: replay passed. Dashboard: %s' % (name, window['url']))
-        log('Screenshot hold %ds; select the saved replay interval. Pods remain resident.' % args.hold_seconds)
-        wait_with_guard(args.hold_seconds, monitor)
+        if without_prometheus:
+            log('%s: replay passed. Prometheus disabled; client CSV/intervals and host/GPU samples saved.' % name)
+        else:
+            log('%s: replay passed. Dashboard: %s' % (name, window['url']))
+            log('Screenshot hold %ds; select the saved replay interval. Pods remain resident.' % args.hold_seconds)
+            wait_with_guard(args.hold_seconds, monitor)
         result['ok'] = True
     except BaseException as exc:
         result['error'] = str(exc) or type(exc).__name__
@@ -450,6 +460,8 @@ def main(argv=None, model=None):
     parser.add_argument('--seconds', type=int, default=300)
     parser.add_argument('--output-tokens', type=int, default=getattr(tiny, 'DEFAULT_OUTPUT', 128))
     parser.add_argument('--hold-seconds', type=int, default=300)
+    parser.add_argument('--without-prometheus', action='store_true',
+                        help='Skip Prometheus checks/collection and screenshot holds; record missing server metrics')
     parser.add_argument('--host-budget-mib', type=int, default=None,
                         help='Total host envelope including 1024 MiB reserve; sampled guard, not a hard cap')
     parser.add_argument('--seed', type=int, default=20260924)
@@ -461,6 +473,8 @@ def main(argv=None, model=None):
         parser.error('seconds 60..900, output-tokens 1..256, hold-seconds 0..3600')
     if args.host_budget_mib is not None and args.host_budget_mib <= RESERVE:
         parser.error('host-budget-mib must exceed the 1024 MiB reserve')
+    if args.without_prometheus:
+        args.hold_seconds = 0
     trace = make_trace(args.rate_per_tenant, args.seconds, args.output_tokens, args.seed)
     if args.render_only:
         args.render_only.mkdir(parents=True, exist_ok=False)
@@ -485,7 +499,7 @@ def main(argv=None, model=None):
             raise SystemExit('Existing inference workload found; inspect before starting')
         if not H.wait_gpu_idle(timeout=30):
             raise SystemExit('GPUs are not idle')
-        problems = H.preconditions()
+        problems = H.preconditions(require_prometheus=not args.without_prometheus)
         if problems:
             raise SystemExit('Preconditions failed: ' + '; '.join(problems))
         def interrupt(signum, frame):
@@ -516,7 +530,8 @@ def main(argv=None, model=None):
                 # One light-load rejection screen, not permission to skip full
                 # same-profile baselines. A failing screen ends this attempt.
                 screen_args = argparse.Namespace(rate_per_tenant=.25, seconds=60, hold_seconds=0,
-                                                 host_budget_mib=args.host_budget_mib)
+                                                 host_budget_mib=args.host_budget_mib,
+                                                 without_prometheus=args.without_prometheus)
                 screen_trace = make_trace(.25, 60, 64, args.seed)
                 screens = {}
                 for role in ROLES:

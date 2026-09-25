@@ -1090,7 +1090,7 @@ def read_json(path, default=None):
         return default
 
 
-def preconditions(ev=None):
+def preconditions(ev=None, require_prometheus=True):
     """Refuse to start a multi-hour run on a node that will evict it.
 
     The probe pod was already killed twice by ephemeral-storage eviction, and
@@ -1113,7 +1113,7 @@ def preconditions(ev=None):
         if mib > 500:
             problems.append("GPU %d already holds %d MiB; something else is "
                             "resident" % (idx, mib))
-    if not prometheus_url():
+    if require_prometheus and not prometheus_url():
         problems.append("Prometheus ClusterIP not resolvable; server-side "
                         "metrics would be lost")
     mem = host_mem_mib()
