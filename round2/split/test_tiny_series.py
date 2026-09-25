@@ -143,6 +143,17 @@ class TinyTests(unittest.TestCase):
             self.assertFalse(any('Prometheus' in p for p in problems))
             self.assertTrue(any('Prometheus' in p for p in S.H.preconditions()))
 
+    def test_persistent_scheduler_memory_refusal_is_reported_early(self):
+        pod = {'spec': {}, 'status': {'conditions': [{
+            'type': 'PodScheduled', 'status': 'False', 'reason': 'Unschedulable',
+            'message': '0/1 nodes are available: 1 Insufficient memory.'}]}}
+        monitor = SimpleNamespace(abort=threading.Event())
+        with patch.object(S, 'get_pods', return_value=[pod]), \
+             patch.object(S.time, 'monotonic', side_effect=[0, 1, 2, 63, 64]), \
+             patch.object(S.time, 'sleep'):
+            with self.assertRaisesRegex(RuntimeError, 'Scheduler rejected pp'):
+                S.wait_ready('pp', monitor)
+
     def test_completion_resolver_does_not_probe_chat(self):
         response = SimpleNamespace(status_code=200)
         with patch.object(R.SESSION, 'post', return_value=response) as post:

@@ -123,16 +123,32 @@ def validate_pod(pod, expected_uid=None):
 
 def wait_ready(role, monitor):
     deadline = time.monotonic() + 900
+    memory_pending_since = None
     while time.monotonic() < deadline:
         if monitor.abort.is_set():
             raise RuntimeError(monitor.reason)
         pods = get_pods(role, monitor)
         if len(pods) > 1:
             raise RuntimeError('Multiple pods found for ' + role)
+        memory_block = None
         for pod in pods:
+            for condition in pod.get('status', {}).get('conditions', []):
+                if (condition.get('type') == 'PodScheduled' and condition.get('status') == 'False'
+                        and condition.get('reason') == 'Unschedulable'
+                        and 'Insufficient memory' in condition.get('message', '')):
+                    memory_block = condition['message']
             # Pending pods may not yet have a node assignment.
             if pod['spec'].get('nodeName') and validate_pod(pod):
                 return pod
+        if memory_block:
+            if memory_pending_since is None:
+                memory_pending_since = time.monotonic()
+            elif time.monotonic() - memory_pending_since >= 60:
+                raise RuntimeError('Scheduler rejected %s for host-memory requests: %s. '
+                                   'Inspect node-describe.txt and saved pod JSON; actual free RAM '
+                                   'is separate from allocatable minus reserved requests.' % (role, memory_block))
+        else:
+            memory_pending_since = None
         time.sleep(2)
     raise RuntimeError('Readiness timed out for ' + role)
 
@@ -375,12 +391,18 @@ def run_arm(root, name, arm, roles, trace, args, solos=None, identity=None):
             for role in attempted:
                 try:
                     for pod in get_pods(role):
+                        P.write(out / (role + '-pod.json'), pod)
                         text = P.kube(['logs', pod['metadata']['name'], '--all-containers=true', '--tail=4000'])
                         (out / (role + '-server.log')).write_text(text, encoding='utf-8')
                     text = P.kube(['get', 'events', '--sort-by=.lastTimestamp'])
                     (out / 'cluster-events.txt').write_text(text, encoding='utf-8')
                 except Exception as exc:
                     result['diagnostic_error'] = str(exc)
+        if attempted and (not monitor or not monitor.abort.is_set()):
+            try:
+                (out / 'node-describe.txt').write_text(P.kube(['describe', 'node', NODE]), encoding='utf-8')
+            except Exception as exc:
+                result['node_diagnostic_error'] = str(exc)
         try:
             if attempted:
                 cleanup_roles(attempted, token)
