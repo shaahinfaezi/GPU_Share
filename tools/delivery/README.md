@@ -22,7 +22,7 @@ Each pool contains `00-storage.yaml`, `10-llm.yaml` and `11-embed.yaml`. Replace
 
 Do not apply this package recursively or install two MPS supervisors. Drain the selected GPU clients before switching modes. The original helper's MPS toggle clears the supervisor node selector and must not be used unchanged across production pools. Use the documented pool labels instead. Pool labels govern placement, not security isolation from privileged or unmanaged workloads.
 
-The local `deliverable/` directory is Git-ignored and must be transferred to Box1 separately. Public sources live in `deployment/` and `tools/delivery/`. From the repository root:
+The three delivery guides (`README.md`, `OPERATIONS_FA.md`, `CONFIGURATIONS_FA.md`) are versioned exceptions. Generated YAMLs and receipts under `deliverable/` remain local; public YAML sources live in `deployment/`. Other Persian reports and the video scenario remain ignored. Assemble the complete local package from the repository root:
 
 ```bash
 python tools/delivery/explain_configurations.py

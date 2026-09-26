@@ -1,5 +1,7 @@
 # راهنمای مشترک استقرار، گزارش و نمایش عملی
 
+برای اجرای کوتاه، پس از آماده‌شدن مدل‌ها فقط یک درخواست گفت‌وگو با هشت توکن خروجی و یک درخواست تعبیه‌سازی ارسال کنید؛ زمان هر درخواست حداکثر ۳۰ ثانیه است. این نمایش جای‌گذاری و پاسخ را نشان می‌دهد و بازپخش پنج‌دقیقه‌ای پژوهش را تکرار نمی‌کند. تعریف‌های آماده ارائه، نصب کوتاه اپراتور و نمایش سنجه‌ها در بخش‌های ۱۰ تا ۱۲ آمده‌اند.
+
 ## ۱. دامنه و یافته‌های قابل ارائه
 
 بسته، پیکربندی‌های آزموده‌شده مدل زبانی و تعبیه‌سازی، دو مدل زبانی، بینایی و بازرتبه‌بندی، دو مدل زبانی همسان و تفکیک تانسوری و خط لوله‌ای را نگه می‌دارد. نسخه‌های اصلی بدون تغییر در پوشه configurations قرار دارند. نسخه‌های pools همان تنظیم‌های زمان اجرا را برای سه گروه گره و نسخه‌های box1 برای گره آزمایش ارائه می‌کنند. نام خدمت، انتخابگر گره و اتصال ذخیره‌سازی مطابق مقصد تعیین می‌شود. رسید منشأ، تفاوت این اتصال‌ها و سیاست اختصاصی را از تنظیم‌های آزموده‌شده مشخص می‌کند.
@@ -110,15 +112,15 @@ for PORT in 8000 8080 80; do
 done
 test -n "$BASE" || { echo 'No model endpoint'; exit 1; }
 MODEL=$(python3 -c 'import json; print(json.load(open("/tmp/poc-model.json"))["data"][0]["id"])')
-curl -fsS --max-time 120 "$BASE/v1/chat/completions" \
+curl -fsS --max-time 30 "$BASE/v1/chat/completions" \
   -H 'Content-Type: application/json' \
-  -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Explain GPU sharing briefly.\"}],\"max_tokens\":32}"
+  -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Explain GPU sharing briefly.\"}],\"max_tokens\":8}"
 ```
 
 برای تعبیه‌سازی، بخش کشف پاد تا خواندن نام مدل با ROLE=embed تکرار می‌شود؛ سپس به‌جای درخواست گفت‌وگو، فرمان زیر ارسال می‌شود. پاسخ هر دو مدل باید ضبط شود، نه صرفاً وضعیت آماده.
 
 ```bash
-curl -fsS --max-time 120 "$BASE/v1/embeddings" \
+curl -fsS --max-time 30 "$BASE/v1/embeddings" \
   -H 'Content-Type: application/json' \
   -d "{\"model\":\"$MODEL\",\"input\":[\"GPU sharing demonstration\"]}"
 ```
@@ -232,3 +234,93 @@ kubectl -n llm-demo get llminferenceservice,pods -o wide
 ```
 
 در نمایش، نام حالت، بازه زمانی جاری، جای‌گذاری واقعی و پاسخ مدل‌ها نشان داده می‌شود. نمودارهای پژوهش از نتایج ذخیره‌شده خوانده می‌شوند؛ چند درخواست کوتاه آزمون ظرفیت نیستند. شواهد اجرای مدل از آزمایش‌های ثبت‌شده و پیکربندی‌های اصلی همراه بسته به دست آمده است. بررسی‌های عملیاتی شامل پاسخ هر دو مدل، نبود بازراه‌اندازی، تطبیق شناسه دستگاه‌ها، وضعیت درست MPS و پایش فعال است. نام گره، مخزن تصویر، مسیر وزن و ظرفیت تخصیص‌پذیر، مقادیر وابسته به محیط مقصد هستند [۱۳]، [۱۴].
+
+## ۱۰. تعریف کوتاه برای ارائه
+
+HAMI لایه مدیریت و اشتراک پردازنده گرافیکی در کوبرنتیز است که با زمان‌بند، افزونه دستگاه و کنترل نرم‌افزاری فراخوانی‌های CUDA، چند پاد را بر اساس سهم حافظه و محاسبات روی دستگاه فیزیکی جای می‌دهد؛ در پروژه، تخصیص با شناسه واقعی دستگاه بررسی شد. صفحه قابل نمایش: https://project-hami.io/docs/core-concepts/gpu-virtualization
+
+MPS خدمت چندفرایندی انویدیا است که امکان اجرای هم‌زمان کارهای CUDA از چند فرایند را روی یک پردازنده فراهم می‌کند؛ یافته‌های پروژه نشان می‌دهند اثر آن به بار و ترکیب مستأجران وابسته است، بنابراین گذردهی کل باید همراه تأخیر هر مدل تفسیر شود. صفحه قابل نمایش: https://docs.nvidia.com/deploy/mps/when-to-use-mps.html
+
+در اجرای تفکیک‌شده، محدودیت حافظه میزبان مانع بار اشباع‌کننده مناسب شد؛ نتیجه آن اجرا، امکان اشتراک همراه تفکیک بود. MPS جای زمان‌بند HAMI را نمی‌گیرد و HAMI نیز به‌تنهایی اتصال مشتری به MPS را ثابت نمی‌کند. کنترل مشتریان در بخش ۷ آمده است.
+
+## ۱۱. اپراتور انویدیا و نصب کوتاه
+
+اپراتور پردازنده گرافیکی انویدیا، اجزای زیرساختی مانند درایور، ابزار کانتینری و صادرکننده سنجه را در کوبرنتیز مدیریت می‌کند؛ در ترکیب این پروژه، مسئولیت افزونه تخصیص دستگاه با HAMI است. راهنمای رسمی نصب: https://docs.nvidia.com/datacenter/cloud-native/gpu-operator/25.3/getting-started.html
+
+روی Box1 اپراتور از قبل نصب است؛ فقط وضعیت آن را نشان دهید و نصب را تکرار نکنید. فرمان نصب زیر برای مقصد تازه‌ای است که مانند محیط پروژه، درایور و ابزار کانتینری انویدیا از قبل نصب و زمان اجرای nvidia پیکربندی شده‌اند. نسخه ۲۵٫۳٫۰ همان نسخه ثبت‌شده محیط است؛ این فرمان بازسازی تنظیم نصب برای همین پیش‌نیازهاست. با غیرفعال‌کردن افزونه دستگاه اپراتور، دو افزونه رقیب برای منبع گرافیکی ایجاد نمی‌شود. اگر کشف ویژگی گره از قبل نصب است، مقدار nfd.enabled=false نیز افزوده شود.
+
+```bash
+helm -n gpu-operator list
+kubectl get clusterpolicy
+kubectl -n gpu-operator get pods -o wide
+```
+
+```bash
+helm repo add nvidia https://helm.ngc.nvidia.com/nvidia
+helm repo update nvidia
+helm install gpu-operator nvidia/gpu-operator --version v25.3.0 \
+  -n gpu-operator --create-namespace --wait \
+  --set driver.enabled=false --set toolkit.enabled=false \
+  --set devicePlugin.enabled=false --set migManager.enabled=false
+```
+
+این نمونه نصب، درایور یا ابزار کانتینری را نصب نمی‌کند؛ روی میزبان فاقد آن‌ها ابتدا همان پیش‌نیازها برقرار شوند. در نصب فعلی Box1، تغییر تنظیم اپراتور فقط برای فیلم‌برداری لازم نیست. سپس مراحل نصب HAMI در بخش ۲ و فعال‌سازی MPS در بخش ۷ دنبال می‌شوند.
+
+## ۱۲. نمایش کوتاه جای‌گذاری، سنجه و داشبورد
+
+روی خود گره گرافیکی، فرمان زیر برای ۲۰ ثانیه وضعیت دستگاه‌ها را نشان می‌دهد. هم‌زمان، یک درخواست بخش ۵ ارسال کنید؛ سپس شناسه تخصیص پاد، شناسه دستگاه و فرایند مدل را کنار هم نمایش دهید. پایان زمان فرمان timeout طبیعی است. بالا رفتن میزان استفاده از دستگاه به‌تنهایی اثبات هم‌مکانی دو مدل نیست.
+
+```bash
+timeout 20s nvidia-smi --loop=1
+kubectl -n llm-demo get pods -o \
+  'custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,GPU:.metadata.annotations.hami\.io/vgpu-devices-allocated'
+nvidia-smi --query-compute-apps=pid,gpu_uuid,used_memory --format=csv
+```
+
+زنجیره پایش چنین است: نقطه /metrics زمان اجرا و صادرکننده‌های HAMI و انویدیا، هدف‌های PodMonitor و ServiceMonitor، پرومتئوس، و سپس گرافانا یا رابط HAMI. برای نشان‌دادن سهم تنظیم‌شده، بخش resources فایل مدل و حاشیه‌نویسی تخصیص را باز کنید؛ برای مصرف و عملکرد واقعی، سنجه‌های گردآوری‌شده را نشان دهید. بخش ۹ فایل‌های هدف پایش را اعمال می‌کند. روی Box1، نشانی محلی زیر از تنظیم ثبت‌شده زمان‌بند است؛ متغیر BASE از کشف نشانی مدل در بخش ۵ می‌آید.
+
+```bash
+curl -fsS --max-time 5 http://127.0.0.1:31993/metrics \
+  | grep -E '^hami_gpu_(core|memory)' | head -n 12
+curl -fsS --max-time 5 "$BASE/metrics" \
+  | grep -E '^vllm:(num_requests_running|num_requests_waiting|generation_tokens_total)' \
+  | head -n 12
+kubectl get servicemonitor,podmonitor -A
+```
+
+برای مرورگر، انتقال درگاه را روی همان رایانه‌ای اجرا کنید که مرورگر و دسترسی kubectl به خوشه دارد؛ این فرمان به SSH نیاز ندارد. هر انتقال درگاه در یک پایانه جدا باز می‌ماند و با Ctrl+C پایان می‌یابد. سامانه پایش و رابط HAMI باید قبلاً از حالت توقف برگردانده شده باشند. اگر خدمت موجود نیست یا آماده نیست، انتقال درگاه آن را نصب یا فعال نمی‌کند.
+
+```bash
+kubectl -n default port-forward svc/prometheus-operated 9090:9090
+```
+
+در مرورگر، http://127.0.0.1:9090/targets را باز کنید؛ هدف زمان اجرای مدل و HAMI باید فعال باشند. برای گرافانا، نام خدمت با برچسب رسمی کشف می‌شود؛ اگر نصب شما در فضای نام دیگری است، default را جایگزین کنید.
+
+```bash
+GRAFANA_SVC=$(kubectl -n default get svc \
+  -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}')
+GRAFANA_PORT=$(kubectl -n default get svc "$GRAFANA_SVC" \
+  -o jsonpath='{.spec.ports[0].port}')
+kubectl -n default port-forward "svc/$GRAFANA_SVC" "3000:$GRAFANA_PORT"
+```
+
+در مرورگر، http://127.0.0.1:3000/d/r2-gpu-sharing را باز کنید. برای رابط HAMI، از فهرست زیر خدمت رابط وب را انتخاب کنید، نه خدمت صادرکننده dcgm؛ سپس درگاه وب آن را از خروجی مشخص کنید. نام و درگاه از نصب واقعی خوانده می‌شوند تا به نام حدسی متکی نباشند.
+
+```bash
+kubectl -n kube-system get svc -l app.kubernetes.io/instance=my-hami-webui
+read -r -p 'HAMi WebUI service name: ' HAMI_WEB_SVC
+kubectl -n kube-system get svc "$HAMI_WEB_SVC" -o wide
+read -r -p 'Web service port: ' HAMI_WEB_PORT
+kubectl -n kube-system port-forward "svc/$HAMI_WEB_SVC" "3001:$HAMI_WEB_PORT"
+```
+
+صفحه http://127.0.0.1:3001 را برای نمایش گره، دستگاه و سهم پادها باز کنید. سنجه‌های زیر در بخش جست‌وجوی پرومتئوس یا کاوش گرافانا قابل نمایش‌اند. دو درخواست کوتاه برای نتیجه‌گیری درباره صدک‌ها کافی نیستند؛ نمودارهای تأخیر پژوهش از اجرای ثبت‌شده خوانده می‌شوند. نبود سری سنجه با مقدار صفر یکسان نیست؛ ابتدا فعال‌بودن هدف گردآوری و وجود نام سنجه بررسی شود.
+
+```promql
+hami_gpu_memory_allocated_bytes
+hami_gpu_core_allocated_ratio
+sum by (r2_role) (vllm:num_requests_running{namespace="llm-demo"})
+sum by (r2_role) (rate(vllm:generation_tokens_total{namespace="llm-demo"}[1m]))
+```
+
+بهترین ضبط کوتاه، یک پاسخ گفت‌وگو، یک پاسخ تعبیه‌سازی و حدود ۲۰ تا ۳۰ ثانیه نمایش جای‌گذاری و داشبورد است؛ دانلود وزن و آماده‌سازی اولیه مدل جزو زمان این آزمون کوتاه نیست.
