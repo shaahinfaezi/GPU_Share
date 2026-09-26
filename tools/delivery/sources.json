@@ -1,0 +1,306 @@
+[
+  {
+    "file": "configurations/llm-embedding/dedicated/r2-dedicated-embed.yaml",
+    "source": "T1-20260902-144618/dedicated__embed/rendered/r2-dedicated-embed.yaml",
+    "sha256": "3d991be0e056d113e0590b5ca1ade47ccb60775c5f79a2f7664bf97769766945",
+    "evidence": "T1: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/llm-embedding/dedicated/r2-dedicated-embed.yaml"
+  },
+  {
+    "file": "configurations/llm-embedding/dedicated/r2-dedicated-llm.yaml",
+    "source": "T1-20260902-144618/dedicated__llm/rendered/r2-dedicated-llm.yaml",
+    "sha256": "ad00b595325fd92e48bd738ad3ad6069bed2cfbff785746d69da17bed37db187",
+    "evidence": "T1: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/llm-embedding/dedicated/r2-dedicated-llm.yaml"
+  },
+  {
+    "file": "configurations/llm-embedding/hami-mps/r2-hami-mps-embed.yaml",
+    "source": "T1-20260902-144618/hami-mps__llm+embed/rendered/r2-hami-mps-embed.yaml",
+    "sha256": "f17d8cf27f6b84cff6aca966f0b1b8784e44f05870bcba46fe21b353ec526902",
+    "evidence": "T1: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/llm-embedding/hami-mps/r2-hami-mps-embed.yaml"
+  },
+  {
+    "file": "configurations/llm-embedding/hami-mps/r2-hami-mps-llm.yaml",
+    "source": "T1-20260902-144618/hami-mps__llm+embed/rendered/r2-hami-mps-llm.yaml",
+    "sha256": "97701c92c5dc4b1513eeb7493368c4f0428276eb513e8caf3659e0cee2528ef1",
+    "evidence": "T1: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/llm-embedding/hami-mps/r2-hami-mps-llm.yaml"
+  },
+  {
+    "file": "configurations/llm-embedding/hami/r2-hami-embed.yaml",
+    "source": "T1-20260902-144618/hami__llm+embed/rendered/r2-hami-embed.yaml",
+    "sha256": "7584335f0ff660686ad16750a3e0fb3892221afe0e13cf86cc440fd2116959bf",
+    "evidence": "T1: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/llm-embedding/hami/r2-hami-embed.yaml"
+  },
+  {
+    "file": "configurations/llm-embedding/hami/r2-hami-llm.yaml",
+    "source": "T1-20260902-144618/hami__llm+embed/rendered/r2-hami-llm.yaml",
+    "sha256": "149344db6348a9c0d60eacf22b15c917888ff643067b3dba7e7b49aeaaba9bd7",
+    "evidence": "T1: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/llm-embedding/hami/r2-hami-llm.yaml"
+  },
+  {
+    "file": "configurations/two-llms/dedicated/r2-dedicated-llm.yaml",
+    "source": "T2-20260902-152143/dedicated__llm/rendered/r2-dedicated-llm.yaml",
+    "sha256": "ad00b595325fd92e48bd738ad3ad6069bed2cfbff785746d69da17bed37db187",
+    "evidence": "T2: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/two-llms/dedicated/r2-dedicated-llm.yaml"
+  },
+  {
+    "file": "configurations/two-llms/dedicated/r2-dedicated-llm2.yaml",
+    "source": "T2-20260902-152143/dedicated__llm2/rendered/r2-dedicated-llm2.yaml",
+    "sha256": "29d615bf6858c619a8b87a83d4c55fc245fcfb1e70b47b4cc431229b2e7e0e56",
+    "evidence": "T2: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/two-llms/dedicated/r2-dedicated-llm2.yaml"
+  },
+  {
+    "file": "configurations/two-llms/hami-mps/r2-hami-mps-llm.yaml",
+    "source": "T2-20260902-152143/hami-mps__llm+llm2/rendered/r2-hami-mps-llm.yaml",
+    "sha256": "97701c92c5dc4b1513eeb7493368c4f0428276eb513e8caf3659e0cee2528ef1",
+    "evidence": "T2: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/two-llms/hami-mps/r2-hami-mps-llm.yaml"
+  },
+  {
+    "file": "configurations/two-llms/hami-mps/r2-hami-mps-llm2.yaml",
+    "source": "T2-20260902-152143/hami-mps__llm+llm2/rendered/r2-hami-mps-llm2.yaml",
+    "sha256": "eae7569268c61da367a3bf3935ea964c2e64ad459d0ba8fc3fcc44fcb552c83b",
+    "evidence": "T2: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/two-llms/hami-mps/r2-hami-mps-llm2.yaml"
+  },
+  {
+    "file": "configurations/two-llms/hami/r2-hami-llm.yaml",
+    "source": "T2-20260902-152143/hami__llm+llm2/rendered/r2-hami-llm.yaml",
+    "sha256": "149344db6348a9c0d60eacf22b15c917888ff643067b3dba7e7b49aeaaba9bd7",
+    "evidence": "T2: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/two-llms/hami/r2-hami-llm.yaml"
+  },
+  {
+    "file": "configurations/two-llms/hami/r2-hami-llm2.yaml",
+    "source": "T2-20260902-152143/hami__llm+llm2/rendered/r2-hami-llm2.yaml",
+    "sha256": "7a949f7b6850eb35b79f219f2e6db0835eec46a92859a960f9f14f868a8971b7",
+    "evidence": "T2: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/two-llms/hami/r2-hami-llm2.yaml"
+  },
+  {
+    "file": "configurations/vision-reranker/dedicated/r2-dedicated-rerank.yaml",
+    "source": "T3-20260902-155701/dedicated__rerank/rendered/r2-dedicated-rerank.yaml",
+    "sha256": "6a35a4217a09edb2d05cc9dbacf0956862a6790365b6e56b5f61a3a9e209db77",
+    "evidence": "T3: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/vision-reranker/dedicated/r2-dedicated-rerank.yaml"
+  },
+  {
+    "file": "configurations/vision-reranker/dedicated/r2-dedicated-vl.yaml",
+    "source": "T3-20260902-155701/dedicated__vl/rendered/r2-dedicated-vl.yaml",
+    "sha256": "96d86cb84415fc14f4917aaf632bb16cb00df277da7b282d01ef45e55fb836cf",
+    "evidence": "T3: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/vision-reranker/dedicated/r2-dedicated-vl.yaml"
+  },
+  {
+    "file": "configurations/vision-reranker/hami-mps/r2-hami-mps-rerank.yaml",
+    "source": "T3-20260902-155701/hami-mps__vl+rerank/rendered/r2-hami-mps-rerank.yaml",
+    "sha256": "b98966ff1a93b936bee612b8fae4e7fa7d8377146fb52c990f60f8826df87c4c",
+    "evidence": "T3: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/vision-reranker/hami-mps/r2-hami-mps-rerank.yaml"
+  },
+  {
+    "file": "configurations/vision-reranker/hami-mps/r2-hami-mps-vl.yaml",
+    "source": "T3-20260902-155701/hami-mps__vl+rerank/rendered/r2-hami-mps-vl.yaml",
+    "sha256": "a3b2a132d82a099639ffbe20c9d44c85a577c9163dd137e2505d7f3843add365",
+    "evidence": "T3: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/vision-reranker/hami-mps/r2-hami-mps-vl.yaml"
+  },
+  {
+    "file": "configurations/vision-reranker/hami/r2-hami-rerank.yaml",
+    "source": "T3-20260902-155701/hami__vl+rerank/rendered/r2-hami-rerank.yaml",
+    "sha256": "3fc4b153e41c3721c0d04342e6f032eff403f08cd136b83ddfd999c66e442745",
+    "evidence": "T3: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/vision-reranker/hami/r2-hami-rerank.yaml"
+  },
+  {
+    "file": "configurations/vision-reranker/hami/r2-hami-vl.yaml",
+    "source": "T3-20260902-155701/hami__vl+rerank/rendered/r2-hami-vl.yaml",
+    "sha256": "72ab4afb6a031b34eebd5b72acc98b0deab15cf4eb0f6556f2f4de32736a0e24",
+    "evidence": "T3: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/vision-reranker/hami/r2-hami-vl.yaml"
+  },
+  {
+    "file": "configurations/symmetric-llms/dedicated/r2-dedicated-llm2a.yaml",
+    "source": "T17-20260912-123151/dedicated__llm2a/rendered/r2-dedicated-llm2a.yaml",
+    "sha256": "299e15575cb6ed69c6f42d694c654ceed8088dd26e22938e8cf5364fb44341be",
+    "evidence": "T17: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/symmetric-llms/dedicated/r2-dedicated-llm2a.yaml"
+  },
+  {
+    "file": "configurations/symmetric-llms/dedicated/r2-dedicated-llm2b.yaml",
+    "source": "T17-20260912-123151/dedicated__llm2b/rendered/r2-dedicated-llm2b.yaml",
+    "sha256": "65d715bd99314134e5081f4dffe7804badc1064ee16ef98016856a8a311252b6",
+    "evidence": "T17: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/symmetric-llms/dedicated/r2-dedicated-llm2b.yaml"
+  },
+  {
+    "file": "configurations/symmetric-llms/hami-mps/r2-hami-mps-llm2a.yaml",
+    "source": "T17-20260912-123151/hami-mps__llm2a+llm2b/rendered/r2-hami-mps-llm2a.yaml",
+    "sha256": "b04197bb434de95adfdd0f315c3ecce4b5bfe1305d8bd937f80535bd0e27a7a8",
+    "evidence": "T17: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/symmetric-llms/hami-mps/r2-hami-mps-llm2a.yaml"
+  },
+  {
+    "file": "configurations/symmetric-llms/hami-mps/r2-hami-mps-llm2b.yaml",
+    "source": "T17-20260912-123151/hami-mps__llm2a+llm2b/rendered/r2-hami-mps-llm2b.yaml",
+    "sha256": "71dee46515f82a77fd6e80c0bbd44e23291ab1ac8ec30844a95103e778e3d9e4",
+    "evidence": "T17: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/symmetric-llms/hami-mps/r2-hami-mps-llm2b.yaml"
+  },
+  {
+    "file": "configurations/symmetric-llms/hami/r2-hami-llm2a.yaml",
+    "source": "T17-20260912-123151/hami__llm2a+llm2b/rendered/r2-hami-llm2a.yaml",
+    "sha256": "fb5957365f0e4c52085b9ee4bc95e03e6a3962952b573ff369eb2eaa5ab001e0",
+    "evidence": "T17: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/symmetric-llms/hami/r2-hami-llm2a.yaml"
+  },
+  {
+    "file": "configurations/symmetric-llms/hami/r2-hami-llm2b.yaml",
+    "source": "T17-20260912-123151/hami__llm2a+llm2b/rendered/r2-hami-llm2b.yaml",
+    "sha256": "f5eaf70b497bd8be5c643b3a7a5bebe89f59f684ef0cc41d9129780c114e4147",
+    "evidence": "T17: recorded configuration; workload-specific outcome, not production certification",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/symmetric-llms/hami/r2-hami-llm2b.yaml"
+  },
+  {
+    "file": "configurations/split-tp2-pp2/dedicated__tp/tp.yaml",
+    "source": "S-qwen7b-attempt-20260925-134248/dedicated__tp/rendered/tp.yaml",
+    "sha256": "7c799537460fa5fee2d87886224b8d46c8fcfeccc4b039ddf2abc7461063145b",
+    "evidence": "Verified 2026-09-25 controlled-load run; all requests succeeded, not capacity-tested",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/split-tp2-pp2/dedicated__tp/tp.yaml"
+  },
+  {
+    "file": "configurations/split-tp2-pp2/dedicated__pp/pp.yaml",
+    "source": "S-qwen7b-attempt-20260925-134248/dedicated__pp/rendered/pp.yaml",
+    "sha256": "ed271572317f82eb2366edee198327f672b8a7cdbece9c1ecd01480c6ab967c9",
+    "evidence": "Verified 2026-09-25 controlled-load run; all requests succeeded, not capacity-tested",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/split-tp2-pp2/dedicated__pp/pp.yaml"
+  },
+  {
+    "file": "configurations/split-tp2-pp2/hami/pp.yaml",
+    "source": "S-qwen7b-attempt-20260925-134248/hami/rendered/pp.yaml",
+    "sha256": "cb02cf6861dc3cfeca744a60d437673d976b61b179a55ee142b790ad0ee88b25",
+    "evidence": "Verified 2026-09-25 controlled-load run; all requests succeeded, not capacity-tested",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/split-tp2-pp2/hami/pp.yaml"
+  },
+  {
+    "file": "configurations/split-tp2-pp2/hami/tp.yaml",
+    "source": "S-qwen7b-attempt-20260925-134248/hami/rendered/tp.yaml",
+    "sha256": "e01d580afbdf0c9cc51c1e9f418de7984fb2ea9e0171145ff658aebf16923b3b",
+    "evidence": "Verified 2026-09-25 controlled-load run; all requests succeeded, not capacity-tested",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/split-tp2-pp2/hami/tp.yaml"
+  },
+  {
+    "file": "configurations/split-tp2-pp2/hami-mps/pp.yaml",
+    "source": "S-qwen7b-attempt-20260925-134248/hami-mps/rendered/pp.yaml",
+    "sha256": "5e10b0a6ee4c502d986a8af0c1f49a7c169b54b622eb463ae14588acaccc43e4",
+    "evidence": "Verified 2026-09-25 controlled-load run; all requests succeeded, not capacity-tested",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/split-tp2-pp2/hami-mps/pp.yaml"
+  },
+  {
+    "file": "configurations/split-tp2-pp2/hami-mps/tp.yaml",
+    "source": "S-qwen7b-attempt-20260925-134248/hami-mps/rendered/tp.yaml",
+    "sha256": "013a462d78f52971f49ba568a5a63aa1c4ce5ae7173573f804e051c89fc660d9",
+    "evidence": "Verified 2026-09-25 controlled-load run; all requests succeeded, not capacity-tested",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "deployment/configurations/split-tp2-pp2/hami-mps/tp.yaml"
+  },
+  {
+    "file": "infrastructure/models-storage.yaml",
+    "source": "GPU_Share/round2/01-models-storage.yaml",
+    "sha256": "394b81658cf7da7f936c955462236cb33cbfbed6fc0a1ecda2f087b0c65fc8cf",
+    "evidence": "Original project support file; existing cluster prerequisites required",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "round2/01-models-storage.yaml"
+  },
+  {
+    "file": "infrastructure/mps-daemon.yaml",
+    "source": "GPU_Share/qwen-kserve-benchmark/20-mps-daemon.yaml",
+    "sha256": "b3443e312d3521b7c90605c3a646f950d1bc60e69192f7dd699ad9280ee33b49",
+    "evidence": "Original project support file; existing cluster prerequisites required",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "qwen-kserve-benchmark/20-mps-daemon.yaml"
+  },
+  {
+    "file": "monitoring/servicemonitors.yaml",
+    "source": "GPU_Share/round2/monitoring/60-servicemonitors.yaml",
+    "sha256": "b61e67598a02fb931721250312401731ff3b6d481b8a0e43c4f7790a37aa6dc0",
+    "evidence": "Original project support file; existing cluster prerequisites required",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "round2/monitoring/60-servicemonitors.yaml"
+  },
+  {
+    "file": "monitoring/dashboard.yaml",
+    "source": "GPU_Share/round2/monitoring/61-dashboard.yaml",
+    "sha256": "946c5c1e097d52b17209382cff9989b9319db5eaf5be4990232f6f5285c03b92",
+    "evidence": "Original project support file; existing cluster prerequisites required",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "round2/monitoring/61-dashboard.yaml"
+  },
+  {
+    "file": "scripts/10-hami-binpack.sh",
+    "source": "GPU_Share/round2/10-hami-binpack.sh",
+    "sha256": "0bda2c444c379ce89159e597c1e5d1b70ba0b20dad3f5556a7921ae60c7a3a6c",
+    "evidence": "Original project support file; existing cluster prerequisites required",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "round2/10-hami-binpack.sh"
+  },
+  {
+    "file": "scripts/22-mps-check.sh",
+    "source": "GPU_Share/round2/22-mps-check.sh",
+    "sha256": "e41033227e5c7ead00e3fc13cd3febdb7701bed08ce233ff3012943f5b441f37",
+    "evidence": "Original project support file; existing cluster prerequisites required",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "round2/22-mps-check.sh"
+  },
+  {
+    "file": "scripts/harness.py",
+    "source": "GPU_Share/round2/harness.py",
+    "sha256": "0fb94968f004d4a193e236b376a16fe49187996fdd39b0f8a33e4bdf237b6923",
+    "evidence": "Original project support file; existing cluster prerequisites required",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "round2/harness.py"
+  },
+  {
+    "file": "validation/kserve-0.17.0-llminferenceservice-crd.yaml",
+    "source": "reports-findings/_archive/legacy-deliverable-20260925-095244/vendor/kserve-0.17.0-llminferenceservice-crd.yaml",
+    "sha256": "cef945ef4bec04bef76373c309e3fb8ee71e0f1cd590b0accdfe724c632afac3",
+    "evidence": "Pinned schema from previous delivery; schema check only",
+    "transformation": "none: byte-identical source copy",
+    "repo_source": "tools/delivery/schema/kserve-0.17.0-llminferenceservice-crd.yaml"
+  }
+]

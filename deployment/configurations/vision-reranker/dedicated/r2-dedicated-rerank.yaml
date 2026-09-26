@@ -1,0 +1,40 @@
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: r2-rerank
+  namespace: llm-demo
+  labels:
+    r2-arm: dedicated
+    r2-role: rerank
+  annotations: {}
+spec:
+  model:
+    name: BAAI/bge-reranker-v2-m3
+    uri: pvc://r2-models-pvc/models/rerank
+  replicas: 1
+  template:
+    containers:
+      - name: main
+        image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+        args:
+          - --gpu-memory-utilization=0.88
+          - --max-model-len=8192
+          - --max-num-seqs=64
+          - --runner=pooling
+          - --convert=classify
+          - --dtype=half
+        resources:
+          limits:
+            cpu: "4"
+            memory: 12Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "2816"
+          requests:
+            cpu: "200m"
+            memory: 2Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "2816"
+        env:
+          - name: HF_HOME
+            value: /mnt/models

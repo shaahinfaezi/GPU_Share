@@ -35,3 +35,20 @@ round2/calibration/*/
 /deliverable/
 /gpu-share-deliverable-*.zip
 /gpu-share-deliverable-*.sha256
+
+# Local context, filming, and separate Box2 work (preserve on disk).
+/KNOWLEDGE.md
+/tools/delivery/VIDEO_SCENARIO_FA.md
+/box2-zero-inference-kserve/
+
+# Per-machine split outputs and credentials.
+/round2/split/results/
+/round2/split/logs/
+/round2/split/calibration.json
+/round2/split/rendered*/
+.env.*
+!.env.example
+*.pem
+*.key
+kubeconfig
+*.kubeconfig

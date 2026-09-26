@@ -1,0 +1,149 @@
+# Based on tested configurations; site bindings are recorded in pool-provenance.json.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: qwen-benchmark-mps-daemon
+  namespace: llm-demo
+  labels:
+    app: qwen-benchmark-mps-daemon
+spec:
+  selector:
+    matchLabels:
+      app: qwen-benchmark-mps-daemon
+  template:
+    metadata:
+      labels:
+        app: qwen-benchmark-mps-daemon
+    spec:
+      hostPID: true
+      hostIPC: true
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      initContainers:
+      - name: prepare-mps
+        image: nvidia/cuda:12.4.1-base-ubuntu22.04
+        securityContext:
+          privileged: true
+        env:
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: all
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: utility,compute
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - 'set -uo pipefail
+
+          mkdir -p /tmp/nvidia-mps
+
+          chmod 1777 /tmp/nvidia-mps
+
+          # Remove stale pipes/sockets from a previous run, otherwise the
+
+          # control daemon refuses to start.
+
+          rm -rf /tmp/nvidia-mps/* || true
+
+          # Keep the GPU in DEFAULT compute mode.
+
+          #
+
+          # EXCLUSIVE_PROCESS is the classic way to *force* every client
+
+          # through MPS, but it is a persistent, node-global driver setting:
+
+          # if the benchmark is interrupted, every later single-process run
+
+          # (the sequential baseline and both HAMi modes) fails with
+
+          # "all CUDA-capable devices are busy or unavailable". MPS works in
+
+          # DEFAULT mode too; the workload Pods opt in explicitly through
+
+          # CUDA_MPS_PIPE_DIRECTORY.
+
+          nvidia-smi -c DEFAULT || true
+
+          nvidia-smi || true
+
+          '
+        volumeMounts:
+        - name: mps-pipe
+          mountPath: /tmp/nvidia-mps
+      containers:
+      - name: mps
+        image: nvidia/cuda:12.4.1-base-ubuntu22.04
+        securityContext:
+          privileged: true
+        env:
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: all
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: utility,compute
+        - name: CUDA_MPS_PIPE_DIRECTORY
+          value: /tmp/nvidia-mps
+        - name: CUDA_MPS_LOG_DIRECTORY
+          value: /tmp/nvidia-mps
+        command:
+        - /bin/bash
+        - -c
+        args:
+        - "set -uo pipefail\nexport CUDA_MPS_PIPE_DIRECTORY=/tmp/nvidia-mps\nexport\
+          \ CUDA_MPS_LOG_DIRECTORY=/tmp/nvidia-mps\n# NOTE: an earlier version of\
+          \ this comment claimed that running the\n# control daemon as root lets clients\
+          \ of ANY uid share one server.\n# That is wrong, and 90-mps-uid-test.yaml\
+          \ disproves it: a client\n# whose uid differs from the running server is\
+          \ pushed to a pending\n# list and blocks indefinitely while the daemon retries\
+          \ evicting\n# the incumbent (backoff observed out to 51200 ms). The incumbent\n\
+          # keeps working; only the newcomer hangs, and it hangs in CUDA\n# init with\
+          \ no error, on every GPU of the node.\n#\n# Sharing across uids requires\
+          \ -multiuser-server; see\n# 20-mps-daemon-multiuser.yaml. All benchmark\
+          \ runs used a single\n# uid (both tenants come from one image with no runAsUser),\
+          \ which\n# is why they were unaffected.\nnvidia-cuda-mps-control -d\n# Self-heal.\
+          \ If the daemon dies the control pipe disappears and\n# every client silently\
+          \ falls back to non-MPS execution, which\n# would quietly invalidate the\
+          \ MPS measurement.\nwhile true; do\n  if [ ! -S /tmp/nvidia-mps/control\
+          \ ]; then\n    echo \"MPS control pipe missing, restarting daemon\"\n  \
+          \  nvidia-cuda-mps-control -d || true\n  fi\n  sleep 15\ndone\n"
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/bash
+              - -c
+              - 'echo quit | nvidia-cuda-mps-control || true
+
+                nvidia-smi -c DEFAULT || true
+
+                '
+        volumeMounts:
+        - name: mps-pipe
+          mountPath: /tmp/nvidia-mps
+        readinessProbe:
+          exec:
+            command:
+            - test
+            - -S
+            - /tmp/nvidia-mps/control
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 12
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+      volumes:
+      - name: mps-pipe
+        hostPath:
+          path: /tmp/nvidia-mps
+          type: DirectoryOrCreate
+      nodeSelector:
+        gpu-share.io/pool: hami-mps
+        gpu-share.io/mps-enabled: 'true'
+      runtimeClassName: nvidia

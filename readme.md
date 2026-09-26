@@ -1,83 +1,46 @@
-# GPU Scheduler
+# GPU Share
 
-## Overview
-The GPU Scheduler is a Python application designed to manage GPU resources efficiently by launching and monitoring Docker containers that utilize NVIDIA GPUs. This application is particularly useful for running machine learning models in a multi-tenant environment.
+GPU-sharing and model-partitioning research using Kubernetes, KServe, vLLM, HAMi and NVIDIA MPS. The current path is the measured Tier configurations and the TP2+PP2 split experiment. The earlier Docker scheduler and custom shims are historical approaches.
 
-## Features
-- Dynamic allocation of GPU resources based on available memory.
-- Launching and managing multiple Docker containers.
-- Monitoring of GPU usage and container performance.
-- Integration with NVIDIA Multi-Process Service (MPS) for improved resource management.
+## Start here
 
-## Prerequisites
-- NVIDIA GPUs (e.g., 3070 Ti) with the latest drivers installed.
-- Docker and Docker Compose installed on the VPS.
-- Python 3.7 or higher.
+- [Persian research report](docs/research/GPU_SHARE_RESEARCH_REPORT_FA.docx) and [PDF preview](docs/research/GPU_SHARE_RESEARCH_REPORT_FA.pdf).
+- [Tested service manifests](deployment/configurations/): original configuration copies, organized by workload and arm.
+- [Delivery explanation](tools/delivery/README.md) and [Persian operating guide](tools/delivery/OPERATIONS_FA.md).
+- [Per-file configuration explanations](tools/delivery/CONFIGURATIONS_FA.md).
+- [Three node-pool YAMLs](deployment/pools/) and [Box1 sequential variants](deployment/box1/).
+- [Round 2 execution guide](round2/RUNBOOK.md) and [split benchmark](round2/split/README.md).
 
-## Directory Structure
-```
-gpu-scheduler
-├── src
-│   ├── gpu_scheduler.py        # Main logic for the GPU scheduler
-│   └── __init__.py             # Package initialization
-├── configs
-│   ├── .env.example             # Example environment variable configuration
-│   ├── scheduler.example.yaml    # Example YAML configuration for the scheduler
-│   └── tenants.example.json      # Example JSON configuration for tenant settings
-├── docker
-│   ├── Dockerfile.scheduler      # Docker image definition for the GPU scheduler
-│   └── entrypoint.sh            # Entrypoint script for the Docker container
-├── scripts
-│   ├── setup_vps.sh             # Script to set up the VPS environment
-│   ├── start_mps.sh             # Script to start NVIDIA MPS
-│   ├── run_scheduler.sh          # Script to run the GPU scheduler
-│   └── teardown.sh               # Script to clean up the environment
-├── tests
-│   └── test_smoke.py            # Smoke tests for the GPU scheduler
-├── .gitignore                    # Files and directories to ignore by Git
-├── docker-compose.yml            # Docker Compose configuration
-├── requirements.txt              # Python dependencies
-├── pyproject.toml                # Project configuration
-└── README.md                     # Project documentation
+## Build the local delivery
+
+Use Python with PyYAML and jsonschema installed; Bash is needed for shell syntax checks.
+
+```bash
+python tools/delivery/explain_configurations.py
+python tools/delivery/build_focused.py
+python tools/delivery/validate_focused.py
 ```
 
-## Installation
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/gpu-scheduler.git
-   cd gpu-scheduler
-   ```
+These commands operate on local files only. The generated `deliverable/` directory remains Git-ignored. Commit the source configurations, delivery helpers and report instead. File hashes preserve the exact relationship to the recorded trial; if a source changes, review and update its provenance deliberately.
 
-2. Copy the example environment configuration:
-   ```
-   cp configs/.env.example .env
-   ```
+The package uses the tested Tier and successful split configurations. `configurations/` preserves the original manifests; pool variants identify the destination node, namespace, registry, storage and allocation policy explicitly. Install prerequisites and set those site values before deployment. Do not apply every scenario or arm at once.
 
-3. Install the required Python packages:
-   ```
-   pip install -r requirements.txt
-   ```
+## Verified split experiment
 
-4. Build the Docker image:
-   ```
-   docker-compose build
-   ```
+On 2026-09-25, Qwen2.5-7B-Instruct-AWQ TP2 and PP2 ran concurrently on the same two RTX 3080 Ti GPUs. Dedicated TP2 completed 151/151 requests and PP2 155/155; HAMi and HAMi+MPS each completed 306/306. MPS state and GPU placement were verified. The workload was 0.5 synthetic Poisson requests/s per tenant, 64 output tokens, 300 seconds plus drain.
 
-## Usage
-1. Start the NVIDIA MPS service:
-   ```
-   ./scripts/start_mps.sh
-   ```
+This establishes sharing and model partitioning together at that controlled load. Host RAM constraints prevented a suitable saturation experiment for this split setup. Monitoring was temporarily paused to fit the test; historical dashboard screenshots are interface illustrations, not telemetry from that run.
 
-2. Run the GPU scheduler:
-   ```
-   ./scripts/run_scheduler.sh
-   ```
+## Repository layout
 
-3. Monitor the logs and performance metrics.
+| Directory | Role |
+|---|---|
+| `round2/` | Original Tier scripts, workload replay, monitoring and split-series code |
+| `deployment/configurations/` | Exact selected tested manifest snapshots |
+| `tools/delivery/` | Local assembly, provenance, explanations and offline validation |
+| `docs/research/` | Current Persian DOCX and PDF preview |
+| `docs/history/` | Earlier Docker/shim introduction |
+| `qwen-kserve-benchmark/`, `hami-mps-benchmark/` | Earlier KServe/HAMi/MPS experiments and original support manifests |
+| `src/`, `docker/`, `kubernetes/`, `configs/`, `scripts/` | Preserved Docker/shim implementation and supporting files; historical, separate from the current delivery |
 
-## Contributing
-Contributions are welcome! Please submit a pull request or open an issue for any enhancements or bug fixes.
-
-## License
-This project is licensed under the MIT License. See the LICENSE file for details.
+Raw trial directories, video scenarios and private working notes are local-only. Docker/shim sources remain tracked as project history; the current production handoff is under `deployment/` and `tools/delivery/`. Benchmark code and configuration provenance explain the measured settings. Do not commit tokens, local credentials or generated run logs.

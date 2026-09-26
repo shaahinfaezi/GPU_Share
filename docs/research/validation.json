@@ -1,0 +1,53 @@
+{
+  "ok": true,
+  "pages": 76,
+  "figures": 68,
+  "tables": 26,
+  "code_boxes": 18,
+  "split_run": "S-qwen7b-attempt-20260925-134248",
+  "arms": {
+    "dedicated__tp": {
+      "ok": true,
+      "successful": 151,
+      "total": 151,
+      "tokens_per_second": 26.03435627236969,
+      "minimum_available_mib": 5203
+    },
+    "dedicated__pp": {
+      "ok": true,
+      "successful": 155,
+      "total": 155,
+      "tokens_per_second": 30.531729370754334,
+      "minimum_available_mib": 5951
+    },
+    "hami": {
+      "ok": true,
+      "successful": 306,
+      "total": 306,
+      "tokens_per_second": 64.31387279846179,
+      "minimum_available_mib": 1680
+    },
+    "hami-mps": {
+      "ok": true,
+      "successful": 306,
+      "total": 306,
+      "tokens_per_second": 64.35630399886652,
+      "minimum_available_mib": 2026
+    }
+  },
+  "checked": [
+    "DOCX fonts, references, numbering and code boxes",
+    "PDF image bounds",
+    "split CSV counts, output tokens and p95/p99 recalculation",
+    "delivery provenance, syntax and KServe schema"
+  ],
+  "limitations": [
+    "Split run is controlled-load only, not MPS saturation evidence",
+    "No Prometheus capture for the split run",
+    "Production destination not deployed"
+  ],
+  "report_sha256": {
+    "docx": "3e013e2194cac987428f73428dd66df32c6bf0b0ab4a7036b02de32bc1e3bb34",
+    "pdf": "4b37ad483d8f81b957953701427239e50958c454fbdfad45700a020ef3c49fe1"
+  }
+}

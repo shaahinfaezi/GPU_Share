@@ -1,0 +1,290 @@
+[
+  {
+    "file": "pools/dedicated/10-llm.yaml",
+    "source": "deployment/configurations/llm-embedding/dedicated/r2-dedicated-llm.yaml",
+    "source_sha256": "ad00b595325fd92e48bd738ad3ad6069bed2cfbff785746d69da17bed37db187",
+    "sha256": "9e418e5e8d416b5ff9a926f6bfdd85d4dbb40828d25cd84439bbd6decb113337",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "separate destination PVC; create matching local storage first",
+      "gpucores=100: pool isolation adaptation, not the historical quota-matched baseline"
+    ]
+  },
+  {
+    "file": "box1/dedicated/10-llm.yaml",
+    "source": "deployment/configurations/llm-embedding/dedicated/r2-dedicated-llm.yaml",
+    "source_sha256": "ad00b595325fd92e48bd738ad3ad6069bed2cfbff785746d69da17bed37db187",
+    "sha256": "a554483b924da3d4e7d0106c38e106076430cebab600ab4d9edcff4d06446e63",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "Box1 hostname and existing model PVC",
+      "gpucores=100: pool isolation adaptation, not the historical quota-matched baseline"
+    ]
+  },
+  {
+    "file": "pools/dedicated/11-embed.yaml",
+    "source": "deployment/configurations/llm-embedding/dedicated/r2-dedicated-embed.yaml",
+    "source_sha256": "3d991be0e056d113e0590b5ca1ade47ccb60775c5f79a2f7664bf97769766945",
+    "sha256": "359feef9cb8d8d3347e629548a348752407110845ab285b54a63c5e166f8d3a4",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "separate destination PVC; create matching local storage first",
+      "gpucores=100: pool isolation adaptation, not the historical quota-matched baseline"
+    ]
+  },
+  {
+    "file": "box1/dedicated/11-embed.yaml",
+    "source": "deployment/configurations/llm-embedding/dedicated/r2-dedicated-embed.yaml",
+    "source_sha256": "3d991be0e056d113e0590b5ca1ade47ccb60775c5f79a2f7664bf97769766945",
+    "sha256": "72376521e9789552585b3ee5e0e8419cc37bba5e096060464f5c8d0502b36ec8",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "Box1 hostname and existing model PVC",
+      "gpucores=100: pool isolation adaptation, not the historical quota-matched baseline"
+    ]
+  },
+  {
+    "file": "pools/dedicated/00-storage.yaml",
+    "source": "round2/01-models-storage.yaml",
+    "source_sha256": "394b81658cf7da7f936c955462236cb33cbfbed6fc0a1ecda2f087b0c65fc8cf",
+    "sha256": "0f096cc18692f65cbfa17f52b1e88a770ea57890001c778fd5c06353d13a6d16",
+    "changes": [
+      "per-pool volume names",
+      "explicit destination hostname placeholder",
+      "matching PV/PVC binding"
+    ]
+  },
+  {
+    "file": "pools/hami/10-llm.yaml",
+    "source": "deployment/configurations/llm-embedding/hami/r2-hami-llm.yaml",
+    "source_sha256": "149344db6348a9c0d60eacf22b15c917888ff643067b3dba7e7b49aeaaba9bd7",
+    "sha256": "8c1d6a467904e4f4aa153018ff31ee9c20ac2c0690542e30e11ce275d4ee56ad",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "separate destination PVC; create matching local storage first"
+    ]
+  },
+  {
+    "file": "box1/hami/10-llm.yaml",
+    "source": "deployment/configurations/llm-embedding/hami/r2-hami-llm.yaml",
+    "source_sha256": "149344db6348a9c0d60eacf22b15c917888ff643067b3dba7e7b49aeaaba9bd7",
+    "sha256": "2501e8235e8395b1e499034775df26878f985b10962d897a1ed5663f93774289",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "Box1 hostname and existing model PVC"
+    ]
+  },
+  {
+    "file": "pools/hami/11-embed.yaml",
+    "source": "deployment/configurations/llm-embedding/hami/r2-hami-embed.yaml",
+    "source_sha256": "7584335f0ff660686ad16750a3e0fb3892221afe0e13cf86cc440fd2116959bf",
+    "sha256": "98366c1f2df42abc286c8726bd3f741276786d4e68f684330ff7965ac1d7d254",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "separate destination PVC; create matching local storage first"
+    ]
+  },
+  {
+    "file": "box1/hami/11-embed.yaml",
+    "source": "deployment/configurations/llm-embedding/hami/r2-hami-embed.yaml",
+    "source_sha256": "7584335f0ff660686ad16750a3e0fb3892221afe0e13cf86cc440fd2116959bf",
+    "sha256": "75e39fd1ee019af72c5a5e62897fffe81d650488ce4f4fa9b2d42f15fd1ff9e3",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "Box1 hostname and existing model PVC"
+    ]
+  },
+  {
+    "file": "pools/hami/00-storage.yaml",
+    "source": "round2/01-models-storage.yaml",
+    "source_sha256": "394b81658cf7da7f936c955462236cb33cbfbed6fc0a1ecda2f087b0c65fc8cf",
+    "sha256": "fd000b1210b86e987ab7d7d718b65ac13d1daf1baaeca144c5ca5b9e1a42825d",
+    "changes": [
+      "per-pool volume names",
+      "explicit destination hostname placeholder",
+      "matching PV/PVC binding"
+    ]
+  },
+  {
+    "file": "pools/hami-mps/10-llm.yaml",
+    "source": "deployment/configurations/llm-embedding/hami-mps/r2-hami-mps-llm.yaml",
+    "source_sha256": "97701c92c5dc4b1513eeb7493368c4f0428276eb513e8caf3659e0cee2528ef1",
+    "sha256": "cc7b8a8dd39bf3067710a0def0f9a78fc41026dff02c580f3d387d97b1204b30",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "separate destination PVC; create matching local storage first"
+    ]
+  },
+  {
+    "file": "box1/hami-mps/10-llm.yaml",
+    "source": "deployment/configurations/llm-embedding/hami-mps/r2-hami-mps-llm.yaml",
+    "source_sha256": "97701c92c5dc4b1513eeb7493368c4f0428276eb513e8caf3659e0cee2528ef1",
+    "sha256": "88c75c1d2e3ab64cb38914c7fd29ce4bb917552289bf69fdf8be028db13032b0",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "Box1 hostname and existing model PVC"
+    ]
+  },
+  {
+    "file": "pools/hami-mps/11-embed.yaml",
+    "source": "deployment/configurations/llm-embedding/hami-mps/r2-hami-mps-embed.yaml",
+    "source_sha256": "f17d8cf27f6b84cff6aca966f0b1b8784e44f05870bcba46fe21b353ec526902",
+    "sha256": "97d4438f41b27ce71de0652a71721e7c59e41da2f61c75859134d5fb75a0e7dd",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "separate destination PVC; create matching local storage first"
+    ]
+  },
+  {
+    "file": "box1/hami-mps/11-embed.yaml",
+    "source": "deployment/configurations/llm-embedding/hami-mps/r2-hami-mps-embed.yaml",
+    "source_sha256": "f17d8cf27f6b84cff6aca966f0b1b8784e44f05870bcba46fe21b353ec526902",
+    "sha256": "3228bb0ef9da96b6e3ba8016305b393ef9aa1d993ca12d3e904aff22863823ea",
+    "changes": [
+      "unique service name and pool label",
+      "pod nodeSelector for intended pool",
+      "explicit existing nvidia runtime class",
+      "Box1 hostname and existing model PVC"
+    ]
+  },
+  {
+    "file": "pools/hami-mps/00-storage.yaml",
+    "source": "round2/01-models-storage.yaml",
+    "source_sha256": "394b81658cf7da7f936c955462236cb33cbfbed6fc0a1ecda2f087b0c65fc8cf",
+    "sha256": "ea7d8850176134639bd6ef33d90091884e6e166349b5ac1859595e869913da1f",
+    "changes": [
+      "per-pool volume names",
+      "explicit destination hostname placeholder",
+      "matching PV/PVC binding"
+    ]
+  },
+  {
+    "file": "infrastructure/mps-pool.yaml",
+    "source": "qwen-kserve-benchmark/20-mps-daemon.yaml",
+    "source_sha256": "b3443e312d3521b7c90605c3a646f950d1bc60e69192f7dd699ad9280ee33b49",
+    "sha256": "2733e78165e157a5a7b11518fd92b7df44696f7e1e2a4cdb6ecc64c6b086c4db",
+    "changes": [
+      "restrict supervisor to enabled MPS pool; same existing supervisor identity",
+      "explicit existing nvidia runtime class"
+    ]
+  },
+  {
+    "file": "pools/hami/split/tp.yaml",
+    "source": "deployment/configurations/split-tp2-pp2/hami/tp.yaml",
+    "source_sha256": "e01d580afbdf0c9cc51c1e9f418de7984fb2ea9e0171145ff658aebf16923b3b",
+    "sha256": "6df1df6175becd2099245665eb61788d201bb3a338451a95c22d5d990c5e28f3",
+    "changes": [
+      "unique service name and pool selection",
+      "site PVC or existing Box1 PVC; measured runtime flags unchanged",
+      "explicit existing nvidia runtime class"
+    ]
+  },
+  {
+    "file": "box1/hami/split/tp.yaml",
+    "source": "deployment/configurations/split-tp2-pp2/hami/tp.yaml",
+    "source_sha256": "e01d580afbdf0c9cc51c1e9f418de7984fb2ea9e0171145ff658aebf16923b3b",
+    "sha256": "d5d80741071710ec90274021c860af6d339e929fc577597b801f59613706414d",
+    "changes": [
+      "unique service name and pool selection",
+      "site PVC or existing Box1 PVC; measured runtime flags unchanged",
+      "explicit existing nvidia runtime class"
+    ]
+  },
+  {
+    "file": "pools/hami/split/pp.yaml",
+    "source": "deployment/configurations/split-tp2-pp2/hami/pp.yaml",
+    "source_sha256": "cb02cf6861dc3cfeca744a60d437673d976b61b179a55ee142b790ad0ee88b25",
+    "sha256": "dc023cc11754e2fd603cf78ed829580d58344f05f993b1c9c765e2aef2e6cc74",
+    "changes": [
+      "unique service name and pool selection",
+      "site PVC or existing Box1 PVC; measured runtime flags unchanged",
+      "explicit existing nvidia runtime class"
+    ]
+  },
+  {
+    "file": "box1/hami/split/pp.yaml",
+    "source": "deployment/configurations/split-tp2-pp2/hami/pp.yaml",
+    "source_sha256": "cb02cf6861dc3cfeca744a60d437673d976b61b179a55ee142b790ad0ee88b25",
+    "sha256": "4af5ea1e5e6f09e2ea0c8fe24652caa7aa1724b16e06976be3929f58546af306",
+    "changes": [
+      "unique service name and pool selection",
+      "site PVC or existing Box1 PVC; measured runtime flags unchanged",
+      "explicit existing nvidia runtime class"
+    ]
+  },
+  {
+    "file": "pools/hami-mps/split/tp.yaml",
+    "source": "deployment/configurations/split-tp2-pp2/hami-mps/tp.yaml",
+    "source_sha256": "013a462d78f52971f49ba568a5a63aa1c4ce5ae7173573f804e051c89fc660d9",
+    "sha256": "0fbe76b2976236d2cec56e2b6c1854cbf8b5487cd7f480d90b91f60e928cd4ef",
+    "changes": [
+      "unique service name and pool selection",
+      "site PVC or existing Box1 PVC; measured runtime flags unchanged",
+      "explicit existing nvidia runtime class"
+    ]
+  },
+  {
+    "file": "box1/hami-mps/split/tp.yaml",
+    "source": "deployment/configurations/split-tp2-pp2/hami-mps/tp.yaml",
+    "source_sha256": "013a462d78f52971f49ba568a5a63aa1c4ce5ae7173573f804e051c89fc660d9",
+    "sha256": "45e9a4070e50d9daf8f76ad8c0197b422fe92852f3147f21d541b28c7eee48dc",
+    "changes": [
+      "unique service name and pool selection",
+      "site PVC or existing Box1 PVC; measured runtime flags unchanged",
+      "explicit existing nvidia runtime class"
+    ]
+  },
+  {
+    "file": "pools/hami-mps/split/pp.yaml",
+    "source": "deployment/configurations/split-tp2-pp2/hami-mps/pp.yaml",
+    "source_sha256": "5e10b0a6ee4c502d986a8af0c1f49a7c169b54b622eb463ae14588acaccc43e4",
+    "sha256": "62f5524f39e6234d37872709d6f2e8c64440e20744a9faf440e77eb363dfdf20",
+    "changes": [
+      "unique service name and pool selection",
+      "site PVC or existing Box1 PVC; measured runtime flags unchanged",
+      "explicit existing nvidia runtime class"
+    ]
+  },
+  {
+    "file": "box1/hami-mps/split/pp.yaml",
+    "source": "deployment/configurations/split-tp2-pp2/hami-mps/pp.yaml",
+    "source_sha256": "5e10b0a6ee4c502d986a8af0c1f49a7c169b54b622eb463ae14588acaccc43e4",
+    "sha256": "6d749cd97fd73ffcded701bfecdcf036ac5e7a295a6910171ce289b17337e8f0",
+    "changes": [
+      "unique service name and pool selection",
+      "site PVC or existing Box1 PVC; measured runtime flags unchanged",
+      "explicit existing nvidia runtime class"
+    ]
+  },
+  {
+    "file": "monitoring/pool-workloads.yaml",
+    "source": "round2/monitoring/60-servicemonitors.yaml",
+    "source_sha256": "b61e67598a02fb931721250312401731ff3b6d481b8a0e43c4f7790a37aa6dc0",
+    "sha256": "cfa7c3fb4e9a15cb082cd7005e9a21ba3c0eadbb346f09ce012ebefe8c19bdb2",
+    "changes": [
+      "extend role mapping to pool service names; retain one existing monitor identity to avoid duplicate scraping"
+    ]
+  }
+]
