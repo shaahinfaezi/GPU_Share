@@ -32,7 +32,6 @@ FINDINGS.md
 round2/calibration/*/
 
 # Generated local delivery package (source benchmarks remain tracked)
-/deliverable/*
 !/deliverable/README.md
 !/deliverable/OPERATIONS_FA.md
 !/deliverable/CONFIGURATIONS_FA.md

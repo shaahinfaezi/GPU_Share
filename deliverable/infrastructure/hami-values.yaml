@@ -1,0 +1,35 @@
+# HAMi 2.9.0. Merge with the existing release's exported values before upgrade.
+global:
+  imageTag: v2.9.0
+  managedNodeSelectorEnable: true
+  managedNodeSelector:
+    gpu-share.io/managed: 'true'
+scheduler:
+  defaultSchedulerPolicy:
+    nodeSchedulerPolicy: binpack
+    gpuSchedulerPolicy: binpack
+  admissionWebhook:
+    failurePolicy: Fail
+    namespaceSelector:
+      matchLabels:
+        gpu-share.io/managed: 'true'
+  service:
+    type: ClusterIP
+devicePlugin:
+  nvidiaNodeSelector:
+    gpu-share.io/managed: 'true'
+  deviceSplitCount: 2
+  deviceMemoryScaling: 1
+  deviceCoreScaling: 1
+  runtimeClassName: nvidia
+  createRuntimeClass: false
+  migStrategy: none
+  # Override the upstream illustrative "your-node-name" config.
+  nodeConfiguration:
+    config: '{"nodeconfig": []}'
+  tolerations:
+    - key: gpu.sharing
+      operator: Exists
+      effect: NoSchedule
+  service:
+    type: ClusterIP

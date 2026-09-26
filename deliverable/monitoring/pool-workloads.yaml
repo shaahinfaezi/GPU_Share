@@ -1,0 +1,30 @@
+# Based on tested configurations; site bindings are recorded in pool-provenance.json.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: r2-vllm-kserve
+  namespace: llm-demo
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      kserve.io/component: workload
+  namespaceSelector:
+    matchNames:
+    - llm-demo
+  podMetricsEndpoints:
+  - targetPort: 8000
+    path: /metrics
+    interval: 5s
+    scrapeTimeout: 4s
+    honorLabels: true
+    relabelings:
+    - sourceLabels:
+      - __meta_kubernetes_pod_label_app_kubernetes_io_name
+      regex: (?:r2-|pool-)(.+)
+      targetLabel: r2_role
+      replacement: $1
+    - sourceLabels:
+      - __meta_kubernetes_pod_name
+      targetLabel: pod

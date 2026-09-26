@@ -1,0 +1,195 @@
+# Scrape targets for round two.
+#
+# Your cluster already runs kube-prometheus-stack (release "prometheus", in the
+# default namespace) with the ServiceMonitor and PodMonitor CRDs present, so
+# nothing is installed here -- these only point the existing Prometheus at
+# three things it is not currently collecting.
+#
+# The `release: prometheus` label is REQUIRED: kube-prometheus-stack's default
+# serviceMonitorSelector matches on it, and a ServiceMonitor without it is
+# silently ignored.
+#
+# Verified live from the node before writing these:
+#   127.0.0.1:31993/metrics -> 19 series incl. hami_gpu_core_allocated_ratio,
+#                              hami_gpu_core_limit_ratio,
+#                              hami_gpu_memory_allocated_bytes
+#   127.0.0.1:31992/metrics -> hami_build_info (device plugin publishes more
+#                              once vGPU pods are actually scheduled)
+#   my-hami-webui-dcgm-exporter:9400 -> 32 DCGM_* series
+#
+# SELECTOR LABELS -- CONFIRMED live, not guessed:
+#   hami-scheduler               name=hami           component=hami-scheduler
+#   hami-device-plugin-monitor   name=hami           component=hami-device-plugin
+#   my-hami-webui-dcgm-exporter  name=dcgm-exporter  instance=my-hami-webui
+#
+# Note that BOTH HAMi services share app.kubernetes.io/name=hami, so `name`
+# alone is ambiguous and would make each ServiceMonitor scrape both services --
+# on ports they do not serve. `component` is what discriminates them, so both
+# labels are matched below.
+#
+#   kubectl apply -f 60-servicemonitors.yaml
+#   # then confirm they are up:
+#   kubectl -n default port-forward svc/prometheus-operated 9090:9090
+#   # Status -> Targets should list r2-hami-scheduler, r2-hami-device-plugin,
+#   # r2-dcgm, r2-vllm
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: r2-hami-scheduler
+  namespace: kube-system
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hami
+      app.kubernetes.io/component: hami-scheduler
+  namespaceSelector:
+    matchNames: [kube-system]
+  endpoints:
+    - targetPort: 31993      # named differently across chart versions; the
+      path: /metrics         # number is stable
+
+      interval: 5s           # benchmark-grade: the default 30s is far too coarse
+      scrapeTimeout: 4s
+      honorLabels: true
+---
+# The device plugin publishes per-container vGPU allocation once round-2 pods
+# are running. Port 31992 is named "monitorport" in the HAMi chart; if the
+# target does not appear, check the real name with:
+#   kubectl -n kube-system get svc hami-device-plugin-monitor -o yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: r2-hami-device-plugin
+  namespace: kube-system
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hami
+      app.kubernetes.io/component: hami-device-plugin
+  namespaceSelector:
+    matchNames: [kube-system]
+  endpoints:
+    - targetPort: 31992      # service confirms this is named "monitorport",
+      path: /metrics         # but the number is what actually matters
+
+      interval: 5s
+      scrapeTimeout: 4s
+      honorLabels: true
+---
+# There are TWO DCGM exporters on this node: my-hami-webui-dcgm-exporter in
+# kube-system (v3.5.0, verified answering with 32 series) and the GPU
+# operator's nvidia-dcgm-exporter in gpu-operator (v4.1.1). Scraping both
+# yields two series per GPU per metric, differing only in job label -- which
+# silently doubles anything a panel sums. This pins the one that was verified.
+# If 05-pooling-probe.sh shows the gpu-operator build exposes DCGM_FI_PROF_*
+# and this one does not, switch to that one rather than adding it.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: r2-dcgm
+  namespace: kube-system
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dcgm-exporter
+      app.kubernetes.io/instance: my-hami-webui
+  namespaceSelector:
+    matchNames: [kube-system]
+  endpoints:
+    - targetPort: 9400
+      path: /metrics
+      interval: 5s
+      scrapeTimeout: 4s
+      honorLabels: true
+---
+# vLLM's own metrics. This is where TTFT, queue depth, KV-cache occupancy and
+# preemption counts come from -- the numbers the client cannot see because they
+# are internal to the engine. A PodMonitor rather than a ServiceMonitor because
+# KServe fronts the pods with its own Service and the router would otherwise be
+# scraped instead of the engine.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: r2-vllm
+  namespace: llm-demo
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchExpressions:
+      - {key: r2-role, operator: Exists}
+  namespaceSelector:
+    matchNames: [llm-demo]
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 5s
+      scrapeTimeout: 4s
+      honorLabels: true
+      relabelings:
+        # Carry the role and arm onto every series so a Grafana panel can
+        # separate llm from embed, and dedicated from hami-mps, without
+        # needing a separate dashboard per run.
+        - sourceLabels: [__meta_kubernetes_pod_label_r2_role]
+          targetLabel: r2_role
+        - sourceLabels: [__meta_kubernetes_pod_label_r2_arm]
+          targetLabel: r2_arm
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod
+---
+# The KServe workload pods, which carry NONE of our labels.
+#
+# spec.template on an LLMInferenceService is a bare PodSpec -- no metadata
+# field -- so there is nowhere to put r2-role and KServe does not copy the CR's
+# labels down. Confirmed on a real object; the workload pod came up with only:
+#
+#   app.kubernetes.io/name=r2-embed
+#   app.kubernetes.io/component=llminferenceservice-workload
+#   kserve.io/component=workload
+#   llm-d.ai/role=both
+#
+# The PodMonitor above (r2-role: Exists) therefore matches only the plain
+# vllm Deployment path and would have collected NOTHING for KServe tenants --
+# silently, which is the worst way for a dashboard to be wrong.
+#
+# kserve.io/component=workload also excludes the router-scheduler pod, which
+# shares app.kubernetes.io/name with the workload and serves no vLLM metrics.
+#
+# r2_arm cannot be recovered from a pod label here. It does not need to be:
+# only one arm runs at a time, and run.py records each arm's exact t0/t1 in
+# events.jsonl, which is what render_results.py slices on.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: r2-vllm-kserve
+  namespace: llm-demo
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      kserve.io/component: workload
+  namespaceSelector:
+    matchNames: [llm-demo]
+  podMetricsEndpoints:
+    - targetPort: 8000
+      path: /metrics
+      interval: 5s
+      scrapeTimeout: 4s
+      honorLabels: true
+      relabelings:
+        # app.kubernetes.io/name is "r2-<role>"; strip the prefix so the panels
+        # key on the same r2_role the Deployment path produces.
+        - sourceLabels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+          regex: "r2-(.+)"
+          targetLabel: r2_role
+          replacement: "$1"
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: pod

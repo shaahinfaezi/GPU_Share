@@ -1,0 +1,44 @@
+# Based on tested configurations; site bindings are recorded in pool-provenance.json.
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: pool-dedicated-llm
+  namespace: llm-demo
+  labels:
+    r2-arm: dedicated
+    r2-role: llm
+    gpu-share.io/pool: dedicated
+  annotations: {}
+spec:
+  model:
+    name: Qwen/Qwen2.5-7B-Instruct-AWQ
+    uri: pvc://pool-dedicated-models/models/llm
+  replicas: 1
+  template:
+    containers:
+    - name: main
+      image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+      args:
+      - --gpu-memory-utilization=0.92
+      - --max-model-len=4096
+      - --max-num-seqs=64
+      - --quantization=awq_marlin
+      resources:
+        limits:
+          cpu: '4'
+          memory: 12Gi
+          nvidia.com/gpu: '1'
+          nvidia.com/gpumem: '8192'
+          nvidia.com/gpucores: '100'
+        requests:
+          cpu: 200m
+          memory: 2Gi
+          nvidia.com/gpu: '1'
+          nvidia.com/gpumem: '8192'
+          nvidia.com/gpucores: '100'
+      env:
+      - name: HF_HOME
+        value: /mnt/models
+    nodeSelector:
+      gpu-share.io/pool: dedicated
+    runtimeClassName: nvidia

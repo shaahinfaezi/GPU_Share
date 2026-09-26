@@ -1,0 +1,47 @@
+# Based on tested configurations; site bindings are recorded in pool-provenance.json.
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: pool-dedicated-embed
+  namespace: llm-demo
+  labels:
+    r2-arm: dedicated
+    r2-role: embed
+    gpu-share.io/pool: dedicated
+  annotations: {}
+spec:
+  model:
+    name: BAAI/bge-m3
+    uri: pvc://r2-models-pvc/models/embed
+  replicas: 1
+  template:
+    containers:
+    - name: main
+      image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+      args:
+      - --gpu-memory-utilization=0.90
+      - --max-model-len=8192
+      - --max-num-seqs=64
+      - --runner=pooling
+      - --convert=embed
+      - --dtype=half
+      resources:
+        limits:
+          cpu: '4'
+          memory: 12Gi
+          nvidia.com/gpu: '1'
+          nvidia.com/gpumem: '3072'
+          nvidia.com/gpucores: '100'
+        requests:
+          cpu: 200m
+          memory: 2Gi
+          nvidia.com/gpu: '1'
+          nvidia.com/gpumem: '3072'
+          nvidia.com/gpucores: '100'
+      env:
+      - name: HF_HOME
+        value: /mnt/models
+    nodeSelector:
+      gpu-share.io/pool: dedicated
+      kubernetes.io/hostname: mr-gholami
+    runtimeClassName: nvidia

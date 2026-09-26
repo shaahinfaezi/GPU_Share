@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "byte_identical_sources": 38,
+  "derived_pool_files": 25,
+  "guide_shell_blocks": 25,
+  "objects": {
+    "LLMInferenceService": 30,
+    "PersistentVolume": 1,
+    "PersistentVolumeClaim": 1,
+    "DaemonSet": 1,
+    "ServiceMonitor": 3,
+    "PodMonitor": 2,
+    "ConfigMap": 1,
+    "CustomResourceDefinition": 1
+  },
+  "checks": [
+    "SHA256 and byte equality against originals",
+    "Python AST",
+    "bash -n",
+    "YAML parse",
+    "pinned KServe v1alpha1 schema",
+    "TP2/PP2 and MPS invariants",
+    "derived runtime equality and node-pool selection",
+    "guide bash syntax and YAML paths"
+  ],
+  "unverified": [
+    "destination cluster admission/CEL",
+    "production traffic and startup",
+    "security and multi-node pool adaptations"
+  ]
+}

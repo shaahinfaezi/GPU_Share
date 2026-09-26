@@ -1,0 +1,43 @@
+# Based on tested configurations; site bindings are recorded in pool-provenance.json.
+apiVersion: v1
+kind: List
+items:
+- apiVersion: v1
+  kind: PersistentVolume
+  metadata:
+    name: pool-hami-mps-models
+    labels:
+      gpu-share.io/volume: pool-hami-mps-models
+  spec:
+    capacity:
+      storage: 200Gi
+    accessModes:
+    - ReadWriteOnce
+    persistentVolumeReclaimPolicy: Retain
+    storageClassName: manual
+    local:
+      path: /data2/hf-cache
+    nodeAffinity:
+      required:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/hostname
+            operator: In
+            values:
+            - SET-hami-mps-NODE
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: pool-hami-mps-models
+    namespace: llm-demo
+  spec:
+    accessModes:
+    - ReadWriteOnce
+    storageClassName: manual
+    resources:
+      requests:
+        storage: 200Gi
+    volumeName: pool-hami-mps-models
+    selector:
+      matchLabels:
+        gpu-share.io/volume: pool-hami-mps-models

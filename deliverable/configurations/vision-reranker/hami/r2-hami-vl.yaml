@@ -1,0 +1,39 @@
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: r2-vl
+  namespace: llm-demo
+  labels:
+    r2-arm: hami
+    r2-role: vl
+  annotations: {}
+spec:
+  model:
+    name: Qwen/Qwen2-VL-2B-Instruct
+    uri: pvc://r2-models-pvc/models/vl
+  replicas: 1
+  template:
+    containers:
+      - name: main
+        image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+        args:
+          - --gpu-memory-utilization=0.86
+          - --max-model-len=4096
+          - --max-num-seqs=32
+        resources:
+          limits:
+            cpu: "4"
+            memory: 12Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "9216"
+            nvidia.com/gpucores: "50"
+          requests:
+            cpu: "200m"
+            memory: 2Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "9216"
+            nvidia.com/gpucores: "50"
+        env:
+          - name: HF_HOME
+            value: /mnt/models
