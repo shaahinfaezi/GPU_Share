@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "shell_blocks": 36,
+  "python_blocks": 2,
+  "mock_cases": [
+    "chat",
+    "embed",
+    "wrong_model",
+    "http400",
+    "network",
+    "no_pod",
+    "unready"
+  ],
+  "dashboard_repair": true,
+  "metric_names_backed_by_T15": true,
+  "patch_paths": true,
+  "video_links": true,
+  "operations_sha256": "cf4c1a0828bb4c07ffcce5fba9d1ba0d4a4b1609932469af69e05523215f77d7",
+  "limits": "Offline checks and mocked responses only; no live cluster or SSH commands executed."
+}

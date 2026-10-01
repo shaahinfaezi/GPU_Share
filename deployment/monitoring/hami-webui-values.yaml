@@ -1,0 +1,12 @@
+# Merge into the existing my-hami-webui release values on future Helm upgrades.
+# HAMi WebUI chart 1.3.0; this is a values file, NOT a kubectl manifest.
+externalPrometheus:
+  enabled: true
+  address: http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090
+serviceMonitor:
+  enabled: true
+  additionalLabels:
+    release: prometheus
+    jobRelease: hami-webui-prometheus
+# Do not add release=prometheus to the chart's HAMi/DCGM monitors:
+# r2-hami-scheduler, r2-hami-device-plugin and r2-dcgm already scrape those.

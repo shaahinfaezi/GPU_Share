@@ -2,7 +2,7 @@
   "ok": true,
   "byte_identical_sources": 38,
   "derived_pool_files": 25,
-  "guide_shell_blocks": 25,
+  "guide_shell_blocks": 36,
   "objects": {
     "LLMInferenceService": 30,
     "PersistentVolume": 1,

@@ -29,6 +29,8 @@ def main():
         shutil.copyfile(REPO / 'deployment' / item['file'], dest)
     shutil.copyfile(REPO / 'deployment/pool-provenance.json', OUT / 'pool-provenance.json')
     shutil.copyfile(REPO / 'deployment/hami-values.yaml', OUT / 'infrastructure/hami-values.yaml')
+    for name in ('hami-scrape-fixes.yaml', 'hami-webui-values.yaml'):
+        shutil.copyfile(REPO / 'deployment/monitoring' / name, OUT / 'monitoring' / name)
     (OUT / 'provenance.json').write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding='utf-8')
     print('Copied', len(rows), 'source files without modifying their content')
 

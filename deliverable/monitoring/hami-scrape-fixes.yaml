@@ -1,0 +1,69 @@
+# Apply AFTER monitoring/servicemonitors.yaml.
+# Uses existing object names: no additional scrape of the same endpoints.
+# Ports and WebUI label confirmed on Box1, 2026-10-01.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: r2-hami-scheduler
+  namespace: kube-system
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hami
+      app.kubernetes.io/component: hami-scheduler
+  namespaceSelector:
+    matchNames: [kube-system]
+  endpoints:
+    - port: monitor
+      path: /metrics
+      interval: 5s
+      scrapeTimeout: 4s
+      honorLabels: true
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: r2-hami-device-plugin
+  namespace: kube-system
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hami
+      app.kubernetes.io/component: hami-device-plugin
+  namespaceSelector:
+    matchNames: [kube-system]
+  endpoints:
+    - port: monitorport
+      path: /metrics
+      interval: 5s
+      scrapeTimeout: 4s
+      honorLabels: true
+---
+# Same monitor owned by the existing my-hami-webui Helm release.
+# Retain release=prometheus in Helm values too, for future upgrades.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: my-hami-webui-svc-monitor
+  namespace: kube-system
+  labels:
+    release: prometheus
+    jobRelease: hami-webui-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hami-webui
+      app.kubernetes.io/instance: my-hami-webui
+      app.kubernetes.io/component: hami-webui
+  namespaceSelector:
+    matchNames: [kube-system]
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      honorLabels: false
+      relabelings: []
