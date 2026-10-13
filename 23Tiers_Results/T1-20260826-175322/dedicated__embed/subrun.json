@@ -1,0 +1,29 @@
+{
+  "arm": "dedicated",
+  "endpoints": {
+    "embed": "http://10.42.0.141:8000"
+  },
+  "error": "TypeError: 'Event' object is not callable",
+  "models": {
+    "embed": "BAAI/bge-m3"
+  },
+  "placement": {
+    "devices_in_use": [
+      1
+    ]
+  },
+  "render": [
+    "",
+    "arm dedicated  scenario llm-embed",
+    "gpumem requested 3072 of 12288 MiB = 25.0% of the card",
+    "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T1-20260826-175322/dedicated__embed/rendered"
+  ],
+  "roles": [
+    "embed"
+  ],
+  "scenario": "llm-embed",
+  "status": "error",
+  "tag": "dedicated__embed",
+  "test": "T1",
+  "trace_id": "1192f91a36ff2224"
+}

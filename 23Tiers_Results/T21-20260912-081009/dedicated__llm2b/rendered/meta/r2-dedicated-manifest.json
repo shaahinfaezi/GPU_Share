@@ -1,0 +1,22 @@
+{
+  "scenario": "llm2-llm2",
+  "arm": "dedicated",
+  "roles": [
+    "llm2b"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 5632,
+  "card_mib": 12288,
+  "fill_percent": 45.8,
+  "mps_percent": {
+    "llm2b": 100
+  },
+  "files": [
+    "r2-dedicated-llm2b.yaml"
+  ],
+  "models": {
+    "llm2b": "Qwen/Qwen2.5-1.5B-Instruct-AWQ"
+  }
+}

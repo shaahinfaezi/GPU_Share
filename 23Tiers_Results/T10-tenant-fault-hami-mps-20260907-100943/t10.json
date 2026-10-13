@@ -1,0 +1,97 @@
+{
+  "arm": "hami-mps",
+  "duration": 300,
+  "fault": "tenant-fault",
+  "fault_detail": {
+    "faulter_pod": "r2-llm2-kserve-7947c7b677-9h8l7",
+    "faulter_role": "llm2",
+    "gpu_before": {
+      "0": 39,
+      "1": 11574
+    },
+    "mps_clients_after": [
+      4060170,
+      4060731
+    ],
+    "mps_daemon_after": true,
+    "out_tail": "xt_alive_after\": false, \"sticky\": \"AcceleratorError: CUDA error: device-side assert triggered\\nSearch for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more inform\"}\n/pytorch/aten/src/ATen/native/cuda/IndexKernel.cu:111: operator(): block: [0,0,0], thread: [0,0,0] Assertion `-sizes[i] <= index && index < sizes[i] && \"index out of bounds\"` failed.\n",
+    "probe": {
+      "context_alive_after": false,
+      "result": "AcceleratorError: CUDA error: device-side assert triggered\nSearch for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be async",
+      "sticky": "AcceleratorError: CUDA error: device-side assert triggered\nSearch for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more inform"
+    },
+    "rc": 0
+  },
+  "fault_time": 1788776059.1040132,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami-mps",
+    "daemon_running": true,
+    "mps_client_pids": [
+      4060170,
+      4060731
+    ],
+    "tenants": 2,
+    "want_mps": true
+  },
+  "mps_recovery": {
+    "clients_after": [
+      4060170,
+      4060731
+    ],
+    "reachable_immediately": true,
+    "seconds_to_reachable": 0.0,
+    "state": "healthy"
+  },
+  "out": "/opt/GPU_Share/round2/results/T10-tenant-fault-hami-mps-20260907-100943",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": true,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1788775969.0064213,
+  "t1": 1788776274.328634,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 2.0524548325273724,
+      "n": 342,
+      "p50": 1.6525154942646623,
+      "p95": 5.048846726305783,
+      "p99": 7.885575449094176
+    },
+    "before": {
+      "failed": 0,
+      "mean": 2.4349467422955673,
+      "n": 183,
+      "p50": 1.8224768871441483,
+      "p95": 6.971842786297202,
+      "p99": 11.942684283480048
+    },
+    "during": {
+      "failed": 0,
+      "mean": 2.0215428765960644,
+      "n": 172,
+      "p50": 1.4721358455717564,
+      "p95": 4.916716278530657,
+      "p99": 9.53992391191423
+    }
+  }
+}

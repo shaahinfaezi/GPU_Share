@@ -1,0 +1,234 @@
+{
+  "arm": "dedicated",
+  "endpoints": {
+    "llm2": "http://10.42.0.52:8000"
+  },
+  "host_memory": {
+    "available_mib": 7649,
+    "measured": [
+      "llm2"
+    ],
+    "need_mib": 4124,
+    "roles": [
+      "llm2"
+    ],
+    "swap_total_mib": 0,
+    "total_mib": 15988
+  },
+  "host_min_available_mib": 4986,
+  "models": {
+    "llm2": "Qwen/Qwen2.5-1.5B-Instruct-AWQ"
+  },
+  "mps": {
+    "arm": "dedicated",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 1,
+    "want_mps": false
+  },
+  "placement": {
+    "devices_in_use": [
+      1
+    ]
+  },
+  "render": [
+    "",
+    "arm dedicated  scenario llm-llm",
+    "gpumem requested 3840 of 12288 MiB = 31.2% of the card",
+    "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T14-20260910-050241/dedicated__llm2/rendered"
+  ],
+  "replay_rc": 0,
+  "replay_tail": [
+    "llm2   chat route http://10.42.0.52:8000/v1/chat/completions",
+    "http pool 4096 connections for 4096 workers",
+    "warm-up: 8 requests",
+    "replaying 1188 requests over 240s (open loop, trace 72f6ae60d67fb6b5)",
+    "",
+    "arm dedicated   ok 1187/1188   856.8 tok/s   4.94 req/s",
+    "  ttft         p50 0.051  p95 0.112  p99 0.152  mean 0.057",
+    "  latency_e2e  p50 0.418  p95 2.131  p99 3.021  mean 0.705",
+    "  itl          p50 0.003  p95 0.007  p99 0.023  mean 0.004",
+    "wrote /opt/GPU_Share/round2/results/T14-20260910-050241/dedicated__llm2/replay.{summary.json,requests.csv,itl.json}"
+  ],
+  "roles": [
+    "llm2"
+  ],
+  "scenario": "llm-llm",
+  "smoke": {
+    "llm2": "ok via /v1/chat/completions"
+  },
+  "status": "ok",
+  "summary": {
+    "aggregate": {
+      "client_delay": {
+        "max": 0.004828778427537372,
+        "mean": 0.0006974973976871839,
+        "min": 0.0001586764062722068,
+        "n": 1187,
+        "p50": 0.0005652022939344192,
+        "p90": 0.0011227507500535697,
+        "p95": 0.0014420087165206044,
+        "p99": 0.0033586225076732055
+      },
+      "itl": {
+        "max": 0.10089805256575346,
+        "mean": 0.0038805934600532055,
+        "min": 2.262834459543228e-05,
+        "n": 197880,
+        "p50": 0.0031205061823129654,
+        "p90": 0.005570561252534391,
+        "p95": 0.007447889819741243,
+        "p99": 0.022835593428462697
+      },
+      "latency_e2e": {
+        "max": 4.015147000551224,
+        "mean": 0.7054485365781359,
+        "min": 0.03538539819419384,
+        "n": 1187,
+        "p50": 0.4177092658355832,
+        "p90": 1.6999417178332807,
+        "p95": 2.1311697032302623,
+        "p99": 3.0205171205289685
+      },
+      "output_tokens": 206028,
+      "prompt_tokens": 393189,
+      "requests_per_second": 4.9363216214380445,
+      "tokens_per_second": 856.7990488809078,
+      "ttft": {
+        "max": 0.2276076627895236,
+        "mean": 0.056851184983418436,
+        "min": 0.021015462465584278,
+        "n": 1187,
+        "p50": 0.05109860748052597,
+        "p90": 0.08766023069620134,
+        "p95": 0.11249521300196648,
+        "p99": 0.15232526862993842
+      },
+      "ttlt": {
+        "max": 4.015147000551224,
+        "mean": 0.7054485365781359,
+        "min": 0.03538539819419384,
+        "n": 1187,
+        "p50": 0.4177092658355832,
+        "p90": 1.6999417178332807,
+        "p95": 2.1311697032302623,
+        "p99": 3.0205171205289685
+      }
+    },
+    "arm": "dedicated",
+    "contended": null,
+    "endpoints": {
+      "llm2": "http://10.42.0.52:8000"
+    },
+    "epoch_end": 1789017459.6788125,
+    "epoch_start": 1789017219.2163613,
+    "model_count": 1,
+    "models": {
+      "llm2": "Qwen/Qwen2.5-1.5B-Instruct-AWQ"
+    },
+    "note": "T14 dedicated__llm2",
+    "only": [
+      "llm2"
+    ],
+    "per_service": {
+      "llm2": {
+        "client_delay": {
+          "max": 0.004828778427537372,
+          "mean": 0.0006974973976871839,
+          "min": 0.0001586764062722068,
+          "n": 1187,
+          "p50": 0.0005652022939344192,
+          "p90": 0.0011227507500535697,
+          "p95": 0.0014420087165206044,
+          "p99": 0.0033586225076732055
+        },
+        "failed": 1,
+        "itl": {
+          "max": 0.10089805256575346,
+          "mean": 0.0038805934600532055,
+          "min": 2.262834459543228e-05,
+          "n": 197880,
+          "p50": 0.0031205061823129654,
+          "p90": 0.005570561252534391,
+          "p95": 0.007447889819741243,
+          "p99": 0.022835593428462697
+        },
+        "kind": "chat",
+        "latency_e2e": {
+          "max": 4.015147000551224,
+          "mean": 0.7054485365781359,
+          "min": 0.03538539819419384,
+          "n": 1187,
+          "p50": 0.4177092658355832,
+          "p90": 1.6999417178332807,
+          "p95": 2.1311697032302623,
+          "p99": 3.0205171205289685
+        },
+        "output_tokens": 206028,
+        "prompt_tokens": 393189,
+        "requests": 1187,
+        "requests_per_second": 4.940598660270716,
+        "tokens_per_chunk": 0.9574788740946425,
+        "tokens_per_second": 857.5414159884205,
+        "tpot": {
+          "max": 0.010309575724282436,
+          "mean": 0.0038212270357726205,
+          "min": 0.0023583962271610894,
+          "n": 1187,
+          "p50": 0.0036153750384555145,
+          "p90": 0.00475149820527739,
+          "p95": 0.005573006503138941,
+          "p99": 0.007012617647269949
+        },
+        "ttft": {
+          "max": 0.2276076627895236,
+          "mean": 0.056851184983418436,
+          "min": 0.021015462465584278,
+          "n": 1187,
+          "p50": 0.05109860748052597,
+          "p90": 0.08766023069620134,
+          "p95": 0.11249521300196648,
+          "p99": 0.15232526862993842
+        },
+        "ttlt": {
+          "max": 4.015147000551224,
+          "mean": 0.7054485365781359,
+          "min": 0.03538539819419384,
+          "n": 1187,
+          "p50": 0.4177092658355832,
+          "p90": 1.6999417178332807,
+          "p95": 2.1311697032302623,
+          "p99": 3.0205171205289685
+        }
+      }
+    },
+    "requests_failed": 1,
+    "requests_ok": 1187,
+    "requests_total": 1188,
+    "roles": [
+      "llm2"
+    ],
+    "trace_id": "72f6ae60d67fb6b5",
+    "trace_params": {
+      "duration": 240.0,
+      "embed_batch": 32,
+      "fixed_output": 0,
+      "rate": 10.0,
+      "raw_prompts": true,
+      "rerank_docs": 16,
+      "scenario": "llm-llm",
+      "seed": 20260826,
+      "source": "sharegpt",
+      "warmup": 8
+    },
+    "wall_seconds": 240.46245180722326
+  },
+  "t0": 1789017218.5488281,
+  "t1": 1789017460.6105337,
+  "tag": "dedicated__llm2",
+  "teardown_left": [],
+  "teardown_s": 33.8,
+  "test": "T14",
+  "trace_id": "72f6ae60d67fb6b5",
+  "trace_id_seen": "72f6ae60d67fb6b5"
+}

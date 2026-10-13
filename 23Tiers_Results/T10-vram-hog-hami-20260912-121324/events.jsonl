@@ -1,0 +1,16 @@
+{"t": 1789215204.488119, "iso": "2026-09-12T12:13:24+0000", "phase": "preconditions", "ok": true, "problems": 0}
+{"t": 1789215204.4883475, "iso": "2026-09-12T12:13:24+0000", "phase": "teardown_begin"}
+{"t": 1789215206.1240985, "iso": "2026-09-12T12:13:26+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 2, \"1\": 2}"}
+{"t": 1789215208.3968124, "iso": "2026-09-12T12:13:28+0000", "phase": "mps_daemon", "want": false, "after_s": 2.1, "nudged": false}
+{"t": 1789215211.5201435, "iso": "2026-09-12T12:13:31+0000", "phase": "apply"}
+{"t": 1789215379.6886911, "iso": "2026-09-12T12:16:19+0000", "phase": "ready", "role": "llm", "after_s": 167.5}
+{"t": 1789215379.9228232, "iso": "2026-09-12T12:16:19+0000", "phase": "mps_state", "ok": true, "arm": "hami", "want_mps": false, "daemon_running": false, "mps_client_pids": [], "tenants": 1}
+{"t": 1789215380.2615285, "iso": "2026-09-12T12:16:20+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.251:8000"}
+{"t": 1789215389.7003582, "iso": "2026-09-12T12:16:29+0000", "phase": "replay_begin"}
+{"t": 1789215490.523437, "iso": "2026-09-12T12:18:10+0000", "phase": "fault_injected", "fault": "vram-hog", "at": 1789215479.7924554, "rc": 0, "out": "pod/r2-vram-hog created\n", "manifest": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260912-121324/r2-vram-hog.yaml", "hog_gpu_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c", "hog_held_mib": 512, "hog_phase": "Running", "hog_container_state": "{\"running\":{\"startedAt\":\"2026-09-12T12:18:03Z\"}}", "hog_events": "Scheduled   Successfully assigned llm-demo/r2-vram-hog to mr-gholami\nPulled      Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine\nCreated     Created container: hog\nStarted     Started container hog\n", "hog_log_tail": "a total capacity of 11.63 GiB of which 117.38 MiB is free. Process 3680326 has 7.76 GiB memory in use. Process 3682570 has 3.74 GiB memory in use. Of the allocated memory 3.50 GiB is allocated by PyTorch, and 0 bytes is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)\n"}
+{"t": 1789215693.410473, "iso": "2026-09-12T12:21:33+0000", "phase": "replay_end", "rc": 0}
+{"t": 1789215693.4112215, "iso": "2026-09-12T12:21:33+0000", "phase": "host_min_available", "mib": 4584}
+{"t": 1789215693.6233754, "iso": "2026-09-12T12:21:33+0000", "phase": "teardown_begin"}
+{"t": 1789215728.3000028, "iso": "2026-09-12T12:22:08+0000", "phase": "teardown_end", "waited_s": 33.5, "left": 0}
+{"t": 1789215728.3600447, "iso": "2026-09-12T12:22:08+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 1, \"1\": 1}"}
+{"t": 1789215734.631025, "iso": "2026-09-12T12:22:14+0000", "phase": "mps_daemon", "want": true, "after_s": 6.1, "nudged": false}

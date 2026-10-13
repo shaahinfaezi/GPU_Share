@@ -1,0 +1,5 @@
+{"t": 1788518308.503398, "iso": "2026-09-04T10:38:28+0000", "phase": "teardown_begin"}
+{"t": 1788518310.04827, "iso": "2026-09-04T10:38:30+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 1, \"1\": 1}"}
+{"t": 1788518310.2571733, "iso": "2026-09-04T10:38:30+0000", "phase": "mps_daemon", "want": false, "after_s": 0.0, "nudged": false}
+{"t": 1788518313.3540134, "iso": "2026-09-04T10:38:33+0000", "phase": "host_memory", "ok": false, "roles": ["llm2", "embed", "embed-small", "rerank"], "need_mib": 10624, "available_mib": 7248, "total_mib": 15988, "swap_total_mib": 0, "measured": []}
+{"t": 1788518315.046122, "iso": "2026-09-04T10:38:35+0000", "phase": "teardown_end", "waited_s": 0.4, "left": 0}

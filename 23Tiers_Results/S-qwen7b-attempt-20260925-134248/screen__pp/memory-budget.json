@@ -1,0 +1,7 @@
+{
+  "idle_available_mib": 9466,
+  "budget_mib": 9400,
+  "stop_below_available_mib": 1090,
+  "reserve_mib": 1024,
+  "enforcement": "sampled host guard, not a hard cgroup cap"
+}

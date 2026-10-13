@@ -1,0 +1,96 @@
+{
+  "arm": "hami",
+  "duration": 300,
+  "fault": "vram-escape",
+  "fault_detail": {
+    "card_after_mib": {
+      "0": 1,
+      "1": 11549
+    },
+    "card_before_mib": {
+      "0": 1,
+      "1": 11549
+    },
+    "card_rise_mib": 0,
+    "escaper_pod": "r2-llm2-kserve-7dc6d66899-b8l5k",
+    "escaper_role": "llm2",
+    "granted_gpumem_mib": 3840,
+    "out_tail": "of memory. Tried to allocate 256.00 MiB. GPU 0 has a total capacity of 3.75 GiB of which 201.87 MiB is free. Process 2762514 has 7.76 GiB memory in use. Process 2762612 ha\", \"grabbed_mib\": 0}\n[HAMI-core ERROR (pid:333 thread=139978679149632 allocator.c:52)]: Device 0 OOM 4083287040 / 4026531840\n[HAMI-core ERROR (pid:333 thread=139978679149632 allocator.c:52)]: Device 0 OOM 4083287040 / 4026531840\n",
+    "probe": {
+      "grabbed_mib": 0,
+      "sees_free_mib": 201,
+      "sees_total_mib": 3840,
+      "stopped": "OutOfMemoryError: CUDA out of memory. Tried to allocate 256.00 MiB. GPU 0 has a total capacity of 3.75 GiB of which 201.87 MiB is free. Process 2762514 has 7.76 GiB memory in use. Process 2762612 ha"
+    },
+    "rc": 0,
+    "verdict": {
+      "ESCAPED": false,
+      "card_rise_mib": 0,
+      "headroom_in_grant_mib": 201,
+      "physical_card_mib": 12288,
+      "sees_total_mib": 3840,
+      "stopped_near_advertised_free": true,
+      "view_virtualised": true
+    }
+  },
+  "fault_time": 1788643119.9023805,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 2,
+    "want_mps": false
+  },
+  "out": "/opt/GPU_Share/round2/results/T10-vram-escape-hami-20260905-211333",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": null,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1788643029.811414,
+  "t1": 1788643334.9655921,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    },
+    "before": {
+      "failed": 0,
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    },
+    "during": {
+      "failed": 0,
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    }
+  }
+}

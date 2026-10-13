@@ -1,0 +1,99 @@
+{
+  "arm": "hami-mps",
+  "duration": 300,
+  "fault": "vram-escape",
+  "fault_detail": {
+    "card_after_mib": {
+      "0": 39,
+      "1": 11574
+    },
+    "card_before_mib": {
+      "0": 39,
+      "1": 11574
+    },
+    "card_rise_mib": 0,
+    "escaper_pod": "r2-llm2-kserve-7947c7b677-4vp8q",
+    "escaper_role": "llm2",
+    "granted_gpumem_mib": 3840,
+    "out_tail": "of memory. Tried to allocate 256.00 MiB. GPU 0 has a total capacity of 3.75 GiB of which 205.87 MiB is free. Process 2768598 has 30.00 MiB memory in use. Process 2768246 h\", \"grabbed_mib\": 0}\n[HAMI-core ERROR (pid:326 thread=139883080262720 allocator.c:52)]: Device 0 OOM 4079092736 / 4026531840\n[HAMI-core ERROR (pid:326 thread=139883080262720 allocator.c:52)]: Device 0 OOM 4079092736 / 4026531840\n",
+    "probe": {
+      "grabbed_mib": 0,
+      "sees_free_mib": 205,
+      "sees_total_mib": 3840,
+      "stopped": "OutOfMemoryError: CUDA out of memory. Tried to allocate 256.00 MiB. GPU 0 has a total capacity of 3.75 GiB of which 205.87 MiB is free. Process 2768598 has 30.00 MiB memory in use. Process 2768246 h"
+    },
+    "rc": 0,
+    "verdict": {
+      "ESCAPED": false,
+      "card_rise_mib": 0,
+      "headroom_in_grant_mib": 205,
+      "physical_card_mib": 12288,
+      "sees_total_mib": 3840,
+      "stopped_near_advertised_free": true,
+      "view_virtualised": true
+    }
+  },
+  "fault_time": 1788643640.6520054,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami-mps",
+    "daemon_running": true,
+    "mps_client_pids": [
+      2768246,
+      2768361
+    ],
+    "tenants": 2,
+    "want_mps": true
+  },
+  "out": "/opt/GPU_Share/round2/results/T10-vram-escape-hami-mps-20260905-212222",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": null,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1788643550.5598707,
+  "t1": 1788643855.5176702,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    },
+    "before": {
+      "failed": 0,
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    },
+    "during": {
+      "failed": 0,
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{"t": 1789060289.4318273, "iso": "2026-09-10T17:11:29+0000", "phase": "preconditions", "ok": true, "problems": 0}
+{"t": 1789060289.43201, "iso": "2026-09-10T17:11:29+0000", "phase": "teardown_begin"}
+{"t": 1789060290.8369308, "iso": "2026-09-10T17:11:30+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 2, \"1\": 2}"}
+{"t": 1789060293.0263212, "iso": "2026-09-10T17:11:33+0000", "phase": "mps_daemon", "want": false, "after_s": 2.0, "nudged": false}
+{"t": 1789060296.1067996, "iso": "2026-09-10T17:11:36+0000", "phase": "apply"}
+{"t": 1789060467.4955783, "iso": "2026-09-10T17:14:27+0000", "phase": "ready", "role": "llm2", "after_s": 170.1}
+{"t": 1789060478.3420165, "iso": "2026-09-10T17:14:38+0000", "phase": "ready", "role": "llm", "after_s": 181.0}
+{"t": 1789060478.9874477, "iso": "2026-09-10T17:14:38+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"llm2\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1789060479.1229184, "iso": "2026-09-10T17:14:39+0000", "phase": "mps_state", "ok": true, "arm": "hami", "want_mps": false, "daemon_running": false, "mps_client_pids": [], "tenants": 2}
+{"t": 1789060479.36881, "iso": "2026-09-10T17:14:39+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.82:8000"}
+{"t": 1789060479.5961308, "iso": "2026-09-10T17:14:39+0000", "phase": "endpoint", "role": "llm2", "url": "http://10.42.0.83:8000"}
+{"t": 1789060488.2643075, "iso": "2026-09-10T17:14:48+0000", "phase": "replay_begin"}
+{"t": 1789060785.4491222, "iso": "2026-09-10T17:19:45+0000", "phase": "fault_injected", "fault": "vram-hog", "at": 1789060578.3543198, "rc": 0, "out": "pod/r2-vram-hog created\n", "manifest": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260910-171129/r2-vram-hog.yaml", "hog_gpu_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c", "hog_phase": "Pending", "hog_container_state": "", "hog_events": "FailedScheduling   0/1 nodes are available: 1 Insufficient memory. preemption: 0/1 nodes are available: 1 No preemption victims found for incoming pod.\n", "hog_log_tail": ""}
+{"t": 1789060793.7225845, "iso": "2026-09-10T17:19:53+0000", "phase": "replay_end", "rc": 0}
+{"t": 1789060793.7232947, "iso": "2026-09-10T17:19:53+0000", "phase": "host_min_available", "mib": 2570}
+{"t": 1789060793.8658943, "iso": "2026-09-10T17:19:53+0000", "phase": "teardown_begin"}
+{"t": 1789060828.841529, "iso": "2026-09-10T17:20:28+0000", "phase": "teardown_end", "waited_s": 33.9, "left": 0}
+{"t": 1789060828.883689, "iso": "2026-09-10T17:20:28+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 1, \"1\": 1}"}
+{"t": 1789060833.102556, "iso": "2026-09-10T17:20:33+0000", "phase": "mps_daemon", "want": true, "after_s": 4.1, "nudged": false}

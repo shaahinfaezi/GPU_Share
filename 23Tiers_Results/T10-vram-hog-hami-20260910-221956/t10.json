@@ -1,0 +1,78 @@
+{
+  "arm": "hami",
+  "duration": 300,
+  "fault": "vram-hog",
+  "fault_detail": {
+    "hog_container_state": "{\"waiting\":{\"reason\":\"ContainerCreating\"}}",
+    "hog_events": "Scheduled   Successfully assigned llm-demo/r2-vram-hog to mr-gholami\nPulled      Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine\nCreated     Created container: hog\n",
+    "hog_gpu_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c",
+    "hog_held_mib": null,
+    "hog_log_tail": "Error from server (BadRequest): container \"hog\" in pod \"r2-vram-hog\" is waiting to start: ContainerCreating\n",
+    "hog_phase": "",
+    "manifest": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260910-221956/r2-vram-hog.yaml",
+    "out": "pod/r2-vram-hog created\n",
+    "rc": 0
+  },
+  "fault_time": 1789079069.162375,
+  "host_min_available_mib": 2076,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 2,
+    "want_mps": false
+  },
+  "mps_recovery": null,
+  "out": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260910-221956",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": null,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1789078979.0704339,
+  "t1": 1789079284.3028972,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 3.5484925664217366,
+      "n": 343,
+      "p50": 2.8353024693205953,
+      "p95": 8.66238683834672,
+      "p99": 13.910543221980333
+    },
+    "before": {
+      "failed": 0,
+      "mean": 4.769008247639801,
+      "n": 183,
+      "p50": 3.727602967992425,
+      "p95": 14.251290219835937,
+      "p99": 21.793294380418956
+    },
+    "during": {
+      "failed": 0,
+      "mean": 3.5761710897497188,
+      "n": 173,
+      "p50": 2.6737226704135537,
+      "p95": 8.483278415165842,
+      "p99": 18.302346811629832
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "scenario": "dense3b",
+  "arm": "hami-mps",
+  "roles": [
+    "llm2a",
+    "llm2b",
+    "embed-small"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 9984,
+  "card_mib": 12288,
+  "fill_percent": 81.2,
+  "mps_percent": {
+    "llm2a": 100,
+    "llm2b": 100,
+    "embed-small": 100
+  },
+  "files": [
+    "r2-hami-mps-llm2a.yaml",
+    "r2-hami-mps-llm2b.yaml",
+    "r2-hami-mps-embed-small.yaml"
+  ],
+  "models": {
+    "llm2a": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+    "llm2b": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+    "embed-small": "BAAI/bge-large-en-v1.5"
+  }
+}

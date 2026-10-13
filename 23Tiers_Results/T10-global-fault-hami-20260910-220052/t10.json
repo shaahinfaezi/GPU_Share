@@ -1,0 +1,83 @@
+{
+  "arm": "hami",
+  "duration": 300,
+  "fault": "global-fault",
+  "fault_detail": {
+    "faulter_pod": "r2-llm2-kserve-7dc6d66899-hppmz",
+    "faulter_role": "llm2",
+    "gpu_before": {
+      "0": 1,
+      "1": 11549
+    },
+    "mps_clients_after": [],
+    "mps_daemon_after": false,
+    "out_tail": "R2FAULT {\"result\": \"RuntimeError: setStorage: sizes [4194304], strides [4], storage offset 0, and itemsize 4 requiring a storage size of 67108852 are out of bounds for storage of size 64\", \"context_alive_after\": true}\n",
+    "probe": {
+      "context_alive_after": true,
+      "result": "RuntimeError: setStorage: sizes [4194304], strides [4], storage offset 0, and itemsize 4 requiring a storage size of 67108852 are out of bounds for storage of size 64"
+    },
+    "rc": 0
+  },
+  "fault_time": 1789077942.9103665,
+  "host_min_available_mib": 2259,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 2,
+    "want_mps": false
+  },
+  "mps_recovery": null,
+  "out": "/opt/GPU_Share/round2/results/T10-global-fault-hami-20260910-220052",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": true,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1789077852.8163538,
+  "t1": 1789078158.2546985,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 3.6044097481382606,
+      "n": 342,
+      "p50": 2.847423318773508,
+      "p95": 8.813467730768025,
+      "p99": 14.265591974370182
+    },
+    "before": {
+      "failed": 0,
+      "mean": 4.69542239483222,
+      "n": 183,
+      "p50": 3.695459690876305,
+      "p95": 13.914832903072238,
+      "p99": 21.664063358679414
+    },
+    "during": {
+      "failed": 0,
+      "mean": 3.5097354437538617,
+      "n": 172,
+      "p50": 2.6475394256412983,
+      "p95": 8.325371585786343,
+      "p99": 18.47307146899402
+    }
+  }
+}

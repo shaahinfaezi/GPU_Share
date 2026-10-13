@@ -1,0 +1,22 @@
+{
+  "scenario": "vl-rerank",
+  "arm": "dedicated",
+  "roles": [
+    "vl"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 9216,
+  "card_mib": 12288,
+  "fill_percent": 75.0,
+  "mps_percent": {
+    "vl": 100
+  },
+  "files": [
+    "r2-dedicated-vl.yaml"
+  ],
+  "models": {
+    "vl": "Qwen/Qwen2-VL-2B-Instruct"
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "arm": "hami-mps",
+  "duration": 300,
+  "fault": "vram-hog",
+  "fault_detail": {
+    "hog_container_state": "{\"running\":{\"startedAt\":\"2026-09-12T12:27:30Z\"}}",
+    "hog_events": "Scheduled   Successfully assigned llm-demo/r2-vram-hog to mr-gholami\nPulled      Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine\nCreated     Created container: hog\nStarted     Started container hog\nKilling     Stopping container hog\nScheduled   Successfully assigned llm-demo/r2-vram-hog to mr-gholami\nPulled      Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine\nCreated     Created container: hog\nStarted     Started container hog\n",
+    "hog_gpu_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c",
+    "hog_held_mib": 512,
+    "hog_log_tail": " MiB is free. Process 3689246 has 30.00 MiB memory in use. Process 3688950 has 7.76 GiB memory in use. Process 3692434 has 3.74 GiB memory in use. Of the allocated memory 3.50 GiB is allocated by PyTorch, and 0 bytes is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)\n",
+    "hog_phase": "Running",
+    "manifest": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-mps-20260912-122229/r2-vram-hog.yaml",
+    "out": "pod/r2-vram-hog created\n",
+    "rc": 0
+  },
+  "fault_time": 1789216048.0678234,
+  "host_min_available_mib": 4540,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami-mps",
+    "daemon_running": true,
+    "mps_client_pids": [
+      3688950
+    ],
+    "tenants": 1,
+    "want_mps": true
+  },
+  "mps_recovery": {
+    "clients_after": [
+      3688950,
+      3692434
+    ],
+    "reachable_immediately": true,
+    "seconds_to_reachable": 0.0,
+    "state": "healthy"
+  },
+  "out": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-mps-20260912-122229",
+  "placement": {
+    "devices_in_use": [
+      1
+    ]
+  },
+  "rate": 6.0,
+  "recovered": null,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1789215957.9688787,
+  "t1": 1789216261.732928,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 1.4938300771600739,
+      "n": 343,
+      "p50": 1.2112697530537844,
+      "p95": 3.559086075052619,
+      "p99": 5.295236309058964
+    },
+    "before": {
+      "failed": 0,
+      "mean": 1.799787975771798,
+      "n": 184,
+      "p50": 1.371673360466957,
+      "p95": 5.246606796979904,
+      "p99": 8.939665535464883
+    },
+    "during": {
+      "failed": 0,
+      "mean": 1.455751873070894,
+      "n": 172,
+      "p50": 1.0560282254591584,
+      "p95": 3.853387489914894,
+      "p99": 6.746264703571796
+    }
+  }
+}

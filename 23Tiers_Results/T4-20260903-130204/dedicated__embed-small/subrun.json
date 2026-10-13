@@ -1,0 +1,188 @@
+{
+  "arm": "dedicated",
+  "endpoints": {
+    "embed-small": "http://10.42.0.25:8000"
+  },
+  "models": {
+    "embed-small": "BAAI/bge-large-en-v1.5"
+  },
+  "mps": {
+    "arm": "dedicated",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 1,
+    "want_mps": false
+  },
+  "placement": {
+    "devices_in_use": [
+      1
+    ]
+  },
+  "render": [
+    "",
+    "arm dedicated  scenario dense4",
+    "gpumem requested 2304 of 12288 MiB = 18.8% of the card",
+    "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T4-20260903-130204/dedicated__embed-small/rendered"
+  ],
+  "replay_rc": 0,
+  "replay_tail": [
+    "warm-up: 8 requests",
+    "replaying 466 requests over 300s (open loop, trace 2a143ed369afed90)",
+    "",
+    "arm dedicated   ok 466/466   0.0 tok/s   1.56 req/s",
+    "  ttft         p50 0.194  p95 0.318  p99 0.382  mean 0.204",
+    "  latency_e2e  p50 0.194  p95 0.318  p99 0.382  mean 0.204",
+    "wrote /opt/GPU_Share/round2/results/T4-20260903-130204/dedicated__embed-small/replay.{summary.json,requests.csv,itl.json}"
+  ],
+  "roles": [
+    "embed-small"
+  ],
+  "scenario": "dense4",
+  "smoke": {
+    "embed-small": "ok via /v1/embeddings"
+  },
+  "status": "ok",
+  "summary": {
+    "aggregate": {
+      "client_delay": {
+        "max": 0.03503174747925186,
+        "mean": 0.0016260981034553108,
+        "min": 0.00026114334107774084,
+        "n": 466,
+        "p50": 0.0009468984754903431,
+        "p90": 0.0020916698765489627,
+        "p95": 0.003295001254677743,
+        "p99": 0.020364415288995023
+      },
+      "itl": null,
+      "latency_e2e": {
+        "max": 0.43745920341461897,
+        "mean": 0.2038980531226444,
+        "min": 0.09195295348763466,
+        "n": 466,
+        "p50": 0.19354604789987206,
+        "p90": 0.2842535274103284,
+        "p95": 0.3180600937921554,
+        "p99": 0.38196210274472836
+      },
+      "output_tokens": 0,
+      "prompt_tokens": 326257,
+      "requests_per_second": 1.5607250932793777,
+      "tokens_per_second": 0.0,
+      "ttft": {
+        "max": 0.43745920341461897,
+        "mean": 0.2038980531226444,
+        "min": 0.09195295348763466,
+        "n": 466,
+        "p50": 0.19354604789987206,
+        "p90": 0.2842535274103284,
+        "p95": 0.3180600937921554,
+        "p99": 0.38196210274472836
+      },
+      "ttlt": {
+        "max": 0.43745920341461897,
+        "mean": 0.2038980531226444,
+        "min": 0.09195295348763466,
+        "n": 466,
+        "p50": 0.19354604789987206,
+        "p90": 0.2842535274103284,
+        "p95": 0.3180600937921554,
+        "p99": 0.38196210274472836
+      }
+    },
+    "arm": "dedicated",
+    "contended": null,
+    "endpoints": {
+      "embed-small": "http://10.42.0.25:8000"
+    },
+    "epoch_end": 1788441947.084578,
+    "epoch_start": 1788441648.5054061,
+    "model_count": 1,
+    "models": {
+      "embed-small": "BAAI/bge-large-en-v1.5"
+    },
+    "note": "T4 dedicated__embed-small",
+    "only": [
+      "embed-small"
+    ],
+    "per_service": {
+      "embed-small": {
+        "client_delay": {
+          "max": 0.03503174747925186,
+          "mean": 0.0016260981034553108,
+          "min": 0.00026114334107774084,
+          "n": 466,
+          "p50": 0.0009468984754903431,
+          "p90": 0.0020916698765489627,
+          "p95": 0.003295001254677743,
+          "p99": 0.020364415288995023
+        },
+        "failed": 0,
+        "itl": null,
+        "kind": "embed",
+        "latency_e2e": {
+          "max": 0.43745920341461897,
+          "mean": 0.2038980531226444,
+          "min": 0.09195295348763466,
+          "n": 466,
+          "p50": 0.19354604789987206,
+          "p90": 0.2842535274103284,
+          "p95": 0.3180600937921554,
+          "p99": 0.38196210274472836
+        },
+        "output_tokens": 0,
+        "prompt_tokens": 326257,
+        "requests": 466,
+        "requests_per_second": 1.5621385148440998,
+        "tokens_per_chunk": null,
+        "tokens_per_second": 0.0,
+        "tpot": null,
+        "ttft": {
+          "max": 0.43745920341461897,
+          "mean": 0.2038980531226444,
+          "min": 0.09195295348763466,
+          "n": 466,
+          "p50": 0.19354604789987206,
+          "p90": 0.2842535274103284,
+          "p95": 0.3180600937921554,
+          "p99": 0.38196210274472836
+        },
+        "ttlt": {
+          "max": 0.43745920341461897,
+          "mean": 0.2038980531226444,
+          "min": 0.09195295348763466,
+          "n": 466,
+          "p50": 0.19354604789987206,
+          "p90": 0.2842535274103284,
+          "p95": 0.3180600937921554,
+          "p99": 0.38196210274472836
+        }
+      }
+    },
+    "requests_failed": 0,
+    "requests_ok": 466,
+    "requests_total": 466,
+    "roles": [
+      "embed-small"
+    ],
+    "trace_id": "2a143ed369afed90",
+    "trace_params": {
+      "duration": 300.0,
+      "embed_batch": 32,
+      "fixed_output": 0,
+      "rate": 8.0,
+      "rerank_docs": 16,
+      "scenario": "dense4",
+      "seed": 20260826,
+      "source": "sharegpt",
+      "warmup": 8
+    },
+    "wall_seconds": 298.57916811015457
+  },
+  "t0": 1788441647.950559,
+  "t1": 1788441947.1546392,
+  "tag": "dedicated__embed-small",
+  "test": "T4",
+  "trace_id": "2a143ed369afed90",
+  "trace_id_seen": "2a143ed369afed90"
+}

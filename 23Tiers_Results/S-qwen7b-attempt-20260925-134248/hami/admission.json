@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "available_mib": 9418,
+  "budget_mib": 9400,
+  "effective_available_mib": 9400,
+  "required_mib": 8421,
+  "headroom_mib": 1024,
+  "solo_peak_delta_mib": [
+    3985,
+    3412
+  ],
+  "method": "sum of separate host MemAvailable drops; includes other node activity"
+}

@@ -1,0 +1,61 @@
+LAST SEEN   TYPE      REASON              OBJECT                               MESSAGE
+22m         Normal    Scheduled           pod/r2-tp-kserve-668784b954-knr2s    Successfully assigned llm-demo/r2-tp-kserve-668784b954-knr2s to mr-gholami
+15m         Normal    Scheduled           pod/r2-tp-kserve-668784b954-vrffz    Successfully assigned llm-demo/r2-tp-kserve-668784b954-vrffz to mr-gholami
+6m47s       Normal    Scheduled           pod/r2-pp-kserve-6fddbbd558-ps6cw    Successfully assigned llm-demo/r2-pp-kserve-6fddbbd558-ps6cw to mr-gholami
+18m         Normal    Scheduled           pod/r2-pp-kserve-6fddbbd558-zhzrp    Successfully assigned llm-demo/r2-pp-kserve-6fddbbd558-zhzrp to mr-gholami
+22m         Normal    Created             llminferenceservice/r2-tp            Created v1.Deployment llm-demo/r2-tp-kserve
+22m         Normal    SuccessfulCreate    replicaset/r2-tp-kserve-668784b954   Created pod: r2-tp-kserve-668784b954-knr2s
+22m         Normal    ScalingReplicaSet   deployment/r2-tp-kserve              Scaled up replica set r2-tp-kserve-668784b954 from 0 to 1
+22m         Normal    Created             llminferenceservice/r2-tp            Created v1.Secret llm-demo/r2-tp-kserve-self-signed-certs
+22m         Normal    FilteringSucceed    pod/r2-tp-kserve-668784b954-knr2s    find fit node(mr-gholami), 0 nodes not fit, 1 nodes fit(mr-gholami:0.00)
+22m         Normal    Created             llminferenceservice/r2-tp            Created v1.Service llm-demo/r2-tp-kserve-workload-svc
+22m         Normal    BindingSucceed      pod/r2-tp-kserve-668784b954-knr2s    Successfully binding node [mr-gholami] to llm-demo/r2-tp-kserve-668784b954-knr2s
+22m         Normal    Created             pod/r2-tp-kserve-668784b954-knr2s    Created container: main
+22m         Normal    Pulled              pod/r2-tp-kserve-668784b954-knr2s    Container image "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu" already present on machine
+22m         Normal    Started             pod/r2-tp-kserve-668784b954-knr2s    Started container main
+22m         Normal    Updated             llminferenceservice/r2-tp            Updated v1.Secret llm-demo/r2-tp-kserve-self-signed-certs
+21m         Warning   Unhealthy           pod/r2-tp-kserve-668784b954-knr2s    Startup probe failed: Get "http://10.42.0.79:8000/health": dial tcp 10.42.0.79:8000: connect: connection refused
+19m         Normal    Killing             pod/r2-tp-kserve-668784b954-knr2s    Stopping container main
+19m         Warning   Unhealthy           pod/r2-tp-kserve-668784b954-knr2s    Readiness probe failed: Get "http://10.42.0.79:8000/health": read tcp 10.42.0.1:39474->10.42.0.79:8000: read: connection reset by peer
+19m         Warning   Unhealthy           pod/r2-tp-kserve-668784b954-knr2s    Readiness probe failed: Get "http://10.42.0.79:8000/health": dial tcp 10.42.0.79:8000: connect: connection refused
+18m         Normal    FilteringSucceed    pod/r2-pp-kserve-6fddbbd558-zhzrp    find fit node(mr-gholami), 0 nodes not fit, 1 nodes fit(mr-gholami:0.00)
+18m         Normal    Created             llminferenceservice/r2-pp            Created v1.Secret llm-demo/r2-pp-kserve-self-signed-certs
+18m         Normal    Created             llminferenceservice/r2-pp            Created v1.Deployment llm-demo/r2-pp-kserve
+18m         Normal    Created             llminferenceservice/r2-pp            Created v1.Service llm-demo/r2-pp-kserve-workload-svc
+18m         Normal    ScalingReplicaSet   deployment/r2-pp-kserve              Scaled up replica set r2-pp-kserve-6fddbbd558 from 0 to 1
+18m         Normal    SuccessfulCreate    replicaset/r2-pp-kserve-6fddbbd558   Created pod: r2-pp-kserve-6fddbbd558-zhzrp
+18m         Normal    BindingSucceed      pod/r2-pp-kserve-6fddbbd558-zhzrp    Successfully binding node [mr-gholami] to llm-demo/r2-pp-kserve-6fddbbd558-zhzrp
+18m         Normal    Created             pod/r2-pp-kserve-6fddbbd558-zhzrp    Created container: main
+18m         Normal    Pulled              pod/r2-pp-kserve-6fddbbd558-zhzrp    Container image "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu" already present on machine
+18m         Normal    Started             pod/r2-pp-kserve-6fddbbd558-zhzrp    Started container main
+17m         Normal    Updated             llminferenceservice/r2-pp            Updated v1.Secret llm-demo/r2-pp-kserve-self-signed-certs
+17m         Warning   Unhealthy           pod/r2-pp-kserve-6fddbbd558-zhzrp    Startup probe failed: Get "http://10.42.0.80:8000/health": dial tcp 10.42.0.80:8000: connect: connection refused
+16m         Normal    Killing             pod/r2-pp-kserve-6fddbbd558-zhzrp    Stopping container main
+16m         Warning   Unhealthy           pod/r2-pp-kserve-6fddbbd558-zhzrp    Readiness probe failed: Get "http://10.42.0.80:8000/health": read tcp 10.42.0.1:51906->10.42.0.80:8000: read: connection reset by peer
+15m         Normal    FilteringSucceed    pod/r2-tp-kserve-668784b954-vrffz    find fit node(mr-gholami), 0 nodes not fit, 1 nodes fit(mr-gholami:0.00)
+15m         Normal    Created             llminferenceservice/r2-tp            Created v1.Service llm-demo/r2-tp-kserve-workload-svc
+15m         Normal    Created             llminferenceservice/r2-tp            Created v1.Deployment llm-demo/r2-tp-kserve
+15m         Normal    Created             llminferenceservice/r2-tp            Created v1.Secret llm-demo/r2-tp-kserve-self-signed-certs
+15m         Normal    ScalingReplicaSet   deployment/r2-tp-kserve              Scaled up replica set r2-tp-kserve-668784b954 from 0 to 1
+15m         Normal    SuccessfulCreate    replicaset/r2-tp-kserve-668784b954   Created pod: r2-tp-kserve-668784b954-vrffz
+15m         Normal    BindingSucceed      pod/r2-tp-kserve-668784b954-vrffz    Successfully binding node [mr-gholami] to llm-demo/r2-tp-kserve-668784b954-vrffz
+15m         Normal    Pulled              pod/r2-tp-kserve-668784b954-vrffz    Container image "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu" already present on machine
+15m         Normal    Created             pod/r2-tp-kserve-668784b954-vrffz    Created container: main
+15m         Normal    Started             pod/r2-tp-kserve-668784b954-vrffz    Started container main
+15m         Normal    Updated             llminferenceservice/r2-tp            Updated v1.Secret llm-demo/r2-tp-kserve-self-signed-certs
+14m         Warning   Unhealthy           pod/r2-tp-kserve-668784b954-vrffz    Startup probe failed: Get "http://10.42.0.81:8000/health": dial tcp 10.42.0.81:8000: connect: connection refused
+8m4s        Normal    Killing             pod/r2-tp-kserve-668784b954-vrffz    Stopping container main
+7m59s       Warning   Unhealthy           pod/r2-tp-kserve-668784b954-vrffz    Readiness probe failed: Get "http://10.42.0.81:8000/health": read tcp 10.42.0.1:40842->10.42.0.81:8000: read: connection reset by peer
+7m59s       Warning   Unhealthy           pod/r2-tp-kserve-668784b954-vrffz    Readiness probe failed: Get "http://10.42.0.81:8000/health": dial tcp 10.42.0.81:8000: connect: connection refused
+6m48s       Normal    BindingSucceed      pod/r2-pp-kserve-6fddbbd558-ps6cw    Successfully binding node [mr-gholami] to llm-demo/r2-pp-kserve-6fddbbd558-ps6cw
+6m48s       Normal    FilteringSucceed    pod/r2-pp-kserve-6fddbbd558-ps6cw    find fit node(mr-gholami), 0 nodes not fit, 1 nodes fit(mr-gholami:0.00)
+6m48s       Normal    Created             llminferenceservice/r2-pp            Created v1.Service llm-demo/r2-pp-kserve-workload-svc
+6m48s       Normal    Created             llminferenceservice/r2-pp            Created v1.Deployment llm-demo/r2-pp-kserve
+6m48s       Normal    SuccessfulCreate    replicaset/r2-pp-kserve-6fddbbd558   Created pod: r2-pp-kserve-6fddbbd558-ps6cw
+6m48s       Normal    Created             llminferenceservice/r2-pp            Created v1.Secret llm-demo/r2-pp-kserve-self-signed-certs
+6m48s       Normal    ScalingReplicaSet   deployment/r2-pp-kserve              Scaled up replica set r2-pp-kserve-6fddbbd558 from 0 to 1
+6m47s       Normal    Created             pod/r2-pp-kserve-6fddbbd558-ps6cw    Created container: main
+6m47s       Normal    Pulled              pod/r2-pp-kserve-6fddbbd558-ps6cw    Container image "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu" already present on machine
+6m46s       Normal    Started             pod/r2-pp-kserve-6fddbbd558-ps6cw    Started container main
+5m59s       Normal    Updated             llminferenceservice/r2-pp            Updated v1.Secret llm-demo/r2-pp-kserve-self-signed-certs
+5m37s       Warning   Unhealthy           pod/r2-pp-kserve-6fddbbd558-ps6cw    Startup probe failed: Get "http://10.42.0.82:8000/health": dial tcp 10.42.0.82:8000: connect: connection refused

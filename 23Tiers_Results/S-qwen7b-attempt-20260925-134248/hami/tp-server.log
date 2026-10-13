@@ -1,0 +1,415 @@
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:14 [utils.py:325] 
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:14 [utils.py:325]        █     █     █▄   ▄█
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:14 [utils.py:325]  ▄▄ ▄█ █     █     █ ▀▄▀ █  version 0.15.1
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:14 [utils.py:325]   █▄█▀ █     █     █     █  model   /mnt/models
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:14 [utils.py:325]    ▀▀  ▀▀▀▀▀ ▀▀▀▀▀ ▀     ▀
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:14 [utils.py:325] 
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:14 [utils.py:261] non-default args: {'host': '0.0.0.0', 'model': '/mnt/models', 'dtype': 'half', 'max_model_len': 1024, 'quantization': 'awq_marlin', 'enforce_eager': True, 'served_model_name': ['Qwen/Qwen2.5-7B-Instruct-AWQ'], 'load_format': 'safetensors', 'distributed_executor_backend': 'mp', 'tensor_parallel_size': 2, 'gpu_memory_utilization': 0.7, 'kv_cache_memory_bytes': 268435456, 'enable_prefix_caching': False, 'max_num_batched_tokens': 256, 'max_num_seqs': 2, 'enable_chunked_prefill': True}
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:34 [model.py:541] Resolved architecture: Qwen2ForCausalLM
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:34 [model.py:1561] Using max model len 1024
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:35 [awq_marlin.py:162] The model is convertible to awq_marlin during runtime. Using awq_marlin kernel.
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:36 [scheduler.py:226] Chunked prefill is enabled with max_num_batched_tokens=256.
+[0;36m(APIServer pid=1)[0;0m WARNING 09-25 14:07:36 [cache.py:243] Possibly too large swap space. 8.0 GiB out of the 15.61 GiB total CPU memory is allocated for the swap space.
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:36 [vllm.py:624] Asynchronous scheduling is enabled.
+[0;36m(APIServer pid=1)[0;0m WARNING 09-25 14:07:36 [vllm.py:662] Enforce eager set, overriding optimization level to -O0
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:07:36 [vllm.py:762] Cudagraph is disabled under eager mode
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:07:37 [core.py:96] Initializing a V1 LLM engine (v0.15.1) with config: model='/mnt/models', speculative_config=None, tokenizer='/mnt/models', skip_tokenizer_init=False, tokenizer_mode=auto, revision=None, tokenizer_revision=None, trust_remote_code=False, dtype=torch.float16, max_seq_len=1024, download_dir=None, load_format=safetensors, tensor_parallel_size=2, pipeline_parallel_size=1, data_parallel_size=1, disable_custom_all_reduce=False, quantization=awq_marlin, enforce_eager=True, enable_return_routed_experts=False, kv_cache_dtype=auto, device_config=cuda, structured_outputs_config=StructuredOutputsConfig(backend='auto', disable_fallback=False, disable_any_whitespace=False, disable_additional_properties=False, reasoning_parser='', reasoning_parser_plugin='', enable_in_reasoning=False), observability_config=ObservabilityConfig(show_hidden_metrics_for_version=None, otlp_traces_endpoint=None, collect_detailed_traces=None, kv_cache_metrics=False, kv_cache_metrics_sample=0.01, cudagraph_metrics=False, enable_layerwise_nvtx_tracing=False, enable_mfu_metrics=False, enable_mm_processor_stats=False, enable_logging_iteration_details=False), seed=0, served_model_name=Qwen/Qwen2.5-7B-Instruct-AWQ, enable_prefix_caching=False, enable_chunked_prefill=True, pooler_config=None, compilation_config={'level': None, 'mode': <CompilationMode.NONE: 0>, 'debug_dump_path': None, 'cache_dir': '', 'compile_cache_save_format': 'binary', 'backend': 'inductor', 'custom_ops': ['all'], 'splitting_ops': [], 'compile_mm_encoder': False, 'compile_sizes': [], 'compile_ranges_split_points': [256], 'inductor_compile_config': {'enable_auto_functionalized_v2': False, 'combo_kernels': True, 'benchmark_combo_kernel': True}, 'inductor_passes': {}, 'cudagraph_mode': <CUDAGraphMode.NONE: 0>, 'cudagraph_num_of_warmups': 0, 'cudagraph_capture_sizes': [], 'cudagraph_copy_inputs': False, 'cudagraph_specialize_lora': True, 'use_inductor_graph_partition': False, 'pass_config': {'fuse_norm_quant': False, 'fuse_act_quant': False, 'fuse_attn_quant': False, 'eliminate_noops': False, 'enable_sp': False, 'fuse_gemm_comms': False, 'fuse_allreduce_rms': False}, 'max_cudagraph_capture_size': 0, 'dynamic_shapes_config': {'type': <DynamicShapesType.BACKED: 'backed'>, 'evaluate_guards': False, 'assume_32_bit_indexing': True}, 'local_cache_dir': None, 'static_all_moe_layers': []}
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:07:38 [parallel_state.py:1212] world_size=2 rank=1 local_rank=1 distributed_init_method=tcp://127.0.0.1:45751 backend=nccl
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:07:38 [parallel_state.py:1212] world_size=2 rank=0 local_rank=0 distributed_init_method=tcp://127.0.0.1:45751 backend=nccl
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:07:39 [nccl.py:24] Found nccl from environment variable VLLM_NCCL_SO_PATH=/lib/x86_64-linux-gnu/libnccl.so.2
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:07:39 [pynccl.py:111] vLLM is using nccl==2.27.3
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:07:39 [nccl.py:24] Found nccl from environment variable VLLM_NCCL_SO_PATH=/lib/x86_64-linux-gnu/libnccl.so.2
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m WARNING 09-25 14:07:39 [symm_mem.py:67] SymmMemCommunicator: Device capability 8.6 not supported, communicator is not available.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m WARNING 09-25 14:07:39 [symm_mem.py:67] SymmMemCommunicator: Device capability 8.6 not supported, communicator is not available.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m WARNING 09-25 14:07:39 [custom_all_reduce.py:165] Custom allreduce is disabled because your platform lacks GPU P2P capability or P2P test failed. To silence this warning, specify disable_custom_all_reduce=True explicitly.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m WARNING 09-25 14:07:39 [custom_all_reduce.py:165] Custom allreduce is disabled because your platform lacks GPU P2P capability or P2P test failed. To silence this warning, specify disable_custom_all_reduce=True explicitly.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:07:39 [parallel_state.py:1423] rank 0 in world size 2 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank N/A
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:07:39 [parallel_state.py:1423] rank 1 in world size 2 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 1, EP rank N/A
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m INFO 09-25 14:07:41 [gpu_model_runner.py:4033] Starting to load model /mnt/models...
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m /kserve-workspace/prod_venv/lib/python3.12/site-packages/tvm_ffi/_optional_torch_c_dlpack.py:174: UserWarning: Failed to JIT torch c dlpack extension, EnvTensorAllocator will not be enabled.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m We recommend installing via `pip install torch-c-dlpack-ext`
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m   warnings.warn(
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP1 pid=42)[0;0m /kserve-workspace/prod_venv/lib/python3.12/site-packages/tvm_ffi/_optional_torch_c_dlpack.py:174: UserWarning: Failed to JIT torch c dlpack extension, EnvTensorAllocator will not be enabled.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP1 pid=42)[0;0m We recommend installing via `pip install torch-c-dlpack-ext`
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP1 pid=42)[0;0m   warnings.warn(
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m INFO 09-25 14:07:46 [cuda.py:364] Using FLASH_ATTN attention backend out of potential backends: ('FLASH_ATTN', 'FLASHINFER', 'TRITON_ATTN', 'FLEX_ATTENTION')
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m 
+Loading safetensors checkpoint shards:   0% Completed | 0/2 [00:00<?, ?it/s]
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m 
+Loading safetensors checkpoint shards:  50% Completed | 1/2 [00:02<00:02,  2.56s/it]
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m 
+Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:10<00:00,  5.76s/it]
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m 
+Loading safetensors checkpoint shards: 100% Completed | 2/2 [00:10<00:00,  5.28s/it]
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m 
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m INFO 09-25 14:07:57 [default_loader.py:291] Loading weights took 10.70 seconds
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m INFO 09-25 14:07:58 [gpu_model_runner.py:4130] Model loading took 2.63 GiB memory and 15.668485 seconds
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP0 pid=40)[0;0m INFO 09-25 14:08:11 [gpu_worker.py:313] Initial free memory 5.24 GiB, reserved 0.25 GiB memory for KV Cache as specified by kv_cache_memory_bytes config and skipped memory profiling. This does not respect the gpu_memory_utilization config. Only use kv_cache_memory_bytes config when you want manual control of KV cache memory size. If OOM'ed, check the difference of initial free memory between the current run and the previous run where kv_cache_memory_bytes is suggested and update it correspondingly.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m [0;36m(Worker_TP1 pid=42)[0;0m INFO 09-25 14:08:11 [gpu_worker.py:313] Initial free memory 5.24 GiB, reserved 0.25 GiB memory for KV Cache as specified by kv_cache_memory_bytes config and skipped memory profiling. This does not respect the gpu_memory_utilization config. Only use kv_cache_memory_bytes config when you want manual control of KV cache memory size. If OOM'ed, check the difference of initial free memory between the current run and the previous run where kv_cache_memory_bytes is suggested and update it correspondingly.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:08:11 [kv_cache_utils.py:1307] GPU KV cache size: 9,360 tokens
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:08:11 [kv_cache_utils.py:1312] Maximum concurrency for 1,024 tokens per request: 9.14x
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:08:12 [core.py:272] init engine (profile, create kv cache, warmup model) took 13.70 seconds
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m WARNING 09-25 14:08:14 [cache.py:243] Possibly too large swap space. 8.0 GiB out of the 15.61 GiB total CPU memory is allocated for the swap space.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m WARNING 09-25 14:08:14 [vllm.py:669] Inductor compilation was disabled by user settings, optimizations settings that are only active during inductor compilation will be ignored.
+[0;36m(APIServer pid=1)[0;0m [0;36m(EngineCore_DP0 pid=34)[0;0m INFO 09-25 14:08:14 [vllm.py:762] Cudagraph is disabled under eager mode
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:15 [api_server.py:665] Supported tasks: ['generate']
+[0;36m(APIServer pid=1)[0;0m WARNING 09-25 14:08:15 [model.py:1371] Default vLLM sampling parameters have been overridden by the model's `generation_config.json`: `{'repetition_penalty': 1.05, 'temperature': 0.7, 'top_k': 20, 'top_p': 0.8}`. If this is not intended, please relaunch vLLM instance with `--generation-config vllm`.
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:15 [serving.py:177] Warming up chat template processing...
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [hf.py:310] Detected the chat template content format to be 'string'. You can set `--chat-template-content-format` to override this.
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [serving.py:212] Chat template warmup completed in 856.7ms
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [api_server.py:946] Starting vLLM API server 0 on http://0.0.0.0:8000
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:38] Available routes are:
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /openapi.json, Methods: GET, HEAD
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /docs, Methods: GET, HEAD
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /docs/oauth2-redirect, Methods: GET, HEAD
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /redoc, Methods: GET, HEAD
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /scale_elastic_ep, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /is_scaling_elastic_ep, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /tokenize, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /detokenize, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /inference/v1/generate, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /pause, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /resume, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /is_paused, Methods: GET
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /metrics, Methods: GET
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /health, Methods: GET
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/chat/completions, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/chat/completions/render, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/responses, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/responses/{response_id}, Methods: GET
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/responses/{response_id}/cancel, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/audio/transcriptions, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/audio/translations, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/completions, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/completions/render, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/messages, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/models, Methods: GET
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /load, Methods: GET
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /version, Methods: GET
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /ping, Methods: GET
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /ping, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /invocations, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /classify, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/embeddings, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /score, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/score, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /rerank, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v1/rerank, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /v2/rerank, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:08:16 [launcher.py:46] Route: /pooling, Methods: POST
+[0;36m(APIServer pid=1)[0;0m INFO:     Started server process [1]
+[0;36m(APIServer pid=1)[0;0m INFO:     Waiting for application startup.
+[0;36m(APIServer pid=1)[0;0m INFO:     Application startup complete.
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:38838 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:38840 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48016 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48022 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48034 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59188 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59200 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59216 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:44494 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:44504 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:44520 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50140 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50154 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50164 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50690 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50704 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50706 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53950 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53952 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53964 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37192 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37204 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37208 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34578 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34586 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34592 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36372 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36388 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36398 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55262 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55274 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55286 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35036 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35046 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35062 - "GET /v1/models HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35064 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35078 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35084 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:10:07 [loggers.py:257] Engine 000: Avg prompt throughput: 11.5 tokens/s, Avg generation throughput: 2.5 tokens/s, Running: 2 reqs, Waiting: 0 reqs, GPU KV cache usage: 1.4%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35094 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35108 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35356 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35370 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35386 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:10:17 [loggers.py:257] Engine 000: Avg prompt throughput: 9.5 tokens/s, Avg generation throughput: 16.3 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 1.2%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35394 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35402 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53890 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53904 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53920 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53934 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53938 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53940 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53942 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53954 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:10:27 [loggers.py:257] Engine 000: Avg prompt throughput: 23.1 tokens/s, Avg generation throughput: 26.9 tokens/s, Running: 2 reqs, Waiting: 2 reqs, GPU KV cache usage: 1.9%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53958 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:53964 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:38526 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:38540 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:38546 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:38562 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:10:37 [loggers.py:257] Engine 000: Avg prompt throughput: 23.4 tokens/s, Avg generation throughput: 31.5 tokens/s, Running: 2 reqs, Waiting: 0 reqs, GPU KV cache usage: 1.9%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:38568 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:38582 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51744 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51746 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51758 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51762 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51772 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51776 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51780 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:10:47 [loggers.py:257] Engine 000: Avg prompt throughput: 14.3 tokens/s, Avg generation throughput: 22.6 tokens/s, Running: 1 reqs, Waiting: 3 reqs, GPU KV cache usage: 1.0%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51794 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55682 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55694 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55698 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55708 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55716 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55720 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55732 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55738 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55746 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:10:57 [loggers.py:257] Engine 000: Avg prompt throughput: 28.5 tokens/s, Avg generation throughput: 36.2 tokens/s, Running: 2 reqs, Waiting: 4 reqs, GPU KV cache usage: 2.1%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55752 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55754 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55762 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59904 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59916 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59924 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59940 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:11:07 [loggers.py:257] Engine 000: Avg prompt throughput: 19.0 tokens/s, Avg generation throughput: 27.9 tokens/s, Running: 2 reqs, Waiting: 3 reqs, GPU KV cache usage: 1.7%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59944 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59952 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:59958 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50138 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50150 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:11:17 [loggers.py:257] Engine 000: Avg prompt throughput: 23.9 tokens/s, Avg generation throughput: 29.8 tokens/s, Running: 2 reqs, Waiting: 1 reqs, GPU KV cache usage: 2.1%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50160 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50174 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34348 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34362 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34376 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34378 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34392 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34394 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:11:27 [loggers.py:257] Engine 000: Avg prompt throughput: 23.6 tokens/s, Avg generation throughput: 32.3 tokens/s, Running: 2 reqs, Waiting: 1 reqs, GPU KV cache usage: 2.1%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34404 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34406 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57352 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57362 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57378 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57386 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57388 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57392 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57396 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57412 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:11:37 [loggers.py:257] Engine 000: Avg prompt throughput: 28.5 tokens/s, Avg generation throughput: 35.8 tokens/s, Running: 2 reqs, Waiting: 2 reqs, GPU KV cache usage: 1.7%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57414 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57418 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35554 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35558 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35574 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35580 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35586 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:11:47 [loggers.py:257] Engine 000: Avg prompt throughput: 28.5 tokens/s, Avg generation throughput: 37.6 tokens/s, Running: 2 reqs, Waiting: 0 reqs, GPU KV cache usage: 1.7%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35598 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:35600 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49060 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49070 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49074 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49084 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49100 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49114 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49122 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49136 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:11:57 [loggers.py:257] Engine 000: Avg prompt throughput: 14.4 tokens/s, Avg generation throughput: 22.8 tokens/s, Running: 2 reqs, Waiting: 4 reqs, GPU KV cache usage: 2.2%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49142 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49148 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49374 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49376 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49378 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49384 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:12:07 [loggers.py:257] Engine 000: Avg prompt throughput: 28.3 tokens/s, Avg generation throughput: 32.4 tokens/s, Running: 2 reqs, Waiting: 1 reqs, GPU KV cache usage: 1.5%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49398 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49862 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49868 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49874 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49886 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49892 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:12:17 [loggers.py:257] Engine 000: Avg prompt throughput: 19.0 tokens/s, Avg generation throughput: 32.2 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.9%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49908 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:49916 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52438 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52448 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52462 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52466 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:12:27 [loggers.py:257] Engine 000: Avg prompt throughput: 14.3 tokens/s, Avg generation throughput: 19.5 tokens/s, Running: 1 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.9%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52478 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52482 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33320 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33330 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33332 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33334 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33350 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33354 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:12:37 [loggers.py:257] Engine 000: Avg prompt throughput: 14.4 tokens/s, Avg generation throughput: 19.8 tokens/s, Running: 2 reqs, Waiting: 1 reqs, GPU KV cache usage: 2.2%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33366 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48158 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48166 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48176 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48184 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48186 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48192 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48198 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48218 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48210 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:12:47 [loggers.py:257] Engine 000: Avg prompt throughput: 28.3 tokens/s, Avg generation throughput: 36.2 tokens/s, Running: 2 reqs, Waiting: 3 reqs, GPU KV cache usage: 1.9%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48232 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48246 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48250 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48262 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:48270 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36062 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36076 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36090 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36094 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:12:57 [loggers.py:257] Engine 000: Avg prompt throughput: 28.7 tokens/s, Avg generation throughput: 38.4 tokens/s, Running: 2 reqs, Waiting: 3 reqs, GPU KV cache usage: 2.1%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36110 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36126 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:36136 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:45290 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:45302 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:45312 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:45324 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:45326 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:45328 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:13:07 [loggers.py:257] Engine 000: Avg prompt throughput: 28.3 tokens/s, Avg generation throughput: 35.8 tokens/s, Running: 2 reqs, Waiting: 3 reqs, GPU KV cache usage: 1.7%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:45338 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:45342 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50392 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50402 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50416 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50422 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50434 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50440 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50448 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50456 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:13:17 [loggers.py:257] Engine 000: Avg prompt throughput: 28.7 tokens/s, Avg generation throughput: 38.8 tokens/s, Running: 2 reqs, Waiting: 4 reqs, GPU KV cache usage: 1.9%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50470 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:50486 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37522 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37524 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37528 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37536 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37544 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37552 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37560 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:13:27 [loggers.py:257] Engine 000: Avg prompt throughput: 28.3 tokens/s, Avg generation throughput: 35.8 tokens/s, Running: 2 reqs, Waiting: 4 reqs, GPU KV cache usage: 1.5%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37566 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37576 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57746 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57760 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57774 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57778 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57790 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57806 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:13:37 [loggers.py:257] Engine 000: Avg prompt throughput: 19.0 tokens/s, Avg generation throughput: 29.0 tokens/s, Running: 2 reqs, Waiting: 5 reqs, GPU KV cache usage: 1.9%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57822 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57830 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:54956 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:54964 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:54968 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:54982 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:54998 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55002 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55004 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:13:47 [loggers.py:257] Engine 000: Avg prompt throughput: 29.3 tokens/s, Avg generation throughput: 35.0 tokens/s, Running: 2 reqs, Waiting: 5 reqs, GPU KV cache usage: 1.5%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55018 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33478 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33492 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33496 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33510 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33522 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33534 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:13:57 [loggers.py:257] Engine 000: Avg prompt throughput: 28.9 tokens/s, Avg generation throughput: 40.8 tokens/s, Running: 2 reqs, Waiting: 3 reqs, GPU KV cache usage: 1.7%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:33538 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:47850 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:47858 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:47870 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:47878 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:47880 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:14:07 [loggers.py:257] Engine 000: Avg prompt throughput: 29.2 tokens/s, Avg generation throughput: 40.4 tokens/s, Running: 2 reqs, Waiting: 0 reqs, GPU KV cache usage: 2.1%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:47882 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58054 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58070 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58076 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58086 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58102 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58116 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58128 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58142 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:14:17 [loggers.py:257] Engine 000: Avg prompt throughput: 24.1 tokens/s, Avg generation throughput: 29.9 tokens/s, Running: 2 reqs, Waiting: 1 reqs, GPU KV cache usage: 1.7%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58146 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58152 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58168 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:58176 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42062 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42076 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42080 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42088 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42090 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42104 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42108 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42110 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:14:27 [loggers.py:257] Engine 000: Avg prompt throughput: 29.1 tokens/s, Avg generation throughput: 36.6 tokens/s, Running: 2 reqs, Waiting: 4 reqs, GPU KV cache usage: 1.5%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42114 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:42116 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34038 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34040 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34046 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34048 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34056 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34064 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34074 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:14:37 [loggers.py:257] Engine 000: Avg prompt throughput: 19.4 tokens/s, Avg generation throughput: 31.2 tokens/s, Running: 2 reqs, Waiting: 6 reqs, GPU KV cache usage: 2.2%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:34088 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37740 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37756 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37762 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37768 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:14:47 [loggers.py:257] Engine 000: Avg prompt throughput: 29.1 tokens/s, Avg generation throughput: 35.0 tokens/s, Running: 2 reqs, Waiting: 2 reqs, GPU KV cache usage: 1.9%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:37770 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51962 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51976 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51992 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:51998 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52008 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52020 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52022 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52024 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52036 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:14:57 [loggers.py:257] Engine 000: Avg prompt throughput: 29.1 tokens/s, Avg generation throughput: 37.4 tokens/s, Running: 2 reqs, Waiting: 3 reqs, GPU KV cache usage: 1.7%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:52042 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57000 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57004 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57006 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57018 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO 09-25 14:15:07 [loggers.py:257] Engine 000: Avg prompt throughput: 24.4 tokens/s, Avg generation throughput: 30.6 tokens/s, Running: 2 reqs, Waiting: 0 reqs, GPU KV cache usage: 1.5%, Prefix cache hit rate: 0.0%
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57024 - "POST /v1/chat/completions HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:57030 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55148 - "GET /health HTTP/1.1" 200 OK
+[0;36m(APIServer pid=1)[0;0m INFO:     10.42.0.1:55164 - "GET /health HTTP/1.1" 200 OK

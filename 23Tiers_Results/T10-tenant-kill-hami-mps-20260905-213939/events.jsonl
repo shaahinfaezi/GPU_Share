@@ -1,0 +1,16 @@
+{"t": 1788644379.9114928, "iso": "2026-09-05T21:39:39+0000", "phase": "preconditions", "ok": false, "problems": 2}
+{"t": 1788644379.9116354, "iso": "2026-09-05T21:39:39+0000", "phase": "teardown_begin"}
+{"t": 1788644414.4722078, "iso": "2026-09-05T21:40:14+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 2, \"1\": 2}"}
+{"t": 1788644414.624346, "iso": "2026-09-05T21:40:14+0000", "phase": "mps_daemon", "want": true, "after_s": 0.0, "nudged": false}
+{"t": 1788644417.7118287, "iso": "2026-09-05T21:40:17+0000", "phase": "apply"}
+{"t": 1788644604.5053809, "iso": "2026-09-05T21:43:24+0000", "phase": "ready", "role": "llm", "after_s": 186.0}
+{"t": 1788644625.989416, "iso": "2026-09-05T21:43:45+0000", "phase": "ready", "role": "llm2", "after_s": 207.5}
+{"t": 1788644626.6372561, "iso": "2026-09-05T21:43:46+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"llm2\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1788644626.775458, "iso": "2026-09-05T21:43:46+0000", "phase": "mps_state", "ok": true, "arm": "hami-mps", "want_mps": true, "daemon_running": true, "mps_client_pids": [2783749, 2784282], "tenants": 2}
+{"t": 1788644627.0663872, "iso": "2026-09-05T21:43:47+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.77:8000"}
+{"t": 1788644627.389072, "iso": "2026-09-05T21:43:47+0000", "phase": "endpoint", "role": "llm2", "url": "http://10.42.0.78:8000"}
+{"t": 1788644636.8302457, "iso": "2026-09-05T21:43:56+0000", "phase": "replay_begin"}
+{"t": 1788644727.6259189, "iso": "2026-09-05T21:45:27+0000", "phase": "fault_injected", "fault": "tenant-kill", "at": 1788644726.9224074, "rc": 0, "out": "pod \"r2-llm2-kserve-7947c7b677-4sq62\" deleted\n"}
+{"t": 1788644941.305203, "iso": "2026-09-05T21:49:01+0000", "phase": "replay_end", "rc": 0}
+{"t": 1788644941.698987, "iso": "2026-09-05T21:49:01+0000", "phase": "ready", "role": "llm2", "after_s": 0.4}
+{"t": 1788644941.9281673, "iso": "2026-09-05T21:49:01+0000", "phase": "mps_daemon", "want": true, "after_s": 0.0, "nudged": false}

@@ -1,0 +1,42 @@
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: r2-embed
+  namespace: llm-demo
+  labels:
+    r2-arm: hami
+    r2-role: embed
+  annotations: {}
+spec:
+  model:
+    name: BAAI/bge-m3
+    uri: pvc://r2-models-pvc/models/embed
+  replicas: 1
+  template:
+    containers:
+      - name: main
+        image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+        args:
+          - --gpu-memory-utilization=0.79
+          - --max-model-len=8192
+          - --max-num-seqs=64
+          - --runner=pooling
+          - --convert=embed
+          - --dtype=half
+        resources:
+          limits:
+            cpu: "4"
+            memory: 12Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "2816"
+            nvidia.com/gpucores: "25"
+          requests:
+            cpu: "200m"
+            memory: 2Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "2816"
+            nvidia.com/gpucores: "25"
+        env:
+          - name: HF_HOME
+            value: /mnt/models

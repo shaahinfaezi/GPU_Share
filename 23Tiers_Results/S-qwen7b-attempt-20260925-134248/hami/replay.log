@@ -1,0 +1,12 @@
+  pp     chat route http://10.42.0.84:8000/v1/chat/completions
+  tp     chat route http://10.42.0.83:8000/v1/chat/completions
+http pool 128 connections for 128 workers
+warm-up: 4 requests
+replaying 306 requests over 300s (open loop, trace dc4936a25509576a)
+
+arm hami   ok 306/306   64.3 tok/s   1.00 req/s
+  ttft         p50 1.918  p95 9.700  p99 12.403  mean 3.041
+  latency_e2e  p50 5.126  p95 13.201  p99 15.953  mean 6.380
+  itl          p50 0.053  p95 0.087  p99 0.105  mean 0.053
+  contended    302.9 s, 64.6 tok/s aggregate
+wrote /opt/GPU_Share/round2/split/results/S-qwen7b-attempt-20260925-134248/hami/replay.{summary.json,requests.csv,itl.json}

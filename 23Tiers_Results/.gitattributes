@@ -1,0 +1,6 @@
+# Preserve artifact bytes; transfer bulky measurements through Git LFS.
+* -text
+**/prom.json filter=lfs diff=lfs merge=lfs -text
+**/replay.itl.json filter=lfs diff=lfs merge=lfs -text
+**/replay.requests.csv filter=lfs diff=lfs merge=lfs -text
+**/trace.json filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,175 @@
+{
+  "arms": [
+    "dedicated",
+    "hami",
+    "hami-mps"
+  ],
+  "config": {
+    "duration": 300,
+    "rate": 6.0,
+    "scenario": "llm-embed",
+    "source": "sharegpt",
+    "why": "Headline. 7B-AWQ + bge-m3 fills 91.7% of the card against round one's measured 62.7-69.3% (peak VRAM on GPU 0, from its own gpu-timeline.csv). The bigger gap is the workload: round one used 51-token prompts and fixed 256-token outputs at concurrency 4, which is decode-bound and never queues. Registered prediction: filling the card and letting it queue widens the MPS advantage."
+  },
+  "mps_percent": "",
+  "pin_gpu": "",
+  "pooling_via": "kserve",
+  "requests": 1769,
+  "roles": [
+    "llm",
+    "embed"
+  ],
+  "run_dir": "/opt/GPU_Share/round2/results/T1-20260826-175322",
+  "seed": 20260826,
+  "stamp": "20260826-175322",
+  "subruns": [
+    {
+      "arm": "dedicated",
+      "endpoints": {
+        "llm": "http://10.42.0.140:8000"
+      },
+      "error": "TypeError: 'Event' object is not callable",
+      "models": {
+        "llm": "Qwen/Qwen2.5-7B-Instruct-AWQ"
+      },
+      "placement": {
+        "devices_in_use": [
+          1
+        ]
+      },
+      "render": [
+        "",
+        "arm dedicated  scenario llm-embed",
+        "gpumem requested 8192 of 12288 MiB = 66.7% of the card",
+        "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T1-20260826-175322/dedicated__llm/rendered"
+      ],
+      "roles": [
+        "llm"
+      ],
+      "scenario": "llm-embed",
+      "status": "error",
+      "tag": "dedicated__llm",
+      "test": "T1",
+      "trace_id": "1192f91a36ff2224"
+    },
+    {
+      "arm": "dedicated",
+      "endpoints": {
+        "embed": "http://10.42.0.141:8000"
+      },
+      "error": "TypeError: 'Event' object is not callable",
+      "models": {
+        "embed": "BAAI/bge-m3"
+      },
+      "placement": {
+        "devices_in_use": [
+          1
+        ]
+      },
+      "render": [
+        "",
+        "arm dedicated  scenario llm-embed",
+        "gpumem requested 3072 of 12288 MiB = 25.0% of the card",
+        "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T1-20260826-175322/dedicated__embed/rendered"
+      ],
+      "roles": [
+        "embed"
+      ],
+      "scenario": "llm-embed",
+      "status": "error",
+      "tag": "dedicated__embed",
+      "test": "T1",
+      "trace_id": "1192f91a36ff2224"
+    },
+    {
+      "arm": "hami",
+      "endpoints": {
+        "embed": "http://10.42.0.142:8000",
+        "llm": "http://10.42.0.143:8000"
+      },
+      "error": "TypeError: 'Event' object is not callable",
+      "models": {
+        "embed": "BAAI/bge-m3",
+        "llm": "Qwen/Qwen2.5-7B-Instruct-AWQ"
+      },
+      "placement": {
+        "devices_in_use": [
+          1
+        ],
+        "distinct_devices": [
+          "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+        ],
+        "placement": {
+          "embed": [
+            "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+          ],
+          "llm": [
+            "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+          ]
+        }
+      },
+      "render": [
+        "",
+        "arm hami  scenario llm-embed",
+        "gpumem requested 11264 of 12288 MiB = 91.7% of the card",
+        "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T1-20260826-175322/hami__llm+embed/rendered"
+      ],
+      "roles": [
+        "llm",
+        "embed"
+      ],
+      "scenario": "llm-embed",
+      "status": "error",
+      "tag": "hami__llm+embed",
+      "test": "T1",
+      "trace_id": "1192f91a36ff2224"
+    },
+    {
+      "arm": "hami-mps",
+      "endpoints": {
+        "embed": "http://10.42.0.144:8000",
+        "llm": "http://10.42.0.145:8000"
+      },
+      "error": "TypeError: 'Event' object is not callable",
+      "models": {
+        "embed": "BAAI/bge-m3",
+        "llm": "Qwen/Qwen2.5-7B-Instruct-AWQ"
+      },
+      "placement": {
+        "devices_in_use": [
+          1
+        ],
+        "distinct_devices": [
+          "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+        ],
+        "placement": {
+          "embed": [
+            "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+          ],
+          "llm": [
+            "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+          ]
+        }
+      },
+      "render": [
+        "",
+        "arm hami-mps  scenario llm-embed",
+        "gpumem requested 11264 of 12288 MiB = 91.7% of the card",
+        "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T1-20260826-175322/hami-mps__llm+embed/rendered"
+      ],
+      "roles": [
+        "llm",
+        "embed"
+      ],
+      "scenario": "llm-embed",
+      "status": "error",
+      "tag": "hami-mps__llm+embed",
+      "test": "T1",
+      "trace_id": "1192f91a36ff2224"
+    }
+  ],
+  "test": "T1",
+  "trace_id": "1192f91a36ff2224",
+  "trace_id_mismatch": {},
+  "warmup": 8
+}

@@ -1,0 +1,7 @@
+{
+  "versions": {
+    "vllm": "0.15.1",
+    "torch": "2.9.1"
+  },
+  "image_id": "127.0.0.1:5000/kserve/huggingfaceserver@sha256:7d32ab094dd8125f4f09c8e0864a9994f64f578b909baa97200178d09883187e"
+}

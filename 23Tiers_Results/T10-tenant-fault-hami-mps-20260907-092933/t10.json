@@ -1,0 +1,88 @@
+{
+  "arm": "hami-mps",
+  "duration": 300,
+  "fault": "tenant-fault",
+  "fault_detail": {
+    "faulter_pod": "r2-llm2-kserve-7947c7b677-pwd5p",
+    "faulter_role": "llm2",
+    "gpu_before": {
+      "0": 39,
+      "1": 11574
+    },
+    "mps_clients_after": [
+      4026908,
+      4026912
+    ],
+    "mps_daemon_after": true,
+    "out_tail": "xt_alive_after\": false, \"sticky\": \"AcceleratorError: CUDA error: device-side assert triggered\\nSearch for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more inform\"}\n/pytorch/aten/src/ATen/native/cuda/IndexKernel.cu:111: operator(): block: [0,0,0], thread: [0,0,0] Assertion `-sizes[i] <= index && index < sizes[i] && \"index out of bounds\"` failed.\n",
+    "probe": {
+      "context_alive_after": false,
+      "result": "AcceleratorError: CUDA error: device-side assert triggered\nSearch for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel errors might be async",
+      "sticky": "AcceleratorError: CUDA error: device-side assert triggered\nSearch for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more inform"
+    },
+    "rc": 0
+  },
+  "fault_time": 1788773677.9914598,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami-mps",
+    "daemon_running": true,
+    "mps_client_pids": [
+      4026908,
+      4026912
+    ],
+    "tenants": 2,
+    "want_mps": true
+  },
+  "out": "/opt/GPU_Share/round2/results/T10-tenant-fault-hami-mps-20260907-092933",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": true,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1788773587.8996382,
+  "t1": 1788773892.6446457,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 2.0353310996290754,
+      "n": 342,
+      "p50": 1.646896792575717,
+      "p95": 4.942153612151742,
+      "p99": 7.850955444388092
+    },
+    "before": {
+      "failed": 0,
+      "mean": 2.4524712003160105,
+      "n": 184,
+      "p50": 1.8439815789461136,
+      "p95": 7.006984014995396,
+      "p99": 11.994798935949802
+    },
+    "during": {
+      "failed": 0,
+      "mean": 2.0220299762958995,
+      "n": 173,
+      "p50": 1.46873773727566,
+      "p95": 5.050813220441341,
+      "p99": 9.510025133378804
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "roles": {
+    "tp": [
+      "GPU-bc62f652-9fa4-7abf-2b0d-81a84f3a27cf",
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "pp": [
+      "GPU-bc62f652-9fa4-7abf-2b0d-81a84f3a27cf",
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ]
+  },
+  "gpu_used_mib": {
+    "0": 7032,
+    "1": 7050
+  }
+}

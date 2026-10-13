@@ -1,0 +1,15 @@
+{"t": 1788642813.8401506, "iso": "2026-09-05T21:13:33+0000", "phase": "preconditions", "ok": true, "problems": 0}
+{"t": 1788642813.840372, "iso": "2026-09-05T21:13:33+0000", "phase": "teardown_begin"}
+{"t": 1788642815.417998, "iso": "2026-09-05T21:13:35+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 39, \"1\": 39}"}
+{"t": 1788642817.637523, "iso": "2026-09-05T21:13:37+0000", "phase": "mps_daemon", "want": false, "after_s": 2.0, "nudged": false}
+{"t": 1788642820.72475, "iso": "2026-09-05T21:13:40+0000", "phase": "apply"}
+{"t": 1788642980.1868289, "iso": "2026-09-05T21:16:20+0000", "phase": "ready", "role": "llm2", "after_s": 158.5}
+{"t": 1788642996.2161472, "iso": "2026-09-05T21:16:36+0000", "phase": "ready", "role": "llm", "after_s": 174.6}
+{"t": 1788642996.912203, "iso": "2026-09-05T21:16:36+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"llm2\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1788642997.0763154, "iso": "2026-09-05T21:16:37+0000", "phase": "mps_state", "ok": true, "arm": "hami", "want_mps": false, "daemon_running": false, "mps_client_pids": [], "tenants": 2}
+{"t": 1788642997.356319, "iso": "2026-09-05T21:16:37+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.69:8000"}
+{"t": 1788642997.634727, "iso": "2026-09-05T21:16:37+0000", "phase": "endpoint", "role": "llm2", "url": "http://10.42.0.70:8000"}
+{"t": 1788643029.811414, "iso": "2026-09-05T21:17:09+0000", "phase": "replay_begin"}
+{"t": 1788643134.0516884, "iso": "2026-09-05T21:18:54+0000", "phase": "fault_injected", "fault": "vram-escape", "at": 1788643119.9023805, "escaper_role": "llm2", "escaper_pod": "r2-llm2-kserve-7dc6d66899-b8l5k", "granted_gpumem_mib": 3840, "rc": 0, "card_rise_mib": 0, "out_tail": "of memory. Tried to allocate 256.00 MiB. GPU 0 has a total capacity of 3.75 GiB of which 201.87 MiB is free. Process 2762514 has 7.76 GiB memory in use. Process 2762612 ha\", \"grabbed_mib\": 0}\n[HAMI-core ERROR (pid:333 thread=139978679149632 allocator.c:52)]: Device 0 OOM 4083287040 / 4026531840\n[HAMI-core ERROR (pid:333 thread=139978679149632 allocator.c:52)]: Device 0 OOM 4083287040 / 4026531840\n"}
+{"t": 1788643334.9655921, "iso": "2026-09-05T21:22:14+0000", "phase": "replay_end", "rc": 0}
+{"t": 1788643339.2384684, "iso": "2026-09-05T21:22:19+0000", "phase": "mps_daemon", "want": true, "after_s": 4.1, "nudged": false}

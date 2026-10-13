@@ -1,0 +1,22 @@
+{
+  "scenario": "dense3b",
+  "arm": "dedicated",
+  "roles": [
+    "embed-small"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 2304,
+  "card_mib": 12288,
+  "fill_percent": 18.8,
+  "mps_percent": {
+    "embed-small": 100
+  },
+  "files": [
+    "r2-dedicated-embed-small.yaml"
+  ],
+  "models": {
+    "embed-small": "BAAI/bge-large-en-v1.5"
+  }
+}

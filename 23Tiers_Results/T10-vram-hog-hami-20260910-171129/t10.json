@@ -1,0 +1,78 @@
+{
+  "arm": "hami",
+  "duration": 300,
+  "fault": "vram-hog",
+  "fault_detail": {
+    "hog_container_state": "",
+    "hog_events": "FailedScheduling   0/1 nodes are available: 1 Insufficient memory. preemption: 0/1 nodes are available: 1 No preemption victims found for incoming pod.\n",
+    "hog_gpu_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c",
+    "hog_held_mib": null,
+    "hog_log_tail": "",
+    "hog_phase": "Pending",
+    "manifest": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260910-171129/r2-vram-hog.yaml",
+    "out": "pod/r2-vram-hog created\n",
+    "rc": 0
+  },
+  "fault_time": 1789060578.3543198,
+  "host_min_available_mib": 2570,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 2,
+    "want_mps": false
+  },
+  "mps_recovery": null,
+  "out": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260910-171129",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": null,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1789060488.2643075,
+  "t1": 1789060793.7225845,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 3.5881974713887734,
+      "n": 342,
+      "p50": 2.8422233257442713,
+      "p95": 8.854382378049195,
+      "p99": 13.93087466340512
+    },
+    "before": {
+      "failed": 0,
+      "mean": 4.688837012047039,
+      "n": 183,
+      "p50": 3.7009177980944514,
+      "p95": 13.917069054208696,
+      "p99": 21.402617297135293
+    },
+    "during": {
+      "failed": 0,
+      "mean": 3.476890843004248,
+      "n": 172,
+      "p50": 2.6574773844331503,
+      "p95": 8.31953070499003,
+      "p99": 18.311647607013583
+    }
+  }
+}

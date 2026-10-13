@@ -1,0 +1,18 @@
+{"t": 1788673101.3750951, "iso": "2026-09-06T05:38:21+0000", "phase": "preconditions", "ok": true, "problems": 0}
+{"t": 1788673101.3752568, "iso": "2026-09-06T05:38:21+0000", "phase": "teardown_begin"}
+{"t": 1788673102.7264824, "iso": "2026-09-06T05:38:22+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 2, \"1\": 2}"}
+{"t": 1788673102.9266691, "iso": "2026-09-06T05:38:22+0000", "phase": "mps_daemon", "want": true, "after_s": 0.0, "nudged": false}
+{"t": 1788673106.00528, "iso": "2026-09-06T05:38:26+0000", "phase": "apply"}
+{"t": 1788673276.349316, "iso": "2026-09-06T05:41:16+0000", "phase": "ready", "role": "llm2", "after_s": 169.4}
+{"t": 1788673281.7099605, "iso": "2026-09-06T05:41:21+0000", "phase": "ready", "role": "llm", "after_s": 174.7}
+{"t": 1788673282.3937933, "iso": "2026-09-06T05:41:22+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"llm2\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1788673282.5482054, "iso": "2026-09-06T05:41:22+0000", "phase": "mps_state", "ok": true, "arm": "hami-mps", "want_mps": true, "daemon_running": true, "mps_client_pids": [2980956, 2980960], "tenants": 2}
+{"t": 1788673282.852921, "iso": "2026-09-06T05:41:22+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.83:8000"}
+{"t": 1788673283.1548781, "iso": "2026-09-06T05:41:23+0000", "phase": "endpoint", "role": "llm2", "url": "http://10.42.0.84:8000"}
+{"t": 1788673291.922933, "iso": "2026-09-06T05:41:31+0000", "phase": "replay_begin"}
+{"t": 1788673392.0797544, "iso": "2026-09-06T05:43:12+0000", "phase": "fault_injected", "fault": "vram-escape", "at": 1788673382.0144386, "escaper_role": "llm2", "escaper_pod": "r2-llm2-kserve-7947c7b677-gqgzx", "granted_gpumem_mib": 3840, "rc": 0, "card_rise_mib": 0, "out_tail": "of memory. Tried to allocate 256.00 MiB. GPU 0 has a total capacity of 3.75 GiB of which 205.87 MiB is free. Process 2981437 has 30.00 MiB memory in use. Process 2980956 h\", \"grabbed_mib\": 0}\n[HAMI-core ERROR (pid:351 thread=139905053246528 allocator.c:52)]: Device 0 OOM 4079092736 / 4026531840\n[HAMI-core ERROR (pid:351 thread=139905053246528 allocator.c:52)]: Device 0 OOM 4079092736 / 4026531840\n"}
+{"t": 1788673596.8064075, "iso": "2026-09-06T05:46:36+0000", "phase": "replay_end", "rc": 0}
+{"t": 1788673596.8194954, "iso": "2026-09-06T05:46:36+0000", "phase": "teardown_begin"}
+{"t": 1788673631.8544393, "iso": "2026-09-06T05:47:11+0000", "phase": "teardown_end", "waited_s": 33.5, "left": 0}
+{"t": 1788673631.9035263, "iso": "2026-09-06T05:47:11+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 39, \"1\": 39}"}
+{"t": 1788673632.100968, "iso": "2026-09-06T05:47:12+0000", "phase": "mps_daemon", "want": true, "after_s": 0.0, "nudged": false}

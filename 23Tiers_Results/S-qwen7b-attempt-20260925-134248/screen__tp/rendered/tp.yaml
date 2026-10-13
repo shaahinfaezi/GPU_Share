@@ -1,0 +1,51 @@
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: r2-tp
+  namespace: llm-demo
+  labels:
+    r2-arm: dedicated
+    r2-role: tp
+    r2-series: qwen7b-tp2-pp2
+    r2-probe: a5ef2be1d1a341c38a5376f72dfa7fc4
+spec:
+  model:
+    name: Qwen/Qwen2.5-7B-Instruct-AWQ
+    uri: pvc://r2-models-pvc/models/llm
+  replicas: 1
+  template:
+    nodeSelector: {kubernetes.io/hostname: mr-gholami}
+    containers:
+      - name: main
+        image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+        command: ["python", "-m", "vllm.entrypoints.openai.api_server"]
+        args: ["--model", "/mnt/models", "--served-model-name", "Qwen/Qwen2.5-7B-Instruct-AWQ", "--host", "0.0.0.0", "--port", "8000", "--tensor-parallel-size", "2", "--pipeline-parallel-size", "1", "--max-num-seqs", "2", "--max-model-len", "1024", "--enforce-eager", "--max-num-batched-tokens", "256", "--enable-chunked-prefill", "--distributed-executor-backend", "mp", "--gpu-memory-utilization", "0.7", "--kv-cache-memory-bytes", "268435456", "--no-enable-prefix-caching", "--safetensors-load-strategy", "lazy", "--load-format", "safetensors", "--quantization", "awq_marlin", "--dtype", "half"]
+        startupProbe:
+          httpGet: {path: /health, port: 8000}
+          periodSeconds: 5
+          failureThreshold: 180
+        readinessProbe:
+          httpGet: {path: /health, port: 8000}
+          periodSeconds: 5
+        resources:
+          limits:
+            cpu: '2'
+            memory: 6Gi
+            nvidia.com/gpu: "2"
+            nvidia.com/gpumem: "5632"
+          requests:
+            cpu: '100m'
+            memory: 4Gi
+            nvidia.com/gpu: "2"
+            nvidia.com/gpumem: "5632"
+        env:
+          - name: HF_HOME
+            value: "/mnt/models"
+          - name: VLLM_ADDITIONAL_ARGS
+            value: "--tensor-parallel-size 2 --pipeline-parallel-size 1 --max-num-seqs 2 --max-model-len 1024 --enforce-eager --max-num-batched-tokens 256 --enable-chunked-prefill --distributed-executor-backend mp --gpu-memory-utilization 0.7 --kv-cache-memory-bytes 268435456 --no-enable-prefix-caching --safetensors-load-strategy lazy --load-format safetensors --quantization awq_marlin --dtype half"
+          - {name: MALLOC_ARENA_MAX, value: "2"}
+          - {name: TOKENIZERS_PARALLELISM, value: "false"}
+          - {name: OMP_NUM_THREADS, value: "1"}
+          - {name: CUDA_MODULE_LOADING, value: "LAZY"}
+          - {name: VLLM_WORKER_MULTIPROC_METHOD, value: "fork"}

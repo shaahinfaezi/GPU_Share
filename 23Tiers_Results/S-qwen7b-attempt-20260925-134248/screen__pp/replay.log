@@ -1,0 +1,10 @@
+  pp     chat route http://10.42.0.80:8000/v1/chat/completions
+http pool 128 connections for 128 workers
+warm-up: 2 requests
+replaying 14 requests over 60s (open loop, trace ed1b61a972304fe4)
+
+arm dedicated   ok 14/14   14.6 tok/s   0.23 req/s
+  ttft         p50 0.107  p95 1.315  p99 2.654  mean 0.323
+  latency_e2e  p50 4.041  p95 5.509  p99 6.693  mean 4.166
+  itl          p50 0.063  p95 0.090  p99 0.100  mean 0.061
+wrote /opt/GPU_Share/round2/split/results/S-qwen7b-attempt-20260925-134248/screen__pp/replay.{summary.json,requests.csv,itl.json}

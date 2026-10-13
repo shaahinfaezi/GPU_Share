@@ -1,0 +1,74 @@
+{
+  "arm": "hami",
+  "duration": 300,
+  "fault": "tenant-kill",
+  "fault_detail": {
+    "deleted": [
+      "r2-llm2-kserve-7dc6d66899-dfcfb"
+    ],
+    "out": "pod \"r2-llm2-kserve-7dc6d66899-dfcfb\" deleted\n",
+    "rc": 0
+  },
+  "fault_time": 1789080149.0373495,
+  "host_min_available_mib": 2036,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 2,
+    "want_mps": false
+  },
+  "mps_recovery": null,
+  "out": "/opt/GPU_Share/round2/results/T10-tenant-kill-hami-20260910-223803",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": true,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1789080058.9393902,
+  "t1": 1789080363.658402,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 1.4614314940970456,
+      "n": 342,
+      "p50": 1.1703923037275672,
+      "p95": 3.597451333887875,
+      "p99": 5.181913366541266
+    },
+    "before": {
+      "failed": 0,
+      "mean": 4.782189485342165,
+      "n": 183,
+      "p50": 3.722179246135056,
+      "p95": 14.251508171670139,
+      "p99": 21.81677047442645
+    },
+    "during": {
+      "failed": 0,
+      "mean": 2.1257809007074684,
+      "n": 172,
+      "p50": 1.5424871603026986,
+      "p95": 6.1188281355425715,
+      "p99": 8.494079769589007
+    }
+  }
+}

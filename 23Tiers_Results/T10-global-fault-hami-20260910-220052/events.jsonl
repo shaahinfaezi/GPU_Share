@@ -1,0 +1,20 @@
+{"t": 1789077653.214079, "iso": "2026-09-10T22:00:53+0000", "phase": "preconditions", "ok": true, "problems": 0}
+{"t": 1789077653.2144222, "iso": "2026-09-10T22:00:53+0000", "phase": "teardown_begin"}
+{"t": 1789077654.8508625, "iso": "2026-09-10T22:00:54+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 2, \"1\": 2}"}
+{"t": 1789077657.1488779, "iso": "2026-09-10T22:00:57+0000", "phase": "mps_daemon", "want": false, "after_s": 2.1, "nudged": false}
+{"t": 1789077660.2319782, "iso": "2026-09-10T22:01:00+0000", "phase": "apply"}
+{"t": 1789077826.081194, "iso": "2026-09-10T22:03:46+0000", "phase": "ready", "role": "llm2", "after_s": 164.7}
+{"t": 1789077842.203246, "iso": "2026-09-10T22:04:02+0000", "phase": "ready", "role": "llm", "after_s": 180.8}
+{"t": 1789077842.825231, "iso": "2026-09-10T22:04:02+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"llm2\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1789077842.9979937, "iso": "2026-09-10T22:04:02+0000", "phase": "mps_state", "ok": true, "arm": "hami", "want_mps": false, "daemon_running": false, "mps_client_pids": [], "tenants": 2}
+{"t": 1789077843.261583, "iso": "2026-09-10T22:04:03+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.91:8000"}
+{"t": 1789077843.5390034, "iso": "2026-09-10T22:04:03+0000", "phase": "endpoint", "role": "llm2", "url": "http://10.42.0.92:8000"}
+{"t": 1789077852.8163538, "iso": "2026-09-10T22:04:12+0000", "phase": "replay_begin"}
+{"t": 1789077953.3268511, "iso": "2026-09-10T22:05:53+0000", "phase": "fault_injected", "fault": "global-fault", "at": 1789077942.9103665, "faulter_role": "llm2", "faulter_pod": "r2-llm2-kserve-7dc6d66899-hppmz", "rc": 0, "mps_daemon_after": false, "out_tail": "R2FAULT {\"result\": \"RuntimeError: setStorage: sizes [4194304], strides [4], storage offset 0, and itemsize 4 requiring a storage size of 67108852 are out of bounds for storage of size 64\", \"context_alive_after\": true}\n"}
+{"t": 1789078158.2546985, "iso": "2026-09-10T22:09:18+0000", "phase": "replay_end", "rc": 0}
+{"t": 1789078158.255489, "iso": "2026-09-10T22:09:18+0000", "phase": "host_min_available", "mib": 2259}
+{"t": 1789078158.5443347, "iso": "2026-09-10T22:09:18+0000", "phase": "ready", "role": "llm2", "after_s": 0.3}
+{"t": 1789078158.5536094, "iso": "2026-09-10T22:09:18+0000", "phase": "teardown_begin"}
+{"t": 1789078193.6705978, "iso": "2026-09-10T22:09:53+0000", "phase": "teardown_end", "waited_s": 34.0, "left": 0}
+{"t": 1789078193.722543, "iso": "2026-09-10T22:09:53+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 1, \"1\": 1}"}
+{"t": 1789078198.0616908, "iso": "2026-09-10T22:09:58+0000", "phase": "mps_daemon", "want": true, "after_s": 4.1, "nudged": false}

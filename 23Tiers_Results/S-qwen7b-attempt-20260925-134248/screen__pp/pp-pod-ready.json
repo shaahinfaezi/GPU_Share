@@ -1,0 +1,466 @@
+{
+  "apiVersion": "v1",
+  "kind": "Pod",
+  "metadata": {
+    "annotations": {
+      "hami.io/bind-phase": "success",
+      "hami.io/bind-time": "1790344035",
+      "hami.io/vgpu-devices-allocated": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c,NVIDIA,5632,0:GPU-bc62f652-9fa4-7abf-2b0d-81a84f3a27cf,NVIDIA,5632,0:;",
+      "hami.io/vgpu-devices-to-allocate": ";;",
+      "hami.io/vgpu-node": "mr-gholami",
+      "hami.io/vgpu-time": "1790344035"
+    },
+    "creationTimestamp": "2026-09-25T13:47:15Z",
+    "generateName": "r2-pp-kserve-6fddbbd558-",
+    "generation": 1,
+    "labels": {
+      "app.kubernetes.io/component": "llminferenceservice-workload",
+      "app.kubernetes.io/name": "r2-pp",
+      "app.kubernetes.io/part-of": "llminferenceservice",
+      "hami.io/vgpu-node": "mr-gholami",
+      "kserve.io/component": "workload",
+      "llm-d.ai/role": "both",
+      "pod-template-hash": "6fddbbd558"
+    },
+    "name": "r2-pp-kserve-6fddbbd558-zhzrp",
+    "namespace": "llm-demo",
+    "ownerReferences": [
+      {
+        "apiVersion": "apps/v1",
+        "blockOwnerDeletion": true,
+        "controller": true,
+        "kind": "ReplicaSet",
+        "name": "r2-pp-kserve-6fddbbd558",
+        "uid": "0b9c58cb-aef9-49ab-ab59-91e066e76c29"
+      }
+    ],
+    "resourceVersion": "157782414",
+    "uid": "436068a8-6cfa-4b7d-a7ca-5a2806d0be01"
+  },
+  "spec": {
+    "containers": [
+      {
+        "args": [
+          "--model",
+          "/mnt/models",
+          "--served-model-name",
+          "Qwen/Qwen2.5-7B-Instruct-AWQ",
+          "--host",
+          "0.0.0.0",
+          "--port",
+          "8000",
+          "--tensor-parallel-size",
+          "1",
+          "--pipeline-parallel-size",
+          "2",
+          "--max-num-seqs",
+          "2",
+          "--max-model-len",
+          "1024",
+          "--enforce-eager",
+          "--max-num-batched-tokens",
+          "256",
+          "--enable-chunked-prefill",
+          "--distributed-executor-backend",
+          "mp",
+          "--gpu-memory-utilization",
+          "0.7",
+          "--kv-cache-memory-bytes",
+          "268435456",
+          "--no-enable-prefix-caching",
+          "--safetensors-load-strategy",
+          "lazy",
+          "--load-format",
+          "safetensors",
+          "--quantization",
+          "awq_marlin",
+          "--dtype",
+          "half"
+        ],
+        "command": [
+          "python",
+          "-m",
+          "vllm.entrypoints.openai.api_server"
+        ],
+        "env": [
+          {
+            "name": "HF_HOME",
+            "value": "/mnt/models"
+          },
+          {
+            "name": "VLLM_ADDITIONAL_ARGS",
+            "value": "--tensor-parallel-size 1 --pipeline-parallel-size 2 --max-num-seqs 2 --max-model-len 1024 --enforce-eager --max-num-batched-tokens 256 --enable-chunked-prefill --distributed-executor-backend mp --gpu-memory-utilization 0.7 --kv-cache-memory-bytes 268435456 --no-enable-prefix-caching --safetensors-load-strategy lazy --load-format safetensors --quantization awq_marlin --dtype half"
+          },
+          {
+            "name": "MALLOC_ARENA_MAX",
+            "value": "2"
+          },
+          {
+            "name": "TOKENIZERS_PARALLELISM",
+            "value": "false"
+          },
+          {
+            "name": "OMP_NUM_THREADS",
+            "value": "1"
+          },
+          {
+            "name": "CUDA_MODULE_LOADING",
+            "value": "LAZY"
+          },
+          {
+            "name": "VLLM_WORKER_MULTIPROC_METHOD",
+            "value": "fork"
+          },
+          {
+            "name": "HOME",
+            "value": "/home"
+          },
+          {
+            "name": "VLLM_LOGGING_LEVEL",
+            "value": "INFO"
+          },
+          {
+            "name": "HF_HUB_CACHE",
+            "value": "/models"
+          }
+        ],
+        "image": "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu",
+        "imagePullPolicy": "IfNotPresent",
+        "livenessProbe": {
+          "failureThreshold": 3,
+          "httpGet": {
+            "path": "/health",
+            "port": 8000,
+            "scheme": "HTTP"
+          },
+          "periodSeconds": 10,
+          "successThreshold": 1,
+          "timeoutSeconds": 10
+        },
+        "name": "main",
+        "ports": [
+          {
+            "containerPort": 8000,
+            "protocol": "TCP"
+          }
+        ],
+        "readinessProbe": {
+          "failureThreshold": 60,
+          "httpGet": {
+            "path": "/health",
+            "port": 8000,
+            "scheme": "HTTP"
+          },
+          "periodSeconds": 5,
+          "successThreshold": 1,
+          "timeoutSeconds": 5
+        },
+        "resources": {
+          "limits": {
+            "cpu": "2",
+            "memory": "6Gi",
+            "nvidia.com/gpu": "2",
+            "nvidia.com/gpumem": "5632"
+          },
+          "requests": {
+            "cpu": "100m",
+            "memory": "4Gi",
+            "nvidia.com/gpu": "2",
+            "nvidia.com/gpumem": "5632"
+          }
+        },
+        "securityContext": {
+          "allowPrivilegeEscalation": false,
+          "capabilities": {
+            "drop": [
+              "ALL"
+            ]
+          },
+          "readOnlyRootFilesystem": true,
+          "runAsNonRoot": true,
+          "seccompProfile": {
+            "type": "RuntimeDefault"
+          }
+        },
+        "startupProbe": {
+          "failureThreshold": 180,
+          "httpGet": {
+            "path": "/health",
+            "port": 8000,
+            "scheme": "HTTP"
+          },
+          "periodSeconds": 5,
+          "successThreshold": 1,
+          "timeoutSeconds": 1
+        },
+        "terminationMessagePath": "/dev/termination-log",
+        "terminationMessagePolicy": "FallbackToLogsOnError",
+        "volumeMounts": [
+          {
+            "mountPath": "/home",
+            "name": "home"
+          },
+          {
+            "mountPath": "/tmp",
+            "name": "tmp-dir"
+          },
+          {
+            "mountPath": "/dev/shm",
+            "name": "dshm"
+          },
+          {
+            "mountPath": "/models",
+            "name": "model-cache"
+          },
+          {
+            "mountPath": "/var/run/kserve/tls",
+            "name": "tls-certs",
+            "readOnly": true
+          },
+          {
+            "mountPath": "/mnt/models",
+            "name": "kserve-pvc-source",
+            "readOnly": true,
+            "subPath": "models/llm"
+          },
+          {
+            "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+            "name": "kube-api-access-z4dd2",
+            "readOnly": true
+          }
+        ]
+      }
+    ],
+    "dnsPolicy": "ClusterFirst",
+    "enableServiceLinks": true,
+    "nodeName": "mr-gholami",
+    "nodeSelector": {
+      "kubernetes.io/hostname": "mr-gholami"
+    },
+    "preemptionPolicy": "PreemptLowerPriority",
+    "priority": 0,
+    "restartPolicy": "Always",
+    "schedulerName": "hami-scheduler",
+    "securityContext": {},
+    "serviceAccount": "default",
+    "serviceAccountName": "default",
+    "terminationGracePeriodSeconds": 30,
+    "tolerations": [
+      {
+        "effect": "NoExecute",
+        "key": "node.kubernetes.io/not-ready",
+        "operator": "Exists",
+        "tolerationSeconds": 300
+      },
+      {
+        "effect": "NoExecute",
+        "key": "node.kubernetes.io/unreachable",
+        "operator": "Exists",
+        "tolerationSeconds": 300
+      }
+    ],
+    "volumes": [
+      {
+        "emptyDir": {},
+        "name": "home"
+      },
+      {
+        "emptyDir": {
+          "medium": "Memory",
+          "sizeLimit": "1Gi"
+        },
+        "name": "dshm"
+      },
+      {
+        "emptyDir": {},
+        "name": "model-cache"
+      },
+      {
+        "emptyDir": {},
+        "name": "tmp-dir"
+      },
+      {
+        "name": "tls-certs",
+        "secret": {
+          "defaultMode": 420,
+          "secretName": "r2-pp-kserve-self-signed-certs"
+        }
+      },
+      {
+        "name": "kserve-pvc-source",
+        "persistentVolumeClaim": {
+          "claimName": "r2-models-pvc"
+        }
+      },
+      {
+        "name": "kube-api-access-z4dd2",
+        "projected": {
+          "defaultMode": 420,
+          "sources": [
+            {
+              "serviceAccountToken": {
+                "expirationSeconds": 3607,
+                "path": "token"
+              }
+            },
+            {
+              "configMap": {
+                "items": [
+                  {
+                    "key": "ca.crt",
+                    "path": "ca.crt"
+                  }
+                ],
+                "name": "kube-root-ca.crt"
+              }
+            },
+            {
+              "downwardAPI": {
+                "items": [
+                  {
+                    "fieldRef": {
+                      "apiVersion": "v1",
+                      "fieldPath": "metadata.namespace"
+                    },
+                    "path": "namespace"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "status": {
+    "conditions": [
+      {
+        "lastProbeTime": null,
+        "lastTransitionTime": "2026-09-25T13:47:18Z",
+        "status": "True",
+        "type": "PodReadyToStartContainers"
+      },
+      {
+        "lastProbeTime": null,
+        "lastTransitionTime": "2026-09-25T13:47:15Z",
+        "status": "True",
+        "type": "Initialized"
+      },
+      {
+        "lastProbeTime": null,
+        "lastTransitionTime": "2026-09-25T13:48:35Z",
+        "status": "True",
+        "type": "Ready"
+      },
+      {
+        "lastProbeTime": null,
+        "lastTransitionTime": "2026-09-25T13:48:35Z",
+        "status": "True",
+        "type": "ContainersReady"
+      },
+      {
+        "lastProbeTime": null,
+        "lastTransitionTime": "2026-09-25T13:47:15Z",
+        "status": "True",
+        "type": "PodScheduled"
+      }
+    ],
+    "containerStatuses": [
+      {
+        "allocatedResources": {
+          "cpu": "100m",
+          "memory": "4Gi",
+          "nvidia.com/gpu": "2",
+          "nvidia.com/gpumem": "5632"
+        },
+        "containerID": "containerd://fe64dc153a097fb61d69ebafce8532083fdbc809260b7dce8a425d7be76321af",
+        "image": "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu",
+        "imageID": "127.0.0.1:5000/kserve/huggingfaceserver@sha256:7d32ab094dd8125f4f09c8e0864a9994f64f578b909baa97200178d09883187e",
+        "lastState": {},
+        "name": "main",
+        "ready": true,
+        "resources": {
+          "limits": {
+            "cpu": "2",
+            "memory": "6Gi",
+            "nvidia.com/gpu": "2",
+            "nvidia.com/gpumem": "5632"
+          },
+          "requests": {
+            "cpu": "100m",
+            "memory": "4Gi",
+            "nvidia.com/gpu": "2",
+            "nvidia.com/gpumem": "5632"
+          }
+        },
+        "restartCount": 0,
+        "started": true,
+        "state": {
+          "running": {
+            "startedAt": "2026-09-25T13:47:17Z"
+          }
+        },
+        "user": {
+          "linux": {
+            "gid": 1000,
+            "supplementalGroups": [
+              1000
+            ],
+            "uid": 1000
+          }
+        },
+        "volumeMounts": [
+          {
+            "mountPath": "/home",
+            "name": "home"
+          },
+          {
+            "mountPath": "/tmp",
+            "name": "tmp-dir"
+          },
+          {
+            "mountPath": "/dev/shm",
+            "name": "dshm"
+          },
+          {
+            "mountPath": "/models",
+            "name": "model-cache"
+          },
+          {
+            "mountPath": "/var/run/kserve/tls",
+            "name": "tls-certs",
+            "readOnly": true,
+            "recursiveReadOnly": "Disabled"
+          },
+          {
+            "mountPath": "/mnt/models",
+            "name": "kserve-pvc-source",
+            "readOnly": true,
+            "recursiveReadOnly": "Disabled"
+          },
+          {
+            "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+            "name": "kube-api-access-z4dd2",
+            "readOnly": true,
+            "recursiveReadOnly": "Disabled"
+          }
+        ]
+      }
+    ],
+    "hostIP": "94.184.177.237",
+    "hostIPs": [
+      {
+        "ip": "94.184.177.237"
+      }
+    ],
+    "phase": "Running",
+    "podIP": "10.42.0.80",
+    "podIPs": [
+      {
+        "ip": "10.42.0.80"
+      }
+    ],
+    "qosClass": "Burstable",
+    "startTime": "2026-09-25T13:47:15Z"
+  }
+}

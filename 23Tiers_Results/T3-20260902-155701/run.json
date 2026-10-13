@@ -1,0 +1,1006 @@
+{
+  "arms": [
+    "dedicated",
+    "hami",
+    "hami-mps"
+  ],
+  "config": {
+    "duration": 300,
+    "rate": 4.0,
+    "scenario": "vl-rerank",
+    "source": "sharegpt",
+    "why": "Vision encoder plus a cross-encoder reranker: two compute-bound, non-autoregressive neighbours. The case where gpucores SHOULD matter most if it ever does. Registered after T2: (a) power lands BELOW the 343-346 W both previous tiers hit, because neither tenant is a 7B -- if it does not, the power hypothesis is in trouble before T4 even runs. (b) The ITL-convergence result does NOT transfer: it is a property of two autoregressive decoders interleaving token by token, and rerank does not decode at all. Expect the T1 shape (small throughput cost, tail latency cost) rather than the T2 shape."
+  },
+  "mps_percent": "",
+  "pin_gpu": "",
+  "pooling_via": "kserve",
+  "requests": 1231,
+  "roles": [
+    "vl",
+    "rerank"
+  ],
+  "run_dir": "/opt/GPU_Share/round2/results/T3-20260902-155701",
+  "seed": 20260826,
+  "stamp": "20260902-155701",
+  "subruns": [
+    {
+      "arm": "dedicated",
+      "endpoints": {
+        "vl": "http://10.42.0.208:8000"
+      },
+      "models": {
+        "vl": "Qwen/Qwen2-VL-2B-Instruct"
+      },
+      "mps": {
+        "arm": "dedicated",
+        "daemon_running": false,
+        "mps_client_pids": [],
+        "tenants": 1,
+        "want_mps": false
+      },
+      "placement": {
+        "devices_in_use": [
+          1
+        ]
+      },
+      "render": [
+        "",
+        "arm dedicated  scenario vl-rerank",
+        "gpumem requested 9216 of 12288 MiB = 75.0% of the card",
+        "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T3-20260902-155701/dedicated__vl/rendered"
+      ],
+      "replay_rc": 0,
+      "replay_tail": [
+        "vl     chat route http://10.42.0.208:8000/v1/chat/completions",
+        "warm-up: 8 requests",
+        "replaying 608 requests over 300s (open loop, trace d2f68f13b5cdd78f)",
+        "",
+        "arm dedicated   ok 608/608   224.8 tok/s   2.02 req/s",
+        "  ttft         p50 0.078  p95 0.137  p99 0.164  mean 0.082",
+        "  latency_e2e  p50 0.571  p95 1.855  p99 2.904  mean 0.745",
+        "  itl          p50 0.005  p95 0.009  p99 0.035  mean 0.006",
+        "wrote /opt/GPU_Share/round2/results/T3-20260902-155701/dedicated__vl/replay.{summary.json,requests.csv,itl.json}"
+      ],
+      "roles": [
+        "vl"
+      ],
+      "scenario": "vl-rerank",
+      "smoke": {
+        "vl": "ok via /v1/chat/completions"
+      },
+      "status": "ok",
+      "summary": {
+        "aggregate": {
+          "client_delay": {
+            "max": 0.004544034591788204,
+            "mean": 0.0008975590643008789,
+            "min": 0.00018879807254279513,
+            "n": 608,
+            "p50": 0.0007315756764967318,
+            "p90": 0.0015202487399822214,
+            "p95": 0.0019197265976430339,
+            "p99": 0.0029828563364415793
+          },
+          "itl": {
+            "max": 0.08395726513117552,
+            "mean": 0.006095650359500242,
+            "min": 2.2627413272857666e-05,
+            "n": 65960,
+            "p50": 0.0054818917997181416,
+            "p90": 0.007482277229428291,
+            "p95": 0.009180277725681663,
+            "p99": 0.03483850501477722
+          },
+          "latency_e2e": {
+            "max": 5.244556990452111,
+            "mean": 0.7454963654102023,
+            "min": 0.06630051787942648,
+            "n": 608,
+            "p50": 0.5712771690450609,
+            "p90": 1.4499418858438724,
+            "p95": 1.854761674487963,
+            "p99": 2.9044551230780704
+          },
+          "output_tokens": 67701,
+          "prompt_tokens": 218903,
+          "requests_per_second": 2.0187447906870046,
+          "tokens_per_second": 224.78789650378437,
+          "ttft": {
+            "max": 0.2370953094214201,
+            "mean": 0.08163300908084861,
+            "min": 0.02349677588790655,
+            "n": 608,
+            "p50": 0.07765572005882859,
+            "p90": 0.1167588056065142,
+            "p95": 0.13719062330201265,
+            "p99": 0.16386403846554456
+          },
+          "ttlt": {
+            "max": 5.244556990452111,
+            "mean": 0.7454963654102023,
+            "min": 0.06630051787942648,
+            "n": 608,
+            "p50": 0.5712771690450609,
+            "p90": 1.4499418858438724,
+            "p95": 1.854761674487963,
+            "p99": 2.9044551230780704
+          }
+        },
+        "arm": "dedicated",
+        "contended": null,
+        "endpoints": {
+          "vl": "http://10.42.0.208:8000"
+        },
+        "epoch_end": 1788365139.8801575,
+        "epoch_start": 1788364838.7028995,
+        "model_count": 1,
+        "models": {
+          "vl": "Qwen/Qwen2-VL-2B-Instruct"
+        },
+        "note": "T3 dedicated__vl",
+        "only": [
+          "vl"
+        ],
+        "per_service": {
+          "vl": {
+            "client_delay": {
+              "max": 0.004544034591788204,
+              "mean": 0.0008975590643008789,
+              "min": 0.00018879807254279513,
+              "n": 608,
+              "p50": 0.0007315756764967318,
+              "p90": 0.0015202487399822214,
+              "p95": 0.0019197265976430339,
+              "p99": 0.0029828563364415793
+            },
+            "failed": 0,
+            "itl": {
+              "max": 0.08395726513117552,
+              "mean": 0.006095650359500242,
+              "min": 2.2627413272857666e-05,
+              "n": 65960,
+              "p50": 0.0054818917997181416,
+              "p90": 0.007482277229428291,
+              "p95": 0.009180277725681663,
+              "p99": 0.03483850501477722
+            },
+            "kind": "chat",
+            "latency_e2e": {
+              "max": 5.244556990452111,
+              "mean": 0.7454963654102023,
+              "min": 0.06630051787942648,
+              "n": 608,
+              "p50": 0.5712771690450609,
+              "p90": 1.4499418858438724,
+              "p95": 1.854761674487963,
+              "p99": 2.9044551230780704
+            },
+            "output_tokens": 67701,
+            "prompt_tokens": 218903,
+            "requests": 608,
+            "requests_per_second": 2.019542422139924,
+            "tokens_per_second": 224.8767130284457,
+            "ttft": {
+              "max": 0.2370953094214201,
+              "mean": 0.08163300908084861,
+              "min": 0.02349677588790655,
+              "n": 608,
+              "p50": 0.07765572005882859,
+              "p90": 0.1167588056065142,
+              "p95": 0.13719062330201265,
+              "p99": 0.16386403846554456
+            },
+            "ttlt": {
+              "max": 5.244556990452111,
+              "mean": 0.7454963654102023,
+              "min": 0.06630051787942648,
+              "n": 608,
+              "p50": 0.5712771690450609,
+              "p90": 1.4499418858438724,
+              "p95": 1.854761674487963,
+              "p99": 2.9044551230780704
+            }
+          }
+        },
+        "requests_failed": 0,
+        "requests_ok": 608,
+        "requests_total": 608,
+        "roles": [
+          "vl"
+        ],
+        "trace_id": "d2f68f13b5cdd78f",
+        "trace_params": {
+          "duration": 300.0,
+          "embed_batch": 32,
+          "fixed_output": 0,
+          "rate": 4.0,
+          "rerank_docs": 16,
+          "scenario": "vl-rerank",
+          "seed": 20260826,
+          "source": "sharegpt",
+          "warmup": 8
+        },
+        "wall_seconds": 301.177247765474
+      },
+      "t0": 1788364837.9349535,
+      "t1": 1788365140.1114802,
+      "tag": "dedicated__vl",
+      "test": "T3",
+      "trace_id": "d2f68f13b5cdd78f",
+      "trace_id_seen": "d2f68f13b5cdd78f"
+    },
+    {
+      "arm": "dedicated",
+      "endpoints": {
+        "rerank": "http://10.42.0.209:8000"
+      },
+      "models": {
+        "rerank": "BAAI/bge-reranker-v2-m3"
+      },
+      "mps": {
+        "arm": "dedicated",
+        "daemon_running": false,
+        "mps_client_pids": [],
+        "tenants": 1,
+        "want_mps": false
+      },
+      "placement": {
+        "devices_in_use": [
+          1
+        ]
+      },
+      "render": [
+        "",
+        "arm dedicated  scenario vl-rerank",
+        "gpumem requested 2816 of 12288 MiB = 22.9% of the card",
+        "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T3-20260902-155701/dedicated__rerank/rendered"
+      ],
+      "replay_rc": 0,
+      "replay_tail": [
+        "warm-up: 8 requests",
+        "replaying 607 requests over 300s (open loop, trace d2f68f13b5cdd78f)",
+        "",
+        "arm dedicated   ok 607/607   0.0 tok/s   2.03 req/s",
+        "  ttft         p50 0.113  p95 0.187  p99 0.226  mean 0.120",
+        "  latency_e2e  p50 0.113  p95 0.187  p99 0.226  mean 0.120",
+        "wrote /opt/GPU_Share/round2/results/T3-20260902-155701/dedicated__rerank/replay.{summary.json,requests.csv,itl.json}"
+      ],
+      "roles": [
+        "rerank"
+      ],
+      "scenario": "vl-rerank",
+      "smoke": {
+        "rerank": "ok via /v1/rerank"
+      },
+      "status": "ok",
+      "summary": {
+        "aggregate": {
+          "client_delay": {
+            "max": 0.003762462550099599,
+            "mean": 0.0009978601864664574,
+            "min": 0.0002686016755149012,
+            "n": 607,
+            "p50": 0.0008992202013757833,
+            "p90": 0.0016135608942533962,
+            "p95": 0.0019224787085114778,
+            "p99": 0.002484355155679623
+          },
+          "itl": null,
+          "latency_e2e": {
+            "max": 0.2684324588626623,
+            "mean": 0.11958637828071782,
+            "min": 0.05238244589418173,
+            "n": 607,
+            "p50": 0.11297271680086851,
+            "p90": 0.1640940500423312,
+            "p95": 0.1872001057490707,
+            "p99": 0.22598688224330582
+          },
+          "output_tokens": 0,
+          "prompt_tokens": 574795,
+          "requests_per_second": 2.0265018144579936,
+          "tokens_per_second": 0.0,
+          "ttft": {
+            "max": 0.2684324588626623,
+            "mean": 0.11958637828071782,
+            "min": 0.05238244589418173,
+            "n": 607,
+            "p50": 0.11297271680086851,
+            "p90": 0.1640940500423312,
+            "p95": 0.1872001057490707,
+            "p99": 0.22598688224330582
+          },
+          "ttlt": {
+            "max": 0.2684324588626623,
+            "mean": 0.11958637828071782,
+            "min": 0.05238244589418173,
+            "n": 607,
+            "p50": 0.11297271680086851,
+            "p90": 0.1640940500423312,
+            "p95": 0.1872001057490707,
+            "p99": 0.22598688224330582
+          }
+        },
+        "arm": "dedicated",
+        "contended": null,
+        "endpoints": {
+          "rerank": "http://10.42.0.209:8000"
+        },
+        "epoch_end": 1788365643.3322115,
+        "epoch_start": 1788365343.8012602,
+        "model_count": 1,
+        "models": {
+          "rerank": "BAAI/bge-reranker-v2-m3"
+        },
+        "note": "T3 dedicated__rerank",
+        "only": [
+          "rerank"
+        ],
+        "per_service": {
+          "rerank": {
+            "client_delay": {
+              "max": 0.003762462550099599,
+              "mean": 0.0009978601864664574,
+              "min": 0.0002686016755149012,
+              "n": 607,
+              "p50": 0.0008992202013757833,
+              "p90": 0.0016135608942533962,
+              "p95": 0.0019224787085114778,
+              "p99": 0.002484355155679623
+            },
+            "failed": 0,
+            "itl": null,
+            "kind": "rerank",
+            "latency_e2e": {
+              "max": 0.2684324588626623,
+              "mean": 0.11958637828071782,
+              "min": 0.05238244589418173,
+              "n": 607,
+              "p50": 0.11297271680086851,
+              "p90": 0.1640940500423312,
+              "p95": 0.1872001057490707,
+              "p99": 0.22598688224330582
+            },
+            "output_tokens": 0,
+            "prompt_tokens": 574795,
+            "requests": 607,
+            "requests_per_second": 2.030482415107404,
+            "tokens_per_second": 0.0,
+            "ttft": {
+              "max": 0.2684324588626623,
+              "mean": 0.11958637828071782,
+              "min": 0.05238244589418173,
+              "n": 607,
+              "p50": 0.11297271680086851,
+              "p90": 0.1640940500423312,
+              "p95": 0.1872001057490707,
+              "p99": 0.22598688224330582
+            },
+            "ttlt": {
+              "max": 0.2684324588626623,
+              "mean": 0.11958637828071782,
+              "min": 0.05238244589418173,
+              "n": 607,
+              "p50": 0.11297271680086851,
+              "p90": 0.1640940500423312,
+              "p95": 0.1872001057490707,
+              "p99": 0.22598688224330582
+            }
+          }
+        },
+        "requests_failed": 0,
+        "requests_ok": 607,
+        "requests_total": 607,
+        "roles": [
+          "rerank"
+        ],
+        "trace_id": "d2f68f13b5cdd78f",
+        "trace_params": {
+          "duration": 300.0,
+          "embed_batch": 32,
+          "fixed_output": 0,
+          "rate": 4.0,
+          "rerank_docs": 16,
+          "scenario": "vl-rerank",
+          "seed": 20260826,
+          "source": "sharegpt",
+          "warmup": 8
+        },
+        "wall_seconds": 299.5309432586655
+      },
+      "t0": 1788365343.236856,
+      "t1": 1788365643.4094777,
+      "tag": "dedicated__rerank",
+      "test": "T3",
+      "trace_id": "d2f68f13b5cdd78f",
+      "trace_id_seen": "d2f68f13b5cdd78f"
+    },
+    {
+      "arm": "hami",
+      "endpoints": {
+        "rerank": "http://10.42.0.210:8000",
+        "vl": "http://10.42.0.211:8000"
+      },
+      "models": {
+        "rerank": "BAAI/bge-reranker-v2-m3",
+        "vl": "Qwen/Qwen2-VL-2B-Instruct"
+      },
+      "mps": {
+        "arm": "hami",
+        "daemon_running": false,
+        "mps_client_pids": [],
+        "tenants": 2,
+        "want_mps": false
+      },
+      "placement": {
+        "devices_in_use": [
+          1
+        ],
+        "distinct_devices": [
+          "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+        ],
+        "placement": {
+          "rerank": [
+            "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+          ],
+          "vl": [
+            "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+          ]
+        }
+      },
+      "render": [
+        "",
+        "arm hami  scenario vl-rerank",
+        "gpumem requested 12032 of 12288 MiB = 97.9% of the card",
+        "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T3-20260902-155701/hami__vl+rerank/rendered"
+      ],
+      "replay_rc": 0,
+      "replay_tail": [
+        "vl     chat route http://10.42.0.211:8000/v1/chat/completions",
+        "warm-up: 16 requests",
+        "replaying 1215 requests over 300s (open loop, trace d2f68f13b5cdd78f)",
+        "",
+        "arm hami   ok 1215/1215   222.1 tok/s   4.03 req/s",
+        "  ttft         p50 0.090  p95 0.152  p99 0.191  mean 0.095",
+        "  latency_e2e  p50 0.158  p95 1.453  p99 2.356  mean 0.434",
+        "  itl          p50 0.006  p95 0.011  p99 0.035  mean 0.006",
+        "  contended    298.9 s, 222.6 tok/s aggregate",
+        "wrote /opt/GPU_Share/round2/results/T3-20260902-155701/hami__vl+rerank/replay.{summary.json,requests.csv,itl.json}"
+      ],
+      "roles": [
+        "vl",
+        "rerank"
+      ],
+      "scenario": "vl-rerank",
+      "smoke": {
+        "rerank": "ok via /v1/rerank",
+        "vl": "ok via /v1/chat/completions"
+      },
+      "status": "ok",
+      "summary": {
+        "aggregate": {
+          "client_delay": {
+            "max": 0.0076870273965568,
+            "mean": 0.0007293789630732597,
+            "min": 0.00018391896367120353,
+            "n": 1215,
+            "p50": 0.0005968323299896383,
+            "p90": 0.0011527257107218246,
+            "p95": 0.0014720160209350294,
+            "p99": 0.003031595207966683
+          },
+          "itl": {
+            "max": 0.08540775999426842,
+            "mean": 0.006306579482591397,
+            "min": 2.6261433959007263e-05,
+            "n": 65137,
+            "p50": 0.005531441420316696,
+            "p90": 0.00838013906031847,
+            "p95": 0.010727419145405292,
+            "p99": 0.03477876037359237
+          },
+          "latency_e2e": {
+            "max": 5.577483295463026,
+            "mean": 0.43400759064197664,
+            "min": 0.04698239453136921,
+            "n": 1215,
+            "p50": 0.15848784614354372,
+            "p90": 1.1302502717822789,
+            "p95": 1.4531164998188615,
+            "p99": 2.356265403609711
+          },
+          "output_tokens": 66905,
+          "prompt_tokens": 793698,
+          "requests_per_second": 4.033832989664172,
+          "tokens_per_second": 222.12641660368843,
+          "ttft": {
+            "max": 0.24775666370987892,
+            "mean": 0.09469689889101948,
+            "min": 0.022987923584878445,
+            "n": 1215,
+            "p50": 0.09034013096243143,
+            "p90": 0.1377067154273391,
+            "p95": 0.15231855204328892,
+            "p99": 0.19052377743646481
+          },
+          "ttlt": {
+            "max": 5.577483295463026,
+            "mean": 0.43400759064197664,
+            "min": 0.04698239453136921,
+            "n": 1215,
+            "p50": 0.15848784614354372,
+            "p90": 1.1302502717822789,
+            "p95": 1.4531164998188615,
+            "p99": 2.356265403609711
+          }
+        },
+        "arm": "hami",
+        "contended": {
+          "aggregate_tokens_per_second": 222.5642275793332,
+          "end": 299.48721991479397,
+          "per_service_tokens": {
+            "rerank": 0.0,
+            "vl": 66524.69899110465
+          },
+          "per_service_tokens_per_second": {
+            "rerank": 0.0,
+            "vl": 222.5642275793332
+          },
+          "ratio": null,
+          "seconds": 298.9011294161901,
+          "start": 0.5860904986038804
+        },
+        "endpoints": {
+          "rerank": "http://10.42.0.210:8000",
+          "vl": "http://10.42.0.211:8000"
+        },
+        "epoch_end": 1788366227.9915953,
+        "epoch_start": 1788365926.7892344,
+        "model_count": 2,
+        "models": {
+          "rerank": "BAAI/bge-reranker-v2-m3",
+          "vl": "Qwen/Qwen2-VL-2B-Instruct"
+        },
+        "note": "T3 hami__vl+rerank",
+        "only": [
+          "rerank",
+          "vl"
+        ],
+        "per_service": {
+          "rerank": {
+            "client_delay": {
+              "max": 0.0076870273965568,
+              "mean": 0.0007298425219638202,
+              "min": 0.0002403801838823938,
+              "n": 607,
+              "p50": 0.0005904175438331549,
+              "p90": 0.0011176333231105672,
+              "p95": 0.0014168843189239068,
+              "p99": 0.003822007403406381
+            },
+            "failed": 0,
+            "itl": null,
+            "kind": "rerank",
+            "latency_e2e": {
+              "max": 0.24775666370987892,
+              "mean": 0.10914752538786983,
+              "min": 0.052489787340164185,
+              "n": 607,
+              "p50": 0.10433085821568966,
+              "p90": 0.1501936938613653,
+              "p95": 0.16339594190940263,
+              "p99": 0.20473262386396568
+            },
+            "output_tokens": 0,
+            "prompt_tokens": 574795,
+            "requests": 607,
+            "requests_per_second": 2.0307718515001425,
+            "tokens_per_second": 0.0,
+            "ttft": {
+              "max": 0.24775666370987892,
+              "mean": 0.10914752538786983,
+              "min": 0.052489787340164185,
+              "n": 607,
+              "p50": 0.10433085821568966,
+              "p90": 0.1501936938613653,
+              "p95": 0.16339594190940263,
+              "p99": 0.20473262386396568
+            },
+            "ttlt": {
+              "max": 0.24775666370987892,
+              "mean": 0.10914752538786983,
+              "min": 0.052489787340164185,
+              "n": 607,
+              "p50": 0.10433085821568966,
+              "p90": 0.1501936938613653,
+              "p95": 0.16339594190940263,
+              "p99": 0.20473262386396568
+            }
+          },
+          "vl": {
+            "client_delay": {
+              "max": 0.006763376069727656,
+              "mean": 0.0007289161666150851,
+              "min": 0.00018391896367120353,
+              "n": 608,
+              "p50": 0.000601819134509185,
+              "p90": 0.0011783747177190659,
+              "p95": 0.0014934312060937314,
+              "p99": 0.0028096557837962726
+            },
+            "failed": 0,
+            "itl": {
+              "max": 0.08540775999426842,
+              "mean": 0.006306579482591397,
+              "min": 2.6261433959007263e-05,
+              "n": 65137,
+              "p50": 0.005531441420316696,
+              "p90": 0.00838013906031847,
+              "p95": 0.010727419145405292,
+              "p99": 0.03477876037359237
+            },
+            "kind": "chat",
+            "latency_e2e": {
+              "max": 5.577483295463026,
+              "mean": 0.7583333465782313,
+              "min": 0.04698239453136921,
+              "n": 608,
+              "p50": 0.5829540435224771,
+              "p90": 1.4531164998188615,
+              "p95": 1.8934261506423335,
+              "p99": 3.0119991461932587
+            },
+            "output_tokens": 66905,
+            "prompt_tokens": 218903,
+            "requests": 608,
+            "requests_per_second": 2.0193722323200136,
+            "tokens_per_second": 222.21397895291202,
+            "ttft": {
+              "max": 0.2282979739829898,
+              "mean": 0.08027003987195999,
+              "min": 0.022987923584878445,
+              "n": 608,
+              "p50": 0.07332139182835817,
+              "p90": 0.11556555591523643,
+              "p95": 0.13200182686559855,
+              "p99": 0.16580586136318692
+            },
+            "ttlt": {
+              "max": 5.577483295463026,
+              "mean": 0.7583333465782313,
+              "min": 0.04698239453136921,
+              "n": 608,
+              "p50": 0.5829540435224771,
+              "p90": 1.4531164998188615,
+              "p95": 1.8934261506423335,
+              "p99": 3.0119991461932587
+            }
+          }
+        },
+        "requests_failed": 0,
+        "requests_ok": 1215,
+        "requests_total": 1215,
+        "roles": [
+          "rerank",
+          "vl"
+        ],
+        "trace_id": "d2f68f13b5cdd78f",
+        "trace_params": {
+          "duration": 300.0,
+          "embed_batch": 32,
+          "fixed_output": 0,
+          "rate": 4.0,
+          "rerank_docs": 16,
+          "scenario": "vl-rerank",
+          "seed": 20260826,
+          "source": "sharegpt",
+          "warmup": 8
+        },
+        "wall_seconds": 301.2023559510708
+      },
+      "t0": 1788365925.8356636,
+      "t1": 1788366228.223733,
+      "tag": "hami__vl+rerank",
+      "test": "T3",
+      "trace_id": "d2f68f13b5cdd78f",
+      "trace_id_seen": "d2f68f13b5cdd78f"
+    },
+    {
+      "arm": "hami-mps",
+      "endpoints": {
+        "rerank": "http://10.42.0.213:8000",
+        "vl": "http://10.42.0.214:8000"
+      },
+      "models": {
+        "rerank": "BAAI/bge-reranker-v2-m3",
+        "vl": "Qwen/Qwen2-VL-2B-Instruct"
+      },
+      "mps": {
+        "arm": "hami-mps",
+        "daemon_running": true,
+        "mps_client_pids": [
+          885090,
+          885201
+        ],
+        "tenants": 2,
+        "want_mps": true
+      },
+      "placement": {
+        "devices_in_use": [
+          1
+        ],
+        "distinct_devices": [
+          "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+        ],
+        "placement": {
+          "rerank": [
+            "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+          ],
+          "vl": [
+            "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+          ]
+        }
+      },
+      "render": [
+        "",
+        "arm hami-mps  scenario vl-rerank",
+        "gpumem requested 12032 of 12288 MiB = 97.9% of the card",
+        "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T3-20260902-155701/hami-mps__vl+rerank/rendered"
+      ],
+      "replay_rc": 0,
+      "replay_tail": [
+        "vl     chat route http://10.42.0.214:8000/v1/chat/completions",
+        "warm-up: 16 requests",
+        "replaying 1215 requests over 300s (open loop, trace d2f68f13b5cdd78f)",
+        "",
+        "arm hami-mps   ok 1215/1215   222.0 tok/s   4.04 req/s",
+        "  ttft         p50 0.089  p95 0.153  p99 0.186  mean 0.094",
+        "  latency_e2e  p50 0.162  p95 1.528  p99 2.325  mean 0.436",
+        "  itl          p50 0.006  p95 0.010  p99 0.035  mean 0.006",
+        "  contended    298.9 s, 222.6 tok/s aggregate",
+        "wrote /opt/GPU_Share/round2/results/T3-20260902-155701/hami-mps__vl+rerank/replay.{summary.json,requests.csv,itl.json}"
+      ],
+      "roles": [
+        "vl",
+        "rerank"
+      ],
+      "scenario": "vl-rerank",
+      "smoke": {
+        "rerank": "ok via /v1/rerank",
+        "vl": "ok via /v1/chat/completions"
+      },
+      "status": "ok",
+      "summary": {
+        "aggregate": {
+          "client_delay": {
+            "max": 0.01057073075497783,
+            "mean": 0.0007456308424763898,
+            "min": 0.000206633035077175,
+            "n": 1215,
+            "p50": 0.000593235588553398,
+            "p90": 0.0011865941008352364,
+            "p95": 0.0015494276425940257,
+            "p99": 0.0031630913144104476
+          },
+          "itl": {
+            "max": 0.08325067814439535,
+            "mean": 0.006376946507422303,
+            "min": 2.5702640414237976e-05,
+            "n": 65006,
+            "p50": 0.005704107694327831,
+            "p90": 0.00814297515898943,
+            "p95": 0.010089112678542733,
+            "p99": 0.03504112521186467
+          },
+          "latency_e2e": {
+            "max": 4.370831646025181,
+            "mean": 0.435846515780951,
+            "min": 0.05190433748066425,
+            "n": 1215,
+            "p50": 0.16165434289723635,
+            "p90": 1.1584575926885008,
+            "p95": 1.5276747180148957,
+            "p99": 2.3249204724840795
+          },
+          "output_tokens": 66836,
+          "prompt_tokens": 793698,
+          "requests_per_second": 4.03524023183918,
+          "tokens_per_second": 221.97474579029088,
+          "ttft": {
+            "max": 0.22106239292770624,
+            "mean": 0.09353921714357633,
+            "min": 0.02429874986410141,
+            "n": 1215,
+            "p50": 0.08904866687953472,
+            "p90": 0.13515608534216877,
+            "p95": 0.15315998261794447,
+            "p99": 0.18550127726048227
+          },
+          "ttlt": {
+            "max": 4.370831646025181,
+            "mean": 0.435846515780951,
+            "min": 0.05190433748066425,
+            "n": 1215,
+            "p50": 0.16165434289723635,
+            "p90": 1.1584575926885008,
+            "p95": 1.5276747180148957,
+            "p99": 2.3249204724840795
+          }
+        },
+        "arm": "hami-mps",
+        "contended": {
+          "aggregate_tokens_per_second": 222.59690549719886,
+          "end": 299.51793485693634,
+          "per_service_tokens": {
+            "rerank": 0.0,
+            "vl": 66541.3045865373
+          },
+          "per_service_tokens_per_second": {
+            "rerank": 0.0,
+            "vl": 222.59690549719886
+          },
+          "ratio": null,
+          "seconds": 298.9318492002785,
+          "start": 0.586085656657815
+        },
+        "endpoints": {
+          "rerank": "http://10.42.0.213:8000",
+          "vl": "http://10.42.0.214:8000"
+        },
+        "epoch_end": 1788366794.6277893,
+        "epoch_start": 1788366493.5305119,
+        "model_count": 2,
+        "models": {
+          "rerank": "BAAI/bge-reranker-v2-m3",
+          "vl": "Qwen/Qwen2-VL-2B-Instruct"
+        },
+        "note": "T3 hami-mps__vl+rerank",
+        "only": [
+          "rerank",
+          "vl"
+        ],
+        "per_service": {
+          "rerank": {
+            "client_delay": {
+              "max": 0.01057073075497783,
+              "mean": 0.0007552597526679966,
+              "min": 0.000206633035077175,
+              "n": 607,
+              "p50": 0.0005920803221783899,
+              "p90": 0.001248668298387656,
+              "p95": 0.0016310855408349317,
+              "p99": 0.003126054329873119
+            },
+            "failed": 0,
+            "itl": null,
+            "kind": "rerank",
+            "latency_e2e": {
+              "max": 0.22106239292770624,
+              "mean": 0.10879069799480613,
+              "min": 0.05190433748066425,
+              "n": 607,
+              "p50": 0.10653925687074661,
+              "p90": 0.14971073549240826,
+              "p95": 0.1662492242641747,
+              "p99": 0.19000137297436615
+            },
+            "output_tokens": 0,
+            "prompt_tokens": 574795,
+            "requests": 607,
+            "requests_per_second": 2.030563158873452,
+            "tokens_per_second": 0.0,
+            "ttft": {
+              "max": 0.22106239292770624,
+              "mean": 0.10879069799480613,
+              "min": 0.05190433748066425,
+              "n": 607,
+              "p50": 0.10653925687074661,
+              "p90": 0.14971073549240826,
+              "p95": 0.1662492242641747,
+              "p99": 0.19000137297436615
+            },
+            "ttlt": {
+              "max": 0.22106239292770624,
+              "mean": 0.10879069799480613,
+              "min": 0.05190433748066425,
+              "n": 607,
+              "p50": 0.10653925687074661,
+              "p90": 0.14971073549240826,
+              "p95": 0.1662492242641747,
+              "p99": 0.19000137297436615
+            }
+          },
+          "vl": {
+            "client_delay": {
+              "max": 0.0069877431226998965,
+              "mean": 0.0007360177693081245,
+              "min": 0.00020829327404214837,
+              "n": 608,
+              "p50": 0.0005950592425740808,
+              "p90": 0.0011703409371619953,
+              "p95": 0.0014928296993875988,
+              "p99": 0.0033259978935930475
+            },
+            "failed": 0,
+            "itl": {
+              "max": 0.08325067814439535,
+              "mean": 0.006376946507422303,
+              "min": 2.5702640414237976e-05,
+              "n": 65006,
+              "p50": 0.005704107694327831,
+              "p90": 0.00814297515898943,
+              "p95": 0.010089112678542733,
+              "p99": 0.03504112521186467
+            },
+            "kind": "chat",
+            "latency_e2e": {
+              "max": 4.370831646025181,
+              "mean": 0.7623644128141581,
+              "min": 0.06073818448930979,
+              "n": 608,
+              "p50": 0.5884142103604972,
+              "p90": 1.5276747180148957,
+              "p95": 1.9171867148019364,
+              "p99": 2.764219054877749
+            },
+            "output_tokens": 66836,
+            "prompt_tokens": 218903,
+            "requests": 608,
+            "requests_per_second": 2.0200792327787513,
+            "tokens_per_second": 222.06252566118525,
+            "ttft": {
+              "max": 0.21421916410326958,
+              "mean": 0.07831282096479922,
+              "min": 0.02429874986410141,
+              "n": 608,
+              "p50": 0.07294302619993687,
+              "p90": 0.11169923497363923,
+              "p95": 0.12900899751111863,
+              "p99": 0.15865794708020958
+            },
+            "ttlt": {
+              "max": 4.370831646025181,
+              "mean": 0.7623644128141581,
+              "min": 0.06073818448930979,
+              "n": 608,
+              "p50": 0.5884142103604972,
+              "p90": 1.5276747180148957,
+              "p95": 1.9171867148019364,
+              "p99": 2.764219054877749
+            }
+          }
+        },
+        "requests_failed": 0,
+        "requests_ok": 1215,
+        "requests_total": 1215,
+        "roles": [
+          "rerank",
+          "vl"
+        ],
+        "trace_id": "d2f68f13b5cdd78f",
+        "trace_params": {
+          "duration": 300.0,
+          "embed_batch": 32,
+          "fixed_output": 0,
+          "rate": 4.0,
+          "rerank_docs": 16,
+          "scenario": "vl-rerank",
+          "seed": 20260826,
+          "source": "sharegpt",
+          "warmup": 8
+        },
+        "wall_seconds": 301.0973152015358
+      },
+      "t0": 1788366492.3687007,
+      "t1": 1788366794.9008515,
+      "tag": "hami-mps__vl+rerank",
+      "test": "T3",
+      "trace_id": "d2f68f13b5cdd78f",
+      "trace_id_seen": "d2f68f13b5cdd78f"
+    }
+  ],
+  "test": "T3",
+  "trace_id": "d2f68f13b5cdd78f",
+  "trace_id_mismatch": {},
+  "warmup": 8
+}

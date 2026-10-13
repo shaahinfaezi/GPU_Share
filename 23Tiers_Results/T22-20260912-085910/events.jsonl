@@ -1,0 +1,4 @@
+{"t": 1789203551.0251014, "iso": "2026-09-12T08:59:11+0000", "phase": "preconditions", "ok": true, "problems": 0}
+{"t": 1789203559.1012833, "iso": "2026-09-12T08:59:19+0000", "phase": "trace", "trace_id": "dda6f9a0a74df63c", "requests": 3375}
+{"t": 1789204804.674572, "iso": "2026-09-12T09:20:04+0000", "phase": "aborted", "reason": "two consecutive sub-run failures", "after_tag": "hami-mps__llm2a+llm2b+embed-small"}
+{"t": 1789204804.8562381, "iso": "2026-09-12T09:20:04+0000", "phase": "mps_daemon", "want": true, "after_s": 0.0, "nudged": false}

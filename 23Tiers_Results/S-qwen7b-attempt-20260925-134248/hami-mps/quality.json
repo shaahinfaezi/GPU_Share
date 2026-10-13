@@ -1,0 +1,21 @@
+{
+  "ok": true,
+  "issues": [],
+  "per_service": {
+    "tp": {
+      "expected": 151,
+      "recorded": 151,
+      "failed": 0,
+      "client_delay_p99_s": 0.004078734563762509,
+      "errors": []
+    },
+    "pp": {
+      "expected": 155,
+      "recorded": 155,
+      "failed": 0,
+      "client_delay_p99_s": 0.004498716734701702,
+      "errors": []
+    }
+  },
+  "max_client_delay_p99_s": 0.5
+}

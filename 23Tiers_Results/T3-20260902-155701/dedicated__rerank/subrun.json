@@ -1,0 +1,186 @@
+{
+  "arm": "dedicated",
+  "endpoints": {
+    "rerank": "http://10.42.0.209:8000"
+  },
+  "models": {
+    "rerank": "BAAI/bge-reranker-v2-m3"
+  },
+  "mps": {
+    "arm": "dedicated",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 1,
+    "want_mps": false
+  },
+  "placement": {
+    "devices_in_use": [
+      1
+    ]
+  },
+  "render": [
+    "",
+    "arm dedicated  scenario vl-rerank",
+    "gpumem requested 2816 of 12288 MiB = 22.9% of the card",
+    "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T3-20260902-155701/dedicated__rerank/rendered"
+  ],
+  "replay_rc": 0,
+  "replay_tail": [
+    "warm-up: 8 requests",
+    "replaying 607 requests over 300s (open loop, trace d2f68f13b5cdd78f)",
+    "",
+    "arm dedicated   ok 607/607   0.0 tok/s   2.03 req/s",
+    "  ttft         p50 0.113  p95 0.187  p99 0.226  mean 0.120",
+    "  latency_e2e  p50 0.113  p95 0.187  p99 0.226  mean 0.120",
+    "wrote /opt/GPU_Share/round2/results/T3-20260902-155701/dedicated__rerank/replay.{summary.json,requests.csv,itl.json}"
+  ],
+  "roles": [
+    "rerank"
+  ],
+  "scenario": "vl-rerank",
+  "smoke": {
+    "rerank": "ok via /v1/rerank"
+  },
+  "status": "ok",
+  "summary": {
+    "aggregate": {
+      "client_delay": {
+        "max": 0.003762462550099599,
+        "mean": 0.0009978601864664574,
+        "min": 0.0002686016755149012,
+        "n": 607,
+        "p50": 0.0008992202013757833,
+        "p90": 0.0016135608942533962,
+        "p95": 0.0019224787085114778,
+        "p99": 0.002484355155679623
+      },
+      "itl": null,
+      "latency_e2e": {
+        "max": 0.2684324588626623,
+        "mean": 0.11958637828071782,
+        "min": 0.05238244589418173,
+        "n": 607,
+        "p50": 0.11297271680086851,
+        "p90": 0.1640940500423312,
+        "p95": 0.1872001057490707,
+        "p99": 0.22598688224330582
+      },
+      "output_tokens": 0,
+      "prompt_tokens": 574795,
+      "requests_per_second": 2.0265018144579936,
+      "tokens_per_second": 0.0,
+      "ttft": {
+        "max": 0.2684324588626623,
+        "mean": 0.11958637828071782,
+        "min": 0.05238244589418173,
+        "n": 607,
+        "p50": 0.11297271680086851,
+        "p90": 0.1640940500423312,
+        "p95": 0.1872001057490707,
+        "p99": 0.22598688224330582
+      },
+      "ttlt": {
+        "max": 0.2684324588626623,
+        "mean": 0.11958637828071782,
+        "min": 0.05238244589418173,
+        "n": 607,
+        "p50": 0.11297271680086851,
+        "p90": 0.1640940500423312,
+        "p95": 0.1872001057490707,
+        "p99": 0.22598688224330582
+      }
+    },
+    "arm": "dedicated",
+    "contended": null,
+    "endpoints": {
+      "rerank": "http://10.42.0.209:8000"
+    },
+    "epoch_end": 1788365643.3322115,
+    "epoch_start": 1788365343.8012602,
+    "model_count": 1,
+    "models": {
+      "rerank": "BAAI/bge-reranker-v2-m3"
+    },
+    "note": "T3 dedicated__rerank",
+    "only": [
+      "rerank"
+    ],
+    "per_service": {
+      "rerank": {
+        "client_delay": {
+          "max": 0.003762462550099599,
+          "mean": 0.0009978601864664574,
+          "min": 0.0002686016755149012,
+          "n": 607,
+          "p50": 0.0008992202013757833,
+          "p90": 0.0016135608942533962,
+          "p95": 0.0019224787085114778,
+          "p99": 0.002484355155679623
+        },
+        "failed": 0,
+        "itl": null,
+        "kind": "rerank",
+        "latency_e2e": {
+          "max": 0.2684324588626623,
+          "mean": 0.11958637828071782,
+          "min": 0.05238244589418173,
+          "n": 607,
+          "p50": 0.11297271680086851,
+          "p90": 0.1640940500423312,
+          "p95": 0.1872001057490707,
+          "p99": 0.22598688224330582
+        },
+        "output_tokens": 0,
+        "prompt_tokens": 574795,
+        "requests": 607,
+        "requests_per_second": 2.030482415107404,
+        "tokens_per_second": 0.0,
+        "ttft": {
+          "max": 0.2684324588626623,
+          "mean": 0.11958637828071782,
+          "min": 0.05238244589418173,
+          "n": 607,
+          "p50": 0.11297271680086851,
+          "p90": 0.1640940500423312,
+          "p95": 0.1872001057490707,
+          "p99": 0.22598688224330582
+        },
+        "ttlt": {
+          "max": 0.2684324588626623,
+          "mean": 0.11958637828071782,
+          "min": 0.05238244589418173,
+          "n": 607,
+          "p50": 0.11297271680086851,
+          "p90": 0.1640940500423312,
+          "p95": 0.1872001057490707,
+          "p99": 0.22598688224330582
+        }
+      }
+    },
+    "requests_failed": 0,
+    "requests_ok": 607,
+    "requests_total": 607,
+    "roles": [
+      "rerank"
+    ],
+    "trace_id": "d2f68f13b5cdd78f",
+    "trace_params": {
+      "duration": 300.0,
+      "embed_batch": 32,
+      "fixed_output": 0,
+      "rate": 4.0,
+      "rerank_docs": 16,
+      "scenario": "vl-rerank",
+      "seed": 20260826,
+      "source": "sharegpt",
+      "warmup": 8
+    },
+    "wall_seconds": 299.5309432586655
+  },
+  "t0": 1788365343.236856,
+  "t1": 1788365643.4094777,
+  "tag": "dedicated__rerank",
+  "test": "T3",
+  "trace_id": "d2f68f13b5cdd78f",
+  "trace_id_seen": "d2f68f13b5cdd78f"
+}

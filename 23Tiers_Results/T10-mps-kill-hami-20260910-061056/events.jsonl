@@ -1,0 +1,20 @@
+{"t": 1789020656.8684554, "iso": "2026-09-10T06:10:56+0000", "phase": "preconditions", "ok": true, "problems": 0}
+{"t": 1789020656.8685737, "iso": "2026-09-10T06:10:56+0000", "phase": "teardown_begin"}
+{"t": 1789020658.2456446, "iso": "2026-09-10T06:10:58+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 39, \"1\": 39}"}
+{"t": 1789020660.434973, "iso": "2026-09-10T06:11:00+0000", "phase": "mps_daemon", "want": false, "after_s": 2.1, "nudged": false}
+{"t": 1789020663.511776, "iso": "2026-09-10T06:11:03+0000", "phase": "apply"}
+{"t": 1789020869.4237263, "iso": "2026-09-10T06:14:29+0000", "phase": "ready", "role": "llm", "after_s": 204.9}
+{"t": 1789020875.0903525, "iso": "2026-09-10T06:14:35+0000", "phase": "ready", "role": "llm2", "after_s": 210.6}
+{"t": 1789020875.7544174, "iso": "2026-09-10T06:14:35+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"llm2\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1789020875.903586, "iso": "2026-09-10T06:14:35+0000", "phase": "mps_state", "ok": true, "arm": "hami", "want_mps": false, "daemon_running": false, "mps_client_pids": [], "tenants": 2}
+{"t": 1789020876.1767936, "iso": "2026-09-10T06:14:36+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.65:8000"}
+{"t": 1789020876.5208158, "iso": "2026-09-10T06:14:36+0000", "phase": "endpoint", "role": "llm2", "url": "http://10.42.0.66:8000"}
+{"t": 1789020885.9331267, "iso": "2026-09-10T06:14:45+0000", "phase": "replay_begin"}
+{"t": 1789020976.4047134, "iso": "2026-09-10T06:16:16+0000", "phase": "mps_daemon", "want": false, "after_s": 0.0, "nudged": false}
+{"t": 1789020979.5425808, "iso": "2026-09-10T06:16:19+0000", "phase": "fault_injected", "fault": "mps-kill", "at": 1789020976.0263674, "ok": true, "how": "supervisor parked, MPS down after 3s", "daemon_after": false}
+{"t": 1789021191.0958927, "iso": "2026-09-10T06:19:51+0000", "phase": "replay_end", "rc": 0}
+{"t": 1789021191.096614, "iso": "2026-09-10T06:19:51+0000", "phase": "host_min_available", "mib": 2341}
+{"t": 1789021191.1040924, "iso": "2026-09-10T06:19:51+0000", "phase": "teardown_begin"}
+{"t": 1789021226.3626127, "iso": "2026-09-10T06:20:26+0000", "phase": "teardown_end", "waited_s": 33.9, "left": 0}
+{"t": 1789021226.4157722, "iso": "2026-09-10T06:20:26+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 1, \"1\": 1}"}
+{"t": 1789021230.7250838, "iso": "2026-09-10T06:20:30+0000", "phase": "mps_daemon", "want": true, "after_s": 4.1, "nudged": false}

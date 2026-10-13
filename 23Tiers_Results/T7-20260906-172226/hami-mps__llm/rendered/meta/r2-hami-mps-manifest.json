@@ -1,0 +1,22 @@
+{
+  "scenario": "llm-only",
+  "arm": "hami-mps",
+  "roles": [
+    "llm"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 8192,
+  "card_mib": 12288,
+  "fill_percent": 66.7,
+  "mps_percent": {
+    "llm": 50
+  },
+  "files": [
+    "r2-hami-mps-llm.yaml"
+  ],
+  "models": {
+    "llm": "Qwen/Qwen2.5-7B-Instruct-AWQ"
+  }
+}

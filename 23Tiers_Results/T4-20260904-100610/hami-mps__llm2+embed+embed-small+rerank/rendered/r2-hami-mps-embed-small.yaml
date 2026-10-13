@@ -1,0 +1,53 @@
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: r2-embed-small
+  namespace: llm-demo
+  labels:
+    r2-arm: hami-mps
+    r2-role: embed-small
+  annotations: {}
+spec:
+  model:
+    name: BAAI/bge-large-en-v1.5
+    uri: pvc://r2-models-pvc/models/embed-small
+  replicas: 1
+  template:
+    containers:
+      - name: main
+        image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+        args:
+          - --gpu-memory-utilization=0.74
+          - --max-model-len=512
+          - --max-num-seqs=64
+          - --runner=pooling
+          - --convert=embed
+          - --dtype=half
+        resources:
+          limits:
+            cpu: "4"
+            memory: 12Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "2304"
+            nvidia.com/gpucores: "25"
+          requests:
+            cpu: "200m"
+            memory: 2Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "2304"
+            nvidia.com/gpucores: "25"
+        env:
+          - name: HF_HOME
+            value: /mnt/models
+          - name: CUDA_MPS_PIPE_DIRECTORY
+            value: /tmp/nvidia-mps
+          - name: CUDA_MPS_LOG_DIRECTORY
+            value: /tmp/nvidia-mps
+          - name: CUDA_MPS_ACTIVE_THREAD_PERCENTAGE
+            value: "100"
+        volumeMounts:
+          - {name: mps-pipe, mountPath: /tmp/nvidia-mps}
+    volumes:
+      - name: mps-pipe
+        hostPath: {path: /tmp/nvidia-mps, type: Directory}

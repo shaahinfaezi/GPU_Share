@@ -1,0 +1,22 @@
+{
+  "scenario": "dense3",
+  "arm": "dedicated",
+  "roles": [
+    "embed"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 2816,
+  "card_mib": 12288,
+  "fill_percent": 22.9,
+  "mps_percent": {
+    "embed": 100
+  },
+  "files": [
+    "r2-dedicated-embed.yaml"
+  ],
+  "models": {
+    "embed": "BAAI/bge-m3"
+  }
+}

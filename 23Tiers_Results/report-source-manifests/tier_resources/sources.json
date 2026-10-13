@@ -1,0 +1,3306 @@
+[
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T2-20260902-152143\\hami__llm+llm2\\replay.requests.csv",
+    "sha256": "34521bc21015884895d2054ea8cc2ac76b9c5ae2798695fc7def407a107d36c3",
+    "requests": 1753,
+    "bin_s": 10
+  },
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI",
+    "label": "llm",
+    "source": "T2-20260902-152143\\hami__llm+llm2\\prom.json",
+    "sha256": "c418f11ffe7ebd057762f4be160b93c6ab00d2689007267fb1834a6d4cef0580",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 60,
+    "finite_samples": 60,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI",
+    "label": "llm2",
+    "source": "T2-20260902-152143\\hami__llm+llm2\\prom.json",
+    "sha256": "c418f11ffe7ebd057762f4be160b93c6ab00d2689007267fb1834a6d4cef0580",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 60,
+    "finite_samples": 60,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI",
+    "label": "llm",
+    "source": "T2-20260902-152143\\hami__llm+llm2\\prom.json",
+    "sha256": "c418f11ffe7ebd057762f4be160b93c6ab00d2689007267fb1834a6d4cef0580",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.203:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm-kserve-79fc4ccdb5-8jzwj",
+      "r2_role": "llm"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 60,
+    "finite_samples": 60,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI",
+    "label": "llm2",
+    "source": "T2-20260902-152143\\hami__llm+llm2\\prom.json",
+    "sha256": "c418f11ffe7ebd057762f4be160b93c6ab00d2689007267fb1834a6d4cef0580",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.204:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2-kserve-7dc6d66899-652w4",
+      "r2_role": "llm2"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 60,
+    "finite_samples": 60,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T2-20260902-152143\\hami-mps__llm+llm2\\replay.requests.csv",
+    "sha256": "dbbef0f1f2bf54a67050627296125da579032b47b04a3c5548315a3e969b9b7e",
+    "requests": 1753,
+    "bin_s": 10
+  },
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm",
+    "source": "T2-20260902-152143\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "72edcba878388cd0efb5079dd2c5558ffacca496988888efacb1738fc67f7abb",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 60,
+    "finite_samples": 60,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2",
+    "source": "T2-20260902-152143\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "72edcba878388cd0efb5079dd2c5558ffacca496988888efacb1738fc67f7abb",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 60,
+    "finite_samples": 60,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm",
+    "source": "T2-20260902-152143\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "72edcba878388cd0efb5079dd2c5558ffacca496988888efacb1738fc67f7abb",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.206:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm-kserve-7fd479fdf-6tb96",
+      "r2_role": "llm"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 60,
+    "finite_samples": 60,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t2_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2",
+    "source": "T2-20260902-152143\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "72edcba878388cd0efb5079dd2c5558ffacca496988888efacb1738fc67f7abb",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.207:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2-kserve-7947c7b677-42h5q",
+      "r2_role": "llm2"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 60,
+    "finite_samples": 60,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T5-20260911-011315\\hami__llm+llm2\\replay.requests.csv",
+    "sha256": "53e4d0e12f7c215911f9e2feb9a42b7525784d5f5364ee3f8856318ac6d69cd8",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI",
+    "label": "llm",
+    "source": "T5-20260911-011315\\hami__llm+llm2\\prom.json",
+    "sha256": "574e7c1455210a7c9eaf654d9c77d5e2aca764d23cbb7e3339b366161e313c0d",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI",
+    "label": "llm2",
+    "source": "T5-20260911-011315\\hami__llm+llm2\\prom.json",
+    "sha256": "574e7c1455210a7c9eaf654d9c77d5e2aca764d23cbb7e3339b366161e313c0d",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI",
+    "label": "llm",
+    "source": "T5-20260911-011315\\hami__llm+llm2\\prom.json",
+    "sha256": "574e7c1455210a7c9eaf654d9c77d5e2aca764d23cbb7e3339b366161e313c0d",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.148:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm-kserve-79fc4ccdb5-vn7ms",
+      "r2_role": "llm"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI",
+    "label": "llm2",
+    "source": "T5-20260911-011315\\hami__llm+llm2\\prom.json",
+    "sha256": "574e7c1455210a7c9eaf654d9c77d5e2aca764d23cbb7e3339b366161e313c0d",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.149:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2-kserve-7dc6d66899-7dsbc",
+      "r2_role": "llm2"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T5-20260911-011315\\hami-mps__llm+llm2\\replay.requests.csv",
+    "sha256": "7b5868c145cb10445def5cdaf033d5f5034addeea8a82add16462753d45c4e04",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm",
+    "source": "T5-20260911-011315\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "3f53ba716cb082210e54af883673dd5f5e6e2ea7c9f2d0e7f544c25e7b62fab5",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2",
+    "source": "T5-20260911-011315\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "3f53ba716cb082210e54af883673dd5f5e6e2ea7c9f2d0e7f544c25e7b62fab5",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm",
+    "source": "T5-20260911-011315\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "3f53ba716cb082210e54af883673dd5f5e6e2ea7c9f2d0e7f544c25e7b62fab5",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.151:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm-kserve-7fd479fdf-9s9jm",
+      "r2_role": "llm"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2",
+    "source": "T5-20260911-011315\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "3f53ba716cb082210e54af883673dd5f5e6e2ea7c9f2d0e7f544c25e7b62fab5",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.152:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2-kserve-7947c7b677-sj92c",
+      "r2_role": "llm2"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "5f46f2a08a22e50bf039c0ac32ffcb74359ff70ad9b4bed5123af59e74f53e9a",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI",
+    "label": "llm2a",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "3f7465e0c68e84659910be4733897fab068b394f595a06cb7ada638d3fa0c1b6",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2a"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI",
+    "label": "llm2b",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "3f7465e0c68e84659910be4733897fab068b394f595a06cb7ada638d3fa0c1b6",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2b"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI",
+    "label": "llm2a",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "3f7465e0c68e84659910be4733897fab068b394f595a06cb7ada638d3fa0c1b6",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.164:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2a-kserve-665c4bc46d-z8prb",
+      "r2_role": "llm2a"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI",
+    "label": "llm2b",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "3f7465e0c68e84659910be4733897fab068b394f595a06cb7ada638d3fa0c1b6",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.165:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2b-kserve-cb786b584-2tdz4",
+      "r2_role": "llm2b"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "c4d0621fa16ff9da02f6ea38fa1a4c4d48c3572d67cb922d3b2a4dda33129f6b",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2a",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "e968fa3fb47ea6f3f62b4aeef17279b6992c4c962cde48a8b2910be7b463b4bd",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2a"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2b",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "e968fa3fb47ea6f3f62b4aeef17279b6992c4c962cde48a8b2910be7b463b4bd",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2b"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2a",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "e968fa3fb47ea6f3f62b4aeef17279b6992c4c962cde48a8b2910be7b463b4bd",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.167:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2a-kserve-77869bb584-cldx9",
+      "r2_role": "llm2a"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2b",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "e968fa3fb47ea6f3f62b4aeef17279b6992c4c962cde48a8b2910be7b463b4bd",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.168:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2b-kserve-89c669878-5n99v",
+      "r2_role": "llm2b"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T14-20260911-004001\\hami__llm+llm2\\replay.requests.csv",
+    "sha256": "98dc43fef38496a41fdccf84af82c388dd8daeeea0f9e15e6cf4e6183d959273",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI",
+    "label": "llm",
+    "source": "T14-20260911-004001\\hami__llm+llm2\\prom.json",
+    "sha256": "813d05f64bbe52ff5c2398c56d623f62a74cdcf7b9fbf8125f89784620505763",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI",
+    "label": "llm2",
+    "source": "T14-20260911-004001\\hami__llm+llm2\\prom.json",
+    "sha256": "813d05f64bbe52ff5c2398c56d623f62a74cdcf7b9fbf8125f89784620505763",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI",
+    "label": "llm",
+    "source": "T14-20260911-004001\\hami__llm+llm2\\prom.json",
+    "sha256": "813d05f64bbe52ff5c2398c56d623f62a74cdcf7b9fbf8125f89784620505763",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.140:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm-kserve-79fc4ccdb5-kgs6h",
+      "r2_role": "llm"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI",
+    "label": "llm2",
+    "source": "T14-20260911-004001\\hami__llm+llm2\\prom.json",
+    "sha256": "813d05f64bbe52ff5c2398c56d623f62a74cdcf7b9fbf8125f89784620505763",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.141:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2-kserve-7dc6d66899-kwt6t",
+      "r2_role": "llm2"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T14-20260911-004001\\hami-mps__llm+llm2\\replay.requests.csv",
+    "sha256": "4db28ad7732af1b22000c11a2005bb3748c325c0aaed7d70201cc3975488a1db",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm",
+    "source": "T14-20260911-004001\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "04010106eebf915837ae8cf9a99ec3e1ee182814fc753d4c13d3e45e62214796",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2",
+    "source": "T14-20260911-004001\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "04010106eebf915837ae8cf9a99ec3e1ee182814fc753d4c13d3e45e62214796",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm",
+    "source": "T14-20260911-004001\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "04010106eebf915837ae8cf9a99ec3e1ee182814fc753d4c13d3e45e62214796",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.143:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm-kserve-7fd479fdf-4z7sg",
+      "r2_role": "llm"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2",
+    "source": "T14-20260911-004001\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "04010106eebf915837ae8cf9a99ec3e1ee182814fc753d4c13d3e45e62214796",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.144:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2-kserve-7947c7b677-8fsft",
+      "r2_role": "llm2"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "117b2456feb52b300549d16ac87fbee6ffa25bb562e92e1940e6d5beb305985d",
+    "requests": 4820,
+    "bin_s": 10
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI",
+    "label": "llm2a",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "48eb704c1c44966f245642e9cd43ae66ba9bc8edd4f09fb3d86d6e93ba56ff0f",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2a"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI",
+    "label": "llm2b",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "48eb704c1c44966f245642e9cd43ae66ba9bc8edd4f09fb3d86d6e93ba56ff0f",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2b"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI",
+    "label": "llm2a",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "48eb704c1c44966f245642e9cd43ae66ba9bc8edd4f09fb3d86d6e93ba56ff0f",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.152:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2a-kserve-665c4bc46d-4gsk5",
+      "r2_role": "llm2a"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI",
+    "label": "llm2b",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "48eb704c1c44966f245642e9cd43ae66ba9bc8edd4f09fb3d86d6e93ba56ff0f",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.153:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2b-kserve-cb786b584-xdqxx",
+      "r2_role": "llm2b"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "6a3925383f2946dde5ba9f2c4bd63db3f49d56f722173f9398569acb21d440ab",
+    "requests": 4820,
+    "bin_s": 10
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2a",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "4624d22c29aabe82cbd37451f727b3d59567e7a6afd5d8e9b5fc5bbb685cf88c",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2a"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2b",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "4624d22c29aabe82cbd37451f727b3d59567e7a6afd5d8e9b5fc5bbb685cf88c",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2b"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2a",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "4624d22c29aabe82cbd37451f727b3d59567e7a6afd5d8e9b5fc5bbb685cf88c",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.155:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2a-kserve-77869bb584-ggmtk",
+      "r2_role": "llm2a"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2b",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "4624d22c29aabe82cbd37451f727b3d59567e7a6afd5d8e9b5fc5bbb685cf88c",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.156:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2b-kserve-89c669878-fzqvr",
+      "r2_role": "llm2b"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "67dd21d241e4959148650f7d7ec2126de2906a7b03207ed45b60fbc0e0d764b9",
+    "requests": 6726,
+    "bin_s": 10
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI",
+    "label": "llm2a",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "01d7c92083d778b3d4a16690e96a55f9eb0ef85161261c4eb3ae95c445dfad4d",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2a"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI",
+    "label": "llm2b",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "01d7c92083d778b3d4a16690e96a55f9eb0ef85161261c4eb3ae95c445dfad4d",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2b"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI",
+    "label": "llm2a",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "01d7c92083d778b3d4a16690e96a55f9eb0ef85161261c4eb3ae95c445dfad4d",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.19:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2a-kserve-665c4bc46d-26rnl",
+      "r2_role": "llm2a"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI",
+    "label": "llm2b",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "01d7c92083d778b3d4a16690e96a55f9eb0ef85161261c4eb3ae95c445dfad4d",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.20:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2b-kserve-cb786b584-5khjt",
+      "r2_role": "llm2b"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "0c53dc9038ab2c62c0c59fcc15807d64eb57e1da86a7838c2487225967bce0e4",
+    "requests": 6726,
+    "bin_s": 10
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2a",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "aae7c28b2aca46540f21835979ae50cb80112996bcd491ca8c9f62b45467bab6",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2a"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2b",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "aae7c28b2aca46540f21835979ae50cb80112996bcd491ca8c9f62b45467bab6",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2b"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2a",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "aae7c28b2aca46540f21835979ae50cb80112996bcd491ca8c9f62b45467bab6",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.22:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2a-kserve-77869bb584-lqp77",
+      "r2_role": "llm2a"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t17_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2b",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "aae7c28b2aca46540f21835979ae50cb80112996bcd491ca8c9f62b45467bab6",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.23:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2b-kserve-89c669878-jxrxc",
+      "r2_role": "llm2b"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T21-20260912-081009\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "71363451b84e67ede6bd577faba9c319f225ef3ebcdd7500d587a0c861d79020",
+    "requests": 9621,
+    "bin_s": 10
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI",
+    "label": "llm2a",
+    "source": "T21-20260912-081009\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "6ece3a7b2abc0563a41aa540777712deb3e6d5cc9a644bbdf219c6542a3c8fb4",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2a"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI",
+    "label": "llm2b",
+    "source": "T21-20260912-081009\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "6ece3a7b2abc0563a41aa540777712deb3e6d5cc9a644bbdf219c6542a3c8fb4",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2b"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI",
+    "label": "llm2a",
+    "source": "T21-20260912-081009\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "6ece3a7b2abc0563a41aa540777712deb3e6d5cc9a644bbdf219c6542a3c8fb4",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.211:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2a-kserve-665c4bc46d-vdw5r",
+      "r2_role": "llm2a"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI",
+    "label": "llm2b",
+    "source": "T21-20260912-081009\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "6ece3a7b2abc0563a41aa540777712deb3e6d5cc9a644bbdf219c6542a3c8fb4",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.212:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2b-kserve-cb786b584-slv4k",
+      "r2_role": "llm2b"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T21-20260912-081009\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "9dd78994629d2b8127de88f30cbff87e5056c9e4b3a3a65381165f14139c7c32",
+    "requests": 9621,
+    "bin_s": 10
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2a",
+    "source": "T21-20260912-081009\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "a69540b004d1012ba30be53a152460e36f490dbfaf5e6f972025b2f2b2348a70",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2a"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2b",
+    "source": "T21-20260912-081009\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "a69540b004d1012ba30be53a152460e36f490dbfaf5e6f972025b2f2b2348a70",
+    "metric": "running",
+    "selector": {
+      "r2_role": "llm2b"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (vllm:num_requests_running{namespace=\"llm-demo\"})",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2a",
+    "source": "T21-20260912-081009\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "a69540b004d1012ba30be53a152460e36f490dbfaf5e6f972025b2f2b2348a70",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.214:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2a-kserve-77869bb584-bn45l",
+      "r2_role": "llm2a"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t21_engine",
+    "arm": "HAMI+MPS",
+    "label": "llm2b",
+    "source": "T21-20260912-081009\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "a69540b004d1012ba30be53a152460e36f490dbfaf5e6f972025b2f2b2348a70",
+    "metric": "kv_usage",
+    "selector": {
+      "__name__": "vllm:kv_cache_usage_perc",
+      "container": "main",
+      "endpoint": "8000",
+      "engine": "0",
+      "instance": "10.42.0.215:8000",
+      "job": "llm-demo/r2-vllm-kserve",
+      "model_name": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+      "namespace": "llm-demo",
+      "pod": "r2-llm2b-kserve-89c669878-bcrf2",
+      "r2_role": "llm2b"
+    },
+    "scale": 100,
+    "expression": "vllm:kv_cache_usage_perc{namespace=\"llm-demo\"}",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_preemption",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T5-20260911-011315\\hami__llm+llm2\\replay.requests.csv",
+    "sha256": "53e4d0e12f7c215911f9e2feb9a42b7525784d5f5364ee3f8856318ac6d69cd8",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t5_preemption",
+    "arm": "HAMI",
+    "label": "llm",
+    "source": "T5-20260911-011315\\hami__llm+llm2\\prom.json",
+    "sha256": "574e7c1455210a7c9eaf654d9c77d5e2aca764d23cbb7e3339b366161e313c0d",
+    "metric": "preemptions",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (rate(vllm:num_preemptions_total{namespace=\"llm-demo\"}[1m]))",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_preemption",
+    "arm": "HAMI",
+    "label": "llm2",
+    "source": "T5-20260911-011315\\hami__llm+llm2\\prom.json",
+    "sha256": "574e7c1455210a7c9eaf654d9c77d5e2aca764d23cbb7e3339b366161e313c0d",
+    "metric": "preemptions",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (rate(vllm:num_preemptions_total{namespace=\"llm-demo\"}[1m]))",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_preemption",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T5-20260911-011315\\hami-mps__llm+llm2\\replay.requests.csv",
+    "sha256": "7b5868c145cb10445def5cdaf033d5f5034addeea8a82add16462753d45c4e04",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t5_preemption",
+    "arm": "HAMI+MPS",
+    "label": "llm",
+    "source": "T5-20260911-011315\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "3f53ba716cb082210e54af883673dd5f5e6e2ea7c9f2d0e7f544c25e7b62fab5",
+    "metric": "preemptions",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (rate(vllm:num_preemptions_total{namespace=\"llm-demo\"}[1m]))",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t5_preemption",
+    "arm": "HAMI+MPS",
+    "label": "llm2",
+    "source": "T5-20260911-011315\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "3f53ba716cb082210e54af883673dd5f5e6e2ea7c9f2d0e7f544c25e7b62fab5",
+    "metric": "preemptions",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (rate(vllm:num_preemptions_total{namespace=\"llm-demo\"}[1m]))",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_preemption",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T14-20260911-004001\\hami__llm+llm2\\replay.requests.csv",
+    "sha256": "98dc43fef38496a41fdccf84af82c388dd8daeeea0f9e15e6cf4e6183d959273",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t14_preemption",
+    "arm": "HAMI",
+    "label": "llm",
+    "source": "T14-20260911-004001\\hami__llm+llm2\\prom.json",
+    "sha256": "813d05f64bbe52ff5c2398c56d623f62a74cdcf7b9fbf8125f89784620505763",
+    "metric": "preemptions",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (rate(vllm:num_preemptions_total{namespace=\"llm-demo\"}[1m]))",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_preemption",
+    "arm": "HAMI",
+    "label": "llm2",
+    "source": "T14-20260911-004001\\hami__llm+llm2\\prom.json",
+    "sha256": "813d05f64bbe52ff5c2398c56d623f62a74cdcf7b9fbf8125f89784620505763",
+    "metric": "preemptions",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (rate(vllm:num_preemptions_total{namespace=\"llm-demo\"}[1m]))",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_preemption",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T14-20260911-004001\\hami-mps__llm+llm2\\replay.requests.csv",
+    "sha256": "4db28ad7732af1b22000c11a2005bb3748c325c0aaed7d70201cc3975488a1db",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t14_preemption",
+    "arm": "HAMI+MPS",
+    "label": "llm",
+    "source": "T14-20260911-004001\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "04010106eebf915837ae8cf9a99ec3e1ee182814fc753d4c13d3e45e62214796",
+    "metric": "preemptions",
+    "selector": {
+      "r2_role": "llm"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (rate(vllm:num_preemptions_total{namespace=\"llm-demo\"}[1m]))",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t14_preemption",
+    "arm": "HAMI+MPS",
+    "label": "llm2",
+    "source": "T14-20260911-004001\\hami-mps__llm+llm2\\prom.json",
+    "sha256": "04010106eebf915837ae8cf9a99ec3e1ee182814fc753d4c13d3e45e62214796",
+    "metric": "preemptions",
+    "selector": {
+      "r2_role": "llm2"
+    },
+    "scale": 1,
+    "expression": "sum by (r2_role) (rate(vllm:num_preemptions_total{namespace=\"llm-demo\"}[1m]))",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "5f46f2a08a22e50bf039c0ac32ffcb74359ff70ad9b4bed5123af59e74f53e9a",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "0e27e0b24a3cb2d0ba738de62ac7860b2cfbd709338f4eb20452dc8a73002fb3",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.0530002117156982
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "0e27e0b24a3cb2d0ba738de62ac7860b2cfbd709338f4eb20452dc8a73002fb3",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.0530002117156982
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "0e27e0b24a3cb2d0ba738de62ac7860b2cfbd709338f4eb20452dc8a73002fb3",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.0530002117156982
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "0e27e0b24a3cb2d0ba738de62ac7860b2cfbd709338f4eb20452dc8a73002fb3",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.0530002117156982
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "0e27e0b24a3cb2d0ba738de62ac7860b2cfbd709338f4eb20452dc8a73002fb3",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.0530002117156982
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "0e27e0b24a3cb2d0ba738de62ac7860b2cfbd709338f4eb20452dc8a73002fb3",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.0530002117156982
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "c4d0621fa16ff9da02f6ea38fa1a4c4d48c3572d67cb922d3b2a4dda33129f6b",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "e5b37153ec9ac9039f4281273a0b626ff1bc7b163bad74987e9514c936c3eb66",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.053999900817871
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "e5b37153ec9ac9039f4281273a0b626ff1bc7b163bad74987e9514c936c3eb66",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.053999900817871
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "e5b37153ec9ac9039f4281273a0b626ff1bc7b163bad74987e9514c936c3eb66",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.053999900817871
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "e5b37153ec9ac9039f4281273a0b626ff1bc7b163bad74987e9514c936c3eb66",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.053999900817871
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "e5b37153ec9ac9039f4281273a0b626ff1bc7b163bad74987e9514c936c3eb66",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.053999900817871
+  },
+  {
+    "chart": "t13_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "e5b37153ec9ac9039f4281273a0b626ff1bc7b163bad74987e9514c936c3eb66",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.053999900817871
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "117b2456feb52b300549d16ac87fbee6ffa25bb562e92e1940e6d5beb305985d",
+    "requests": 4820,
+    "bin_s": 10
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "6a3925383f2946dde5ba9f2c4bd63db3f49d56f722173f9398569acb21d440ab",
+    "requests": 4820,
+    "bin_s": 10
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "67dd21d241e4959148650f7d7ec2126de2906a7b03207ed45b60fbc0e0d764b9",
+    "requests": 6726,
+    "bin_s": 10
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "0c53dc9038ab2c62c0c59fcc15807d64eb57e1da86a7838c2487225967bce0e4",
+    "requests": 6726,
+    "bin_s": 10
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\replay.requests.csv",
+    "sha256": "9c751ea448b647146bd502accdc1ffd25e81813ad8b2526053ecd1d55341663c",
+    "requests": 306,
+    "bin_s": 10
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\replay.requests.csv",
+    "sha256": "d9a2f70215bfe22815689bdd9a0308f75c7e98512df04580aead7fee3ee725a2",
+    "requests": 306,
+    "bin_s": 10
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "utilization.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "utilization.memory",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_hardware",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "5f46f2a08a22e50bf039c0ac32ffcb74359ff70ad9b4bed5123af59e74f53e9a",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI",
+    "label": "GPU 0 allocated",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "3f7465e0c68e84659910be4733897fab068b394f595a06cb7ada638d3fa0c1b6",
+    "metric": "hami_mem",
+    "selector": {
+      "__name__": "hami_gpu_memory_allocated_bytes",
+      "container": "vgpu-scheduler-extender",
+      "device_cores": "0",
+      "device_index": "0",
+      "device_type": "NVIDIA GeForce RTX 3080 Ti",
+      "device_uuid": "GPU-bc62f652-9fa4-7abf-2b0d-81a84f3a27cf",
+      "endpoint": "monitor",
+      "instance": "10.42.0.137:9395",
+      "job": "hami-scheduler",
+      "namespace": "kube-system",
+      "node": "mr-gholami",
+      "pod": "hami-scheduler-86949557df-bnkx8",
+      "service": "hami-scheduler",
+      "zone": "vGPU"
+    },
+    "scale": 9.5367431640625e-07,
+    "expression": "hami_gpu_memory_allocated_bytes",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI",
+    "label": "GPU 0 used",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "0e27e0b24a3cb2d0ba738de62ac7860b2cfbd709338f4eb20452dc8a73002fb3",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.0530002117156982
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI",
+    "label": "GPU 1 allocated",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "3f7465e0c68e84659910be4733897fab068b394f595a06cb7ada638d3fa0c1b6",
+    "metric": "hami_mem",
+    "selector": {
+      "__name__": "hami_gpu_memory_allocated_bytes",
+      "container": "vgpu-scheduler-extender",
+      "device_cores": "100",
+      "device_index": "1",
+      "device_type": "NVIDIA GeForce RTX 3080 Ti",
+      "device_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c",
+      "endpoint": "monitor",
+      "instance": "10.42.0.137:9395",
+      "job": "hami-scheduler",
+      "namespace": "kube-system",
+      "node": "mr-gholami",
+      "pod": "hami-scheduler-86949557df-bnkx8",
+      "service": "hami-scheduler",
+      "zone": "vGPU"
+    },
+    "scale": 9.5367431640625e-07,
+    "expression": "hami_gpu_memory_allocated_bytes",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI",
+    "label": "GPU 1 used",
+    "source": "T13-20260911-021908\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "0e27e0b24a3cb2d0ba738de62ac7860b2cfbd709338f4eb20452dc8a73002fb3",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.0530002117156982
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "c4d0621fa16ff9da02f6ea38fa1a4c4d48c3572d67cb922d3b2a4dda33129f6b",
+    "requests": 2419,
+    "bin_s": 10
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0 allocated",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "e968fa3fb47ea6f3f62b4aeef17279b6992c4c962cde48a8b2910be7b463b4bd",
+    "metric": "hami_mem",
+    "selector": {
+      "__name__": "hami_gpu_memory_allocated_bytes",
+      "container": "vgpu-scheduler-extender",
+      "device_cores": "0",
+      "device_index": "0",
+      "device_type": "NVIDIA GeForce RTX 3080 Ti",
+      "device_uuid": "GPU-bc62f652-9fa4-7abf-2b0d-81a84f3a27cf",
+      "endpoint": "monitor",
+      "instance": "10.42.0.137:9395",
+      "job": "hami-scheduler",
+      "namespace": "kube-system",
+      "node": "mr-gholami",
+      "pod": "hami-scheduler-86949557df-bnkx8",
+      "service": "hami-scheduler",
+      "zone": "vGPU"
+    },
+    "scale": 9.5367431640625e-07,
+    "expression": "hami_gpu_memory_allocated_bytes",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0 used",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "e5b37153ec9ac9039f4281273a0b626ff1bc7b163bad74987e9514c936c3eb66",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.053999900817871
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1 allocated",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "e968fa3fb47ea6f3f62b4aeef17279b6992c4c962cde48a8b2910be7b463b4bd",
+    "metric": "hami_mem",
+    "selector": {
+      "__name__": "hami_gpu_memory_allocated_bytes",
+      "container": "vgpu-scheduler-extender",
+      "device_cores": "100",
+      "device_index": "1",
+      "device_type": "NVIDIA GeForce RTX 3080 Ti",
+      "device_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c",
+      "endpoint": "monitor",
+      "instance": "10.42.0.137:9395",
+      "job": "hami-scheduler",
+      "namespace": "kube-system",
+      "node": "mr-gholami",
+      "pod": "hami-scheduler-86949557df-bnkx8",
+      "service": "hami-scheduler",
+      "zone": "vGPU"
+    },
+    "scale": 9.5367431640625e-07,
+    "expression": "hami_gpu_memory_allocated_bytes",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t13_allocation",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1 used",
+    "source": "T13-20260911-021908\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "e5b37153ec9ac9039f4281273a0b626ff1bc7b163bad74987e9514c936c3eb66",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 228,
+    "finite_samples": 228,
+    "median_interval_s": 1.053999900817871
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "117b2456feb52b300549d16ac87fbee6ffa25bb562e92e1940e6d5beb305985d",
+    "requests": 4820,
+    "bin_s": 10
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI",
+    "label": "GPU 0 allocated",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "48eb704c1c44966f245642e9cd43ae66ba9bc8edd4f09fb3d86d6e93ba56ff0f",
+    "metric": "hami_mem",
+    "selector": {
+      "__name__": "hami_gpu_memory_allocated_bytes",
+      "container": "vgpu-scheduler-extender",
+      "device_cores": "0",
+      "device_index": "0",
+      "device_type": "NVIDIA GeForce RTX 3080 Ti",
+      "device_uuid": "GPU-bc62f652-9fa4-7abf-2b0d-81a84f3a27cf",
+      "endpoint": "monitor",
+      "instance": "10.42.0.137:9395",
+      "job": "hami-scheduler",
+      "namespace": "kube-system",
+      "node": "mr-gholami",
+      "pod": "hami-scheduler-86949557df-bnkx8",
+      "service": "hami-scheduler",
+      "zone": "vGPU"
+    },
+    "scale": 9.5367431640625e-07,
+    "expression": "hami_gpu_memory_allocated_bytes",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI",
+    "label": "GPU 0 used",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI",
+    "label": "GPU 1 allocated",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\prom.json",
+    "sha256": "48eb704c1c44966f245642e9cd43ae66ba9bc8edd4f09fb3d86d6e93ba56ff0f",
+    "metric": "hami_mem",
+    "selector": {
+      "__name__": "hami_gpu_memory_allocated_bytes",
+      "container": "vgpu-scheduler-extender",
+      "device_cores": "100",
+      "device_index": "1",
+      "device_type": "NVIDIA GeForce RTX 3080 Ti",
+      "device_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c",
+      "endpoint": "monitor",
+      "instance": "10.42.0.137:9395",
+      "job": "hami-scheduler",
+      "namespace": "kube-system",
+      "node": "mr-gholami",
+      "pod": "hami-scheduler-86949557df-bnkx8",
+      "service": "hami-scheduler",
+      "zone": "vGPU"
+    },
+    "scale": 9.5367431640625e-07,
+    "expression": "hami_gpu_memory_allocated_bytes",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI",
+    "label": "GPU 1 used",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "6a3925383f2946dde5ba9f2c4bd63db3f49d56f722173f9398569acb21d440ab",
+    "requests": 4820,
+    "bin_s": 10
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0 allocated",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "4624d22c29aabe82cbd37451f727b3d59567e7a6afd5d8e9b5fc5bbb685cf88c",
+    "metric": "hami_mem",
+    "selector": {
+      "__name__": "hami_gpu_memory_allocated_bytes",
+      "container": "vgpu-scheduler-extender",
+      "device_cores": "0",
+      "device_index": "0",
+      "device_type": "NVIDIA GeForce RTX 3080 Ti",
+      "device_uuid": "GPU-bc62f652-9fa4-7abf-2b0d-81a84f3a27cf",
+      "endpoint": "monitor",
+      "instance": "10.42.0.137:9395",
+      "job": "hami-scheduler",
+      "namespace": "kube-system",
+      "node": "mr-gholami",
+      "pod": "hami-scheduler-86949557df-bnkx8",
+      "service": "hami-scheduler",
+      "zone": "vGPU"
+    },
+    "scale": 9.5367431640625e-07,
+    "expression": "hami_gpu_memory_allocated_bytes",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0 used",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "memory.used",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1 allocated",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\prom.json",
+    "sha256": "4624d22c29aabe82cbd37451f727b3d59567e7a6afd5d8e9b5fc5bbb685cf88c",
+    "metric": "hami_mem",
+    "selector": {
+      "__name__": "hami_gpu_memory_allocated_bytes",
+      "container": "vgpu-scheduler-extender",
+      "device_cores": "100",
+      "device_index": "1",
+      "device_type": "NVIDIA GeForce RTX 3080 Ti",
+      "device_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c",
+      "endpoint": "monitor",
+      "instance": "10.42.0.137:9395",
+      "job": "hami-scheduler",
+      "namespace": "kube-system",
+      "node": "mr-gholami",
+      "pod": "hami-scheduler-86949557df-bnkx8",
+      "service": "hami-scheduler",
+      "zone": "vGPU"
+    },
+    "scale": 9.5367431640625e-07,
+    "expression": "hami_gpu_memory_allocated_bytes",
+    "samples": 48,
+    "finite_samples": 48,
+    "median_interval_s": 5.0
+  },
+  {
+    "chart": "t15_allocation",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1 used",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "memory.used",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "117b2456feb52b300549d16ac87fbee6ffa25bb562e92e1940e6d5beb305985d",
+    "requests": 4820,
+    "bin_s": 10
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "power.draw",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "power.draw",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "ddff3acdb0c1168698ef025be1b2fe1e11569aa9f1725ff53b80712c66fe3df1",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.0630000829696655
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "6a3925383f2946dde5ba9f2c4bd63db3f49d56f722173f9398569acb21d440ab",
+    "requests": 4820,
+    "bin_s": 10
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "power.draw",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "power.draw",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t15_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T15-20260906-182642\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "3d812347a574701ca06c7492c1c4e7cdb57eafb2a7e3b901460575bf9082bce4",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 226,
+    "finite_samples": 226,
+    "median_interval_s": 1.064000129699707
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "67dd21d241e4959148650f7d7ec2126de2906a7b03207ed45b60fbc0e0d764b9",
+    "requests": 6726,
+    "bin_s": 10
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "power.draw",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "power.draw",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami__llm2a+llm2b\\gpu.csv",
+    "sha256": "840b9d0a89321a97abd6653e0bcefe4b420282b1d07361e107272650e3e1db5c",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 227,
+    "finite_samples": 227,
+    "median_interval_s": 1.055999994277954
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\replay.requests.csv",
+    "sha256": "0c53dc9038ab2c62c0c59fcc15807d64eb57e1da86a7838c2487225967bce0e4",
+    "requests": 6726,
+    "bin_s": 10
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "power.draw",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "power.draw",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "t17_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "T17-20260912-123151\\hami-mps__llm2a+llm2b\\gpu.csv",
+    "sha256": "717627ee368951e48782ebbbcbfe4ccd34a0539c313c8782ff141752822ab700",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 225,
+    "finite_samples": 225,
+    "median_interval_s": 1.062999963760376
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI",
+    "metric": "arrival_rate",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\replay.requests.csv",
+    "sha256": "9c751ea448b647146bd502accdc1ffd25e81813ad8b2526053ecd1d55341663c",
+    "requests": 306,
+    "bin_s": 10
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "power.draw",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "power.draw",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami\\gpu.csv",
+    "sha256": "726710f2df1bf6fd3055fc76e68e7cfc3a3ca4c9a3812606a5e0d097246795ca",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0520000457763672
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI+MPS",
+    "metric": "arrival_rate",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\replay.requests.csv",
+    "sha256": "d9a2f70215bfe22815689bdd9a0308f75c7e98512df04580aead7fee3ee725a2",
+    "requests": 306,
+    "bin_s": 10
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "clocks.sm",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "power.draw",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "power.draw",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 0",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 0
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  },
+  {
+    "chart": "s_thermal",
+    "arm": "HAMI+MPS",
+    "label": "GPU 1",
+    "source": "S-qwen7b-attempt-20260925-134248\\hami-mps\\gpu.csv",
+    "sha256": "0508308a4c5dbd023015b204cd97fe69e75006d0e5264b8a227fc09b8fc40d1d",
+    "metric": "temperature.gpu",
+    "selector": {
+      "index": 1
+    },
+    "scale": 1,
+    "expression": null,
+    "samples": 284,
+    "finite_samples": 284,
+    "median_interval_s": 1.0540001392364502
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "arm": "hami-mps",
+  "error": "RuntimeError: host RAM: 3 tenants need about 9024 MiB but only 8123 MiB is available (total 15988 MiB, swap 6143 MiB). This is what killed T4 -- the OOM killer took two vLLM engines and Prometheus. Use fewer tenants, or measure real per-role RSS into HOST_RSS_MIB.",
+  "host_memory": {
+    "available_mib": 8123,
+    "measured": [
+      "embed-small"
+    ],
+    "need_mib": 9024,
+    "roles": [
+      "llm2a",
+      "llm2b",
+      "embed-small"
+    ],
+    "swap_total_mib": 6143,
+    "total_mib": 15988
+  },
+  "render": [
+    "",
+    "arm hami-mps  scenario dense3b",
+    "gpumem requested 9984 of 12288 MiB = 81.2% of the card",
+    "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T22-20260912-085910/hami-mps__llm2a+llm2b+embed-small/rendered"
+  ],
+  "roles": [
+    "llm2a",
+    "llm2b",
+    "embed-small"
+  ],
+  "scenario": "dense3b",
+  "status": "error",
+  "tag": "hami-mps__llm2a+llm2b+embed-small",
+  "teardown_left": [],
+  "teardown_s": 0.3,
+  "test": "T22",
+  "trace_id": "dda6f9a0a74df63c"
+}

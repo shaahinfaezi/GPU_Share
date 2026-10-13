@@ -1,0 +1,17 @@
+{"t": 1788361405.6869483, "iso": "2026-09-02T15:03:25+0000", "phase": "teardown_begin"}
+{"t": 1788361407.3638084, "iso": "2026-09-02T15:03:27+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 1, \"1\": 1}"}
+{"t": 1788361407.562768, "iso": "2026-09-02T15:03:27+0000", "phase": "mps_daemon", "want": false, "after_s": 0.0, "nudged": false}
+{"t": 1788361410.6567369, "iso": "2026-09-02T15:03:30+0000", "phase": "apply"}
+{"t": 1788361411.464542, "iso": "2026-09-02T15:03:31+0000", "phase": "wait_ready", "roles": "llm,embed"}
+{"t": 1788361547.741483, "iso": "2026-09-02T15:05:47+0000", "phase": "ready", "role": "embed", "after_s": 136.3}
+{"t": 1788361612.8339994, "iso": "2026-09-02T15:06:52+0000", "phase": "ready", "role": "llm", "after_s": 201.4}
+{"t": 1788361613.62675, "iso": "2026-09-02T15:06:53+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"embed\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1788361613.861915, "iso": "2026-09-02T15:06:53+0000", "phase": "mps_state", "ok": true, "arm": "hami", "want_mps": false, "daemon_running": false, "mps_client_pids": [], "tenants": 2}
+{"t": 1788361614.26614, "iso": "2026-09-02T15:06:54+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.197:8000"}
+{"t": 1788361614.5188735, "iso": "2026-09-02T15:06:54+0000", "phase": "endpoint", "role": "embed", "url": "http://10.42.0.196:8000"}
+{"t": 1788361615.0335948, "iso": "2026-09-02T15:06:55+0000", "phase": "smoke", "role": "embed", "ok": true}
+{"t": 1788361615.3773005, "iso": "2026-09-02T15:06:55+0000", "phase": "smoke", "role": "llm", "ok": true}
+{"t": 1788361615.3778296, "iso": "2026-09-02T15:06:55+0000", "phase": "replay_begin"}
+{"t": 1788361919.0854688, "iso": "2026-09-02T15:11:59+0000", "phase": "replay_end", "rc": 0}
+{"t": 1788361919.5982995, "iso": "2026-09-02T15:11:59+0000", "phase": "prom_collected", "series": 56, "errors": 0, "skipped": 1, "path": "prom.json"}
+{"t": 1788361919.5993052, "iso": "2026-09-02T15:11:59+0000", "phase": "teardown_end"}

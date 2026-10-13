@@ -1,0 +1,85 @@
+{
+  "arm": "hami",
+  "duration": 300,
+  "fault": "global-fault",
+  "fault_detail": {
+    "faulter_pod": "r2-llm2-kserve-7dc6d66899-nknws",
+    "faulter_role": "llm2",
+    "gpu_before": {
+      "0": 1,
+      "1": 11549
+    },
+    "mps_clients_after": [],
+    "mps_daemon_after": false,
+    "out_tail": "aErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\\nCUDA kernel e\", \"context_alive_after\": false, \"sticky\": \"AcceleratorError: CUDA error: an illegal memory access was encountered\\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\\nCUDA kernel e\"}\n",
+    "probe": {
+      "context_alive_after": false,
+      "launch_rc": 0,
+      "result": "AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel e",
+      "sticky": "AcceleratorError: CUDA error: an illegal memory access was encountered\nSearch for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.\nCUDA kernel e"
+    },
+    "rc": 0
+  },
+  "fault_time": 1789142243.350367,
+  "host_min_available_mib": 2143,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 2,
+    "want_mps": false
+  },
+  "mps_recovery": null,
+  "out": "/opt/GPU_Share/round2/results/T10-global-fault-hami-20260911-155223",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": true,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1789142153.2528648,
+  "t1": 1789142458.712665,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 3.5573522458070177,
+      "n": 343,
+      "p50": 2.8347952626645565,
+      "p95": 8.679959661327302,
+      "p99": 14.022901065647602
+    },
+    "before": {
+      "failed": 0,
+      "mean": 4.7202278099180575,
+      "n": 183,
+      "p50": 3.7059901487082243,
+      "p95": 14.079951141960919,
+      "p99": 21.69995892420411
+    },
+    "during": {
+      "failed": 0,
+      "mean": 3.533184930461464,
+      "n": 173,
+      "p50": 2.6565888999029994,
+      "p95": 8.486445562914014,
+      "p99": 18.329662340693176
+    }
+  }
+}

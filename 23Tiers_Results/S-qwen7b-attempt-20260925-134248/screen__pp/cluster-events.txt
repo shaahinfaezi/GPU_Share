@@ -1,0 +1,30 @@
+LAST SEEN   TYPE      REASON              OBJECT                               MESSAGE
+2m28s       Normal    Scheduled           pod/r2-pp-kserve-6fddbbd558-zhzrp    Successfully assigned llm-demo/r2-pp-kserve-6fddbbd558-zhzrp to mr-gholami
+6m20s       Normal    Scheduled           pod/r2-tp-kserve-668784b954-knr2s    Successfully assigned llm-demo/r2-tp-kserve-668784b954-knr2s to mr-gholami
+6m20s       Normal    ScalingReplicaSet   deployment/r2-tp-kserve              Scaled up replica set r2-tp-kserve-668784b954 from 0 to 1
+6m20s       Normal    Created             llminferenceservice/r2-tp            Created v1.Service llm-demo/r2-tp-kserve-workload-svc
+6m20s       Normal    Created             llminferenceservice/r2-tp            Created v1.Deployment llm-demo/r2-tp-kserve
+6m20s       Normal    Created             llminferenceservice/r2-tp            Created v1.Secret llm-demo/r2-tp-kserve-self-signed-certs
+6m20s       Normal    SuccessfulCreate    replicaset/r2-tp-kserve-668784b954   Created pod: r2-tp-kserve-668784b954-knr2s
+6m20s       Normal    FilteringSucceed    pod/r2-tp-kserve-668784b954-knr2s    find fit node(mr-gholami), 0 nodes not fit, 1 nodes fit(mr-gholami:0.00)
+6m20s       Normal    BindingSucceed      pod/r2-tp-kserve-668784b954-knr2s    Successfully binding node [mr-gholami] to llm-demo/r2-tp-kserve-668784b954-knr2s
+6m19s       Normal    Created             pod/r2-tp-kserve-668784b954-knr2s    Created container: main
+6m19s       Normal    Pulled              pod/r2-tp-kserve-668784b954-knr2s    Container image "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu" already present on machine
+6m18s       Normal    Started             pod/r2-tp-kserve-668784b954-knr2s    Started container main
+5m32s       Normal    Updated             llminferenceservice/r2-tp            Updated v1.Secret llm-demo/r2-tp-kserve-self-signed-certs
+4m45s       Warning   Unhealthy           pod/r2-tp-kserve-668784b954-knr2s    Startup probe failed: Get "http://10.42.0.79:8000/health": dial tcp 10.42.0.79:8000: connect: connection refused
+3m27s       Normal    Killing             pod/r2-tp-kserve-668784b954-knr2s    Stopping container main
+3m22s       Warning   Unhealthy           pod/r2-tp-kserve-668784b954-knr2s    Readiness probe failed: Get "http://10.42.0.79:8000/health": read tcp 10.42.0.1:39474->10.42.0.79:8000: read: connection reset by peer
+3m20s       Warning   Unhealthy           pod/r2-tp-kserve-668784b954-knr2s    Readiness probe failed: Get "http://10.42.0.79:8000/health": dial tcp 10.42.0.79:8000: connect: connection refused
+2m28s       Normal    Created             llminferenceservice/r2-pp            Created v1.Secret llm-demo/r2-pp-kserve-self-signed-certs
+2m28s       Normal    Created             llminferenceservice/r2-pp            Created v1.Deployment llm-demo/r2-pp-kserve
+2m28s       Normal    ScalingReplicaSet   deployment/r2-pp-kserve              Scaled up replica set r2-pp-kserve-6fddbbd558 from 0 to 1
+2m28s       Normal    FilteringSucceed    pod/r2-pp-kserve-6fddbbd558-zhzrp    find fit node(mr-gholami), 0 nodes not fit, 1 nodes fit(mr-gholami:0.00)
+2m28s       Normal    Created             llminferenceservice/r2-pp            Created v1.Service llm-demo/r2-pp-kserve-workload-svc
+2m28s       Normal    SuccessfulCreate    replicaset/r2-pp-kserve-6fddbbd558   Created pod: r2-pp-kserve-6fddbbd558-zhzrp
+2m28s       Normal    BindingSucceed      pod/r2-pp-kserve-6fddbbd558-zhzrp    Successfully binding node [mr-gholami] to llm-demo/r2-pp-kserve-6fddbbd558-zhzrp
+2m27s       Normal    Created             pod/r2-pp-kserve-6fddbbd558-zhzrp    Created container: main
+2m27s       Normal    Pulled              pod/r2-pp-kserve-6fddbbd558-zhzrp    Container image "127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu" already present on machine
+2m26s       Normal    Started             pod/r2-pp-kserve-6fddbbd558-zhzrp    Started container main
+74s         Normal    Updated             llminferenceservice/r2-pp            Updated v1.Secret llm-demo/r2-pp-kserve-self-signed-certs
+73s         Warning   Unhealthy           pod/r2-pp-kserve-6fddbbd558-zhzrp    Startup probe failed: Get "http://10.42.0.80:8000/health": dial tcp 10.42.0.80:8000: connect: connection refused

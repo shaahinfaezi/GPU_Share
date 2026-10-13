@@ -1,0 +1,75 @@
+{
+  "arm": "hami",
+  "duration": 300,
+  "fault": "vram-hog",
+  "fault_detail": {
+    "hog_gpu_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c",
+    "hog_held_mib": null,
+    "hog_log_tail": "",
+    "manifest": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260909-185717/r2-vram-hog.yaml",
+    "out": "pod/r2-vram-hog created\n",
+    "rc": 0
+  },
+  "fault_time": 1788980608.283106,
+  "host_min_available_mib": 2477,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 2,
+    "want_mps": false
+  },
+  "mps_recovery": null,
+  "out": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260909-185717",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": null,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1788980518.186858,
+  "t1": 1788980823.2990274,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 3.547333674467229,
+      "n": 342,
+      "p50": 2.81243584305048,
+      "p95": 8.680969999171793,
+      "p99": 13.87836659885943
+    },
+    "before": {
+      "failed": 0,
+      "mean": 4.776037631981561,
+      "n": 184,
+      "p50": 3.7247667284682393,
+      "p95": 14.231086841784418,
+      "p99": 21.772824119776487
+    },
+    "during": {
+      "failed": 0,
+      "mean": 3.4808665394427716,
+      "n": 173,
+      "p50": 2.6344861248508096,
+      "p95": 8.4818149311468,
+      "p99": 18.289293619804084
+    }
+  }
+}

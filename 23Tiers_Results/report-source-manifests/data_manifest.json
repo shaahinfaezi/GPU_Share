@@ -1,0 +1,1864 @@
+{
+  "generated_by": "build_research_report_assets.py",
+  "source_precedence": [
+    "raw run artifacts",
+    "later corrected sections of FINDINGS.md",
+    "tier reports and earlier operational notes"
+  ],
+  "canonical_runs": {
+    "T1": "T1-20260902-144618",
+    "T2": "T2-20260902-152143",
+    "T3": "T3-20260902-155701",
+    "T4": "T4-20260904-100610",
+    "T5": "T5-20260911-011315",
+    "T6": "T6-20260911-000539",
+    "T7": "T7-20260905-113832",
+    "T8": "T8-20260906-111040",
+    "T9": "T9-hami-20260910-225617",
+    "T11": "T11-20260906-092256",
+    "T13": "T13-20260911-021908",
+    "T14": "T14-20260911-004001",
+    "T15": "T15-20260906-182642",
+    "T16": "T16-20260910-042857",
+    "T17": "T17-20260912-123151",
+    "T18": "T18-20260912-070817",
+    "T20": "T20-20260912-073411",
+    "T21": "T21-20260912-081009",
+    "T22": "T22-20260912-085910"
+  },
+  "metrics": {
+    "T1": {
+      "path": "T1-20260902-144618",
+      "roles": [
+        "llm",
+        "embed"
+      ],
+      "config": {
+        "duration": 300,
+        "rate": 6.0,
+        "scenario": "llm-embed",
+        "source": "sharegpt",
+        "why": "Headline. 7B-AWQ + bge-m3 fills 91.7% of the card against round one's measured 62.7-69.3% (peak VRAM on GPU 0, from its own gpu-timeline.csv). The bigger gap is the workload: round one used 51-token prompts and fixed 256-token outputs at concurrency 4, which is decode-bound and never queues. Registered prediction: filling the card and letting it queue widens the MPS advantage."
+      },
+      "arms": {
+        "اختصاصی:embed": {
+          "requests_ok": 868,
+          "requests_total": 868,
+          "requests_failed": 0,
+          "tokens_per_second": 0.0,
+          "aggregate_tokens_per_second": 0.0,
+          "requests_per_second": 2.8930586154843274,
+          "latency_mean_s": 0.2218678014434462,
+          "latency_p95_s": 0.37337420596741133,
+          "latency_p99_s": 0.46933725804090604,
+          "ttft_p99_s": 0.46933725804090604,
+          "chunk_gap_p99_s": null,
+          "contended_tokens_per_second": null,
+          "trace_id": "1192f91a36ff2224"
+        },
+        "اختصاصی:llm": {
+          "requests_ok": 885,
+          "requests_total": 885,
+          "requests_failed": 0,
+          "tokens_per_second": 430.1529089771635,
+          "aggregate_tokens_per_second": 430.02637063979137,
+          "requests_per_second": 2.931614026022904,
+          "latency_mean_s": 1.4899613395470095,
+          "latency_p95_s": 3.7368223933503026,
+          "latency_p99_s": 6.643298917673509,
+          "ttft_p99_s": 0.5609108547121282,
+          "chunk_gap_p99_s": 0.060925456257536946,
+          "contended_tokens_per_second": null,
+          "trace_id": "1192f91a36ff2224"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 1753,
+          "requests_total": 1753,
+          "requests_failed": 0,
+          "tokens_per_second": 431.4555701450106,
+          "aggregate_tokens_per_second": 431.32853239436963,
+          "requests_per_second": 5.805715098530602,
+          "latency_mean_s": 0.9122374642452281,
+          "latency_p95_s": 3.2005123456940097,
+          "latency_p99_s": 5.75378542594612,
+          "ttft_p99_s": 0.5285119010880596,
+          "chunk_gap_p99_s": 0.0674685640726243,
+          "contended_tokens_per_second": 433.33463644536977,
+          "trace_id": "1192f91a36ff2224"
+        },
+        "HAMI": {
+          "requests_ok": 1753,
+          "requests_total": 1753,
+          "requests_failed": 0,
+          "tokens_per_second": 429.8886329729149,
+          "aggregate_tokens_per_second": 429.7623141020833,
+          "requests_per_second": 5.8064798154944,
+          "latency_mean_s": 0.9004318286259422,
+          "latency_p95_s": 3.163461286015811,
+          "latency_p99_s": 5.724427010938529,
+          "ttft_p99_s": 0.4809022963047028,
+          "chunk_gap_p99_s": 0.06907625962048786,
+          "contended_tokens_per_second": 431.84758951995497,
+          "trace_id": "1192f91a36ff2224"
+        }
+      }
+    },
+    "T2": {
+      "path": "T2-20260902-152143",
+      "roles": [
+        "llm",
+        "llm2"
+      ],
+      "config": {
+        "duration": 300,
+        "rate": 6.0,
+        "scenario": "llm-llm",
+        "source": "sharegpt",
+        "why": "Two generative tenants, and the HIGHEST-POWER scenario in the matrix. T1 established that MPS is bounded by power, not contention: every arm holding the 7B sat at 343 W of a 350 W board limit and MPS returned +0.0%, where round one at 249-256 W returned +24.9%. Three predictions registered before the run. (a) MPS again returns ~0%: adding a 1.5B to a card already at its ceiling cannot create headroom. (b) Sharing costs MORE than T1's +3.1% e2e p99, because the neighbour is a steady decode consumer rather than a bursty encoder. (c) The clock-residency gain that made bge-m3 7.4% FASTER will NOT appear for llm2 -- it only existed because the embedder alone left the card at 3.5% utilisation and 1,665 MHz. A 1.5B alone will already hold clocks near peak, so there is nothing for a neighbour to recover. T4 is the opposite extreme and the real test of the power hypothesis. OUTCOME: all three held. MPS -0.010% at 346.4 W (3.6 W headroom). 7B e2e p99 +33.8% vs T1's +3.1%. llm2 alone holds 1922 MHz -- HIGHER than the 7B's 1809 -- and sharing drops it to 1780, so it got slower on every measure. The unregistered finding is bigger than all three: ITL CONVERGES. The 7B:1.5B per-token ratio goes 2.29x dedicated to 1.03x shared, so the small model pays e2e p50 +189% while the big one pays +38%, on total throughput that moved -0.59%. Zero preemptions, KV 1.5-14.3%: contention, not queueing. FINDINGS 2.11."
+      },
+      "arms": {
+        "اختصاصی:llm": {
+          "requests_ok": 885,
+          "requests_total": 885,
+          "requests_failed": 0,
+          "tokens_per_second": 430.007737145004,
+          "aggregate_tokens_per_second": 429.88100266455797,
+          "requests_per_second": 2.9314811129545904,
+          "latency_mean_s": 1.4966453210266548,
+          "latency_p95_s": 3.7472831100225448,
+          "latency_p99_s": 6.636286797933272,
+          "ttft_p99_s": 0.573481637500226,
+          "chunk_gap_p99_s": 0.05944368676282464,
+          "contended_tokens_per_second": null,
+          "trace_id": "1a8278ce7fdd85f2"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 868,
+          "requests_total": 868,
+          "requests_failed": 0,
+          "tokens_per_second": 375.55180700729744,
+          "aggregate_tokens_per_second": 375.1128976639538,
+          "requests_per_second": 2.892738747233063,
+          "latency_mean_s": 0.5575060613017769,
+          "latency_p95_s": 1.3877122891601172,
+          "latency_p99_s": 2.111040269993246,
+          "ttft_p99_s": 0.1828292923048142,
+          "chunk_gap_p99_s": 0.021543903034180148,
+          "contended_tokens_per_second": null,
+          "trace_id": "1a8278ce7fdd85f2"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 1753,
+          "requests_total": 1753,
+          "requests_failed": 0,
+          "tokens_per_second": 800.1885878743419,
+          "aggregate_tokens_per_second": 799.2116470775093,
+          "requests_per_second": 5.800380134582299,
+          "latency_mean_s": 1.9162134128265162,
+          "latency_p95_s": 4.964645556360484,
+          "latency_p99_s": 8.685249453447762,
+          "ttft_p99_s": 0.5570759020745755,
+          "chunk_gap_p99_s": 0.08334155930206173,
+          "contended_tokens_per_second": 800.9159566139111,
+          "trace_id": "1a8278ce7fdd85f2"
+        },
+        "HAMI": {
+          "requests_ok": 1753,
+          "requests_total": 1753,
+          "requests_failed": 0,
+          "tokens_per_second": 803.2600114238985,
+          "aggregate_tokens_per_second": 800.9355348608973,
+          "requests_per_second": 5.795591482750569,
+          "latency_mean_s": 2.613066214194157,
+          "latency_p95_s": 7.654219739325345,
+          "latency_p99_s": 14.77800769321621,
+          "ttft_p99_s": 0.9909315558895472,
+          "chunk_gap_p99_s": 0.1743114162236452,
+          "contended_tokens_per_second": 804.7790451273966,
+          "trace_id": "1a8278ce7fdd85f2"
+        }
+      }
+    },
+    "T3": {
+      "path": "T3-20260902-155701",
+      "roles": [
+        "vl",
+        "rerank"
+      ],
+      "config": {
+        "duration": 300,
+        "rate": 4.0,
+        "scenario": "vl-rerank",
+        "source": "sharegpt",
+        "why": "Vision encoder plus a cross-encoder reranker: two compute-bound, non-autoregressive neighbours. The case where gpucores SHOULD matter most if it ever does. Registered after T2: (a) power lands BELOW the 343-346 W both previous tiers hit, because neither tenant is a 7B -- if it does not, the power hypothesis is in trouble before T4 even runs. (b) The ITL-convergence result does NOT transfer: it is a property of two autoregressive decoders interleaving token by token, and rerank does not decode at all. Expect the T1 shape (small throughput cost, tail latency cost) rather than the T2 shape."
+      },
+      "arms": {
+        "اختصاصی:rerank": {
+          "requests_ok": 607,
+          "requests_total": 607,
+          "requests_failed": 0,
+          "tokens_per_second": 0.0,
+          "aggregate_tokens_per_second": 0.0,
+          "requests_per_second": 2.0265018144579936,
+          "latency_mean_s": 0.11958637828071782,
+          "latency_p95_s": 0.1872001057490707,
+          "latency_p99_s": 0.22598688224330582,
+          "ttft_p99_s": 0.22598688224330582,
+          "chunk_gap_p99_s": null,
+          "contended_tokens_per_second": null,
+          "trace_id": "d2f68f13b5cdd78f"
+        },
+        "اختصاصی:vl": {
+          "requests_ok": 608,
+          "requests_total": 608,
+          "requests_failed": 0,
+          "tokens_per_second": 224.8767130284457,
+          "aggregate_tokens_per_second": 224.78789650378437,
+          "requests_per_second": 2.0187447906870046,
+          "latency_mean_s": 0.7454963654102023,
+          "latency_p95_s": 1.854761674487963,
+          "latency_p99_s": 2.9044551230780704,
+          "ttft_p99_s": 0.16386403846554456,
+          "chunk_gap_p99_s": 0.03483850501477722,
+          "contended_tokens_per_second": null,
+          "trace_id": "d2f68f13b5cdd78f"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 1215,
+          "requests_total": 1215,
+          "requests_failed": 0,
+          "tokens_per_second": 222.06252566118525,
+          "aggregate_tokens_per_second": 221.97474579029088,
+          "requests_per_second": 4.03524023183918,
+          "latency_mean_s": 0.435846515780951,
+          "latency_p95_s": 1.5276747180148957,
+          "latency_p99_s": 2.3249204724840795,
+          "ttft_p99_s": 0.18550127726048227,
+          "chunk_gap_p99_s": 0.03504112521186467,
+          "contended_tokens_per_second": 222.59690549719886,
+          "trace_id": "d2f68f13b5cdd78f"
+        },
+        "HAMI": {
+          "requests_ok": 1215,
+          "requests_total": 1215,
+          "requests_failed": 0,
+          "tokens_per_second": 222.21397895291202,
+          "aggregate_tokens_per_second": 222.12641660368843,
+          "requests_per_second": 4.033832989664172,
+          "latency_mean_s": 0.43400759064197664,
+          "latency_p95_s": 1.4531164998188615,
+          "latency_p99_s": 2.356265403609711,
+          "ttft_p99_s": 0.19052377743646481,
+          "chunk_gap_p99_s": 0.03477876037359237,
+          "contended_tokens_per_second": 222.5642275793332,
+          "trace_id": "d2f68f13b5cdd78f"
+        }
+      }
+    },
+    "T4": {
+      "path": "T4-20260904-100610",
+      "roles": [
+        "llm2",
+        "embed",
+        "embed-small",
+        "rerank"
+      ],
+      "config": {
+        "duration": 300,
+        "rate": 8.0,
+        "scenario": "dense4",
+        "source": "sharegpt",
+        "why": "DENSITY TEST -- no longer a power test. The power hypothesis is dead (FINDINGS 6.2): T2 gained 26.7% with 1.4 W of headroom while T3 gained nothing with 36-57 W, and round one's power/gain correlation runs the wrong way (r=+0.717). Contention gates MPS, not watts. PREDICTION, registered before the run: T4 shows NO MPS effect. Scaling measured solo duty cycles to this scenario's per-tenant rates (llm2 2.4/s, embed 2.4/s, embed-small 1.6/s, rerank 1.6/s) gives a combined demand near 59% -- BELOW T3's 67%, which was a true null at p=0.90. dense4 is structurally low-contention because three of its four tenants are pooling models that sit near-idle; raising the rate cannot fix that without pushing llm2 past its own knee and conflating saturation with contention. WHAT IT DOES TEST, and nothing else in the matrix does: (a) HAMi admitting FOUR co-tenants on one card at 97.9% memory fill; (b) four vLLM engines profiling and capturing cudagraphs SIMULTANEOUSLY, which is exactly the init-peak collision 4.6a warns about and the densest memory moment in the study; (c) whether the per-tenant cost of sharing stays flat going from two tenants to four. Requirement 1 asks for number of models as a variable; this is its top end."
+      },
+      "arms": {
+        "اختصاصی:embed": {
+          "requests_ok": 734,
+          "requests_total": 734,
+          "requests_failed": 0,
+          "tokens_per_second": 0.0,
+          "aggregate_tokens_per_second": 0.0,
+          "requests_per_second": 2.4500419597533507,
+          "latency_mean_s": 0.20973174109527135,
+          "latency_p95_s": 0.3305622566957028,
+          "latency_p99_s": 0.39159124575555304,
+          "ttft_p99_s": 0.39159124575555304,
+          "chunk_gap_p99_s": null,
+          "contended_tokens_per_second": null,
+          "trace_id": "2a143ed369afed90"
+        },
+        "اختصاصی:embed-small": {
+          "requests_ok": 466,
+          "requests_total": 466,
+          "requests_failed": 0,
+          "tokens_per_second": 0.0,
+          "aggregate_tokens_per_second": 0.0,
+          "requests_per_second": 1.5605905543453942,
+          "latency_mean_s": 0.19893818329659974,
+          "latency_p95_s": 0.3041242186445743,
+          "latency_p99_s": 0.3455807634629314,
+          "ttft_p99_s": 0.3455807634629314,
+          "chunk_gap_p99_s": null,
+          "contended_tokens_per_second": null,
+          "trace_id": "2a143ed369afed90"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 731,
+          "requests_total": 732,
+          "requests_failed": 1,
+          "tokens_per_second": 310.9498133256243,
+          "aggregate_tokens_per_second": 310.5191531914662,
+          "requests_per_second": 2.435953993571379,
+          "latency_mean_s": 0.5326549726628816,
+          "latency_p95_s": 1.317396632861346,
+          "latency_p99_s": 1.984083968214693,
+          "ttft_p99_s": 0.13456954713910818,
+          "chunk_gap_p99_s": 0.015712513038888546,
+          "contended_tokens_per_second": null,
+          "trace_id": "2a143ed369afed90"
+        },
+        "اختصاصی:rerank": {
+          "requests_ok": 479,
+          "requests_total": 479,
+          "requests_failed": 0,
+          "tokens_per_second": 0.0,
+          "aggregate_tokens_per_second": 0.0,
+          "requests_per_second": 1.6005553030449255,
+          "latency_mean_s": 0.12516895820637522,
+          "latency_p95_s": 0.18549411147832873,
+          "latency_p99_s": 0.22626905711367734,
+          "ttft_p99_s": 0.22626905711367734,
+          "chunk_gap_p99_s": null,
+          "contended_tokens_per_second": null,
+          "trace_id": "2a143ed369afed90"
+        }
+      }
+    },
+    "T5": {
+      "path": "T5-20260911-011315",
+      "roles": [
+        "llm",
+        "llm2"
+      ],
+      "config": {
+        "duration": 240,
+        "rate": 10.0,
+        "scenario": "llm-llm",
+        "source": "sharegpt",
+        "why": "CAPACITY. The only tier whose offered rate exceeds what the pair can serve, and therefore the only one where achieved tokens/s equals the service rate rather than the load generator's setting (FINDINGS 6.1). Answers 'how much more work fits on the existing cards'. READ ONLY THROUGHPUT: the queue grows unbounded by design, so e2e latency here measures backlog, not the system. Prediction: MPS delivers a real aggregate throughput gain, because T2 showed a 26.7% service-rate increase that the open-loop harness could not express as tokens. If throughput is FLAT here while T2's latency gain was real, then the T2 result is a scheduling reallocation with no capacity behind it, and the practical value of MPS is much smaller than T2 suggests."
+      },
+      "arms": {
+        "اختصاصی:llm": {
+          "requests_ok": 1230,
+          "requests_total": 1231,
+          "requests_failed": 1,
+          "tokens_per_second": 728.5205260447246,
+          "aggregate_tokens_per_second": 728.3132317218428,
+          "requests_per_second": 5.020738545707534,
+          "latency_mean_s": 2.2100451670806645,
+          "latency_p95_s": 6.342184957303105,
+          "latency_p99_s": 9.180417914642021,
+          "ttft_p99_s": 0.8148010750208053,
+          "chunk_gap_p99_s": 0.1456046486273408,
+          "contended_tokens_per_second": null,
+          "trace_id": "198fa8fe46ce4904"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 1187,
+          "requests_total": 1188,
+          "requests_failed": 1,
+          "tokens_per_second": 656.0268616199901,
+          "aggregate_tokens_per_second": 655.4579403911845,
+          "requests_per_second": 4.9387351160644934,
+          "latency_mean_s": 0.5734707939649579,
+          "latency_p95_s": 1.4644130640663209,
+          "latency_p99_s": 2.1618126823008192,
+          "ttft_p99_s": 0.1779978435114027,
+          "chunk_gap_p99_s": 0.025837195171043315,
+          "contended_tokens_per_second": null,
+          "trace_id": "198fa8fe46ce4904"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 2417,
+          "requests_total": 2419,
+          "requests_failed": 2,
+          "tokens_per_second": 1359.1399285748976,
+          "aggregate_tokens_per_second": 1353.2421237972871,
+          "requests_per_second": 9.741266874007621,
+          "latency_mean_s": 3.9455056761483553,
+          "latency_p95_s": 11.286465403810134,
+          "latency_p99_s": 16.967777566760848,
+          "ttft_p99_s": 2.9041598970815543,
+          "chunk_gap_p99_s": 0.20949490850791272,
+          "contended_tokens_per_second": 1364.8154380451772,
+          "trace_id": "198fa8fe46ce4904"
+        },
+        "HAMI": {
+          "requests_ok": 2417,
+          "requests_total": 2419,
+          "requests_failed": 2,
+          "tokens_per_second": 1277.4827718231495,
+          "aggregate_tokens_per_second": 1174.7301718274543,
+          "requests_per_second": 8.442977945806222,
+          "latency_mean_s": 18.475494958922717,
+          "latency_p95_s": 51.494951032474624,
+          "latency_p99_s": 64.94468868218368,
+          "ttft_p99_s": 44.13390629675239,
+          "chunk_gap_p99_s": 0.47975692139007087,
+          "contended_tokens_per_second": 1307.5488972500423,
+          "trace_id": "198fa8fe46ce4904"
+        }
+      }
+    },
+    "T6": {
+      "path": "T6-20260911-000539",
+      "roles": [
+        "llm",
+        "llm2"
+      ],
+      "config": {
+        "duration": 300,
+        "rate": 6.0,
+        "scenario": "llm-llm",
+        "source": "azure",
+        "why": "ROBUSTNESS OF THE HEADLINE. Same two decoders and same offered rate as T2, with real production TOKEN-LENGTH distributions from Azure's public inference traces. Arrivals stay Poisson at the requested rate on purpose -- gen_trace.load_azure keeps the (input, output) pairs and regenerates the arrival process -- so what differs from T2 is the prefill/decode ratio and its variance, not burstiness. Question: does the -26.7% survive production length distributions, or was it an artifact of ShareGPT's particular output-length spread? T2's gain was flat across output-length buckets (-38.0% at <=32 tokens to -45.0% above 512), which predicts it survives."
+      },
+      "arms": {
+        "اختصاصی:llm": {
+          "requests_ok": 886,
+          "requests_total": 889,
+          "requests_failed": 3,
+          "tokens_per_second": 612.7031770793083,
+          "aggregate_tokens_per_second": 612.1640379516762,
+          "requests_per_second": 2.926438528870032,
+          "latency_mean_s": 1.6702676445926892,
+          "latency_p95_s": 3.7284368115942925,
+          "latency_p99_s": 4.740266562113538,
+          "ttft_p99_s": 0.09242275850847363,
+          "chunk_gap_p99_s": 0.017491634003818035,
+          "contended_tokens_per_second": null,
+          "trace_id": "3ea75e522bd9d265"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 958,
+          "requests_total": 961,
+          "requests_failed": 3,
+          "tokens_per_second": 664.8049921373263,
+          "aggregate_tokens_per_second": 664.5087789010174,
+          "requests_per_second": 3.1813745499154167,
+          "latency_mean_s": 0.772943007779193,
+          "latency_p95_s": 1.6803745064884423,
+          "latency_p99_s": 2.0213184252101914,
+          "ttft_p99_s": 0.07662804747931656,
+          "chunk_gap_p99_s": 0.011169024761766198,
+          "contended_tokens_per_second": null,
+          "trace_id": "3ea75e522bd9d265"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 1844,
+          "requests_total": 1850,
+          "requests_failed": 6,
+          "tokens_per_second": 1272.3014282028334,
+          "aggregate_tokens_per_second": 1271.212577145023,
+          "requests_per_second": 6.075861548374897,
+          "latency_mean_s": 2.2171352605629355,
+          "latency_p95_s": 4.9708995849825435,
+          "latency_p99_s": 6.181382660614326,
+          "ttft_p99_s": 0.09126654793508347,
+          "chunk_gap_p99_s": 0.02219547388143835,
+          "contended_tokens_per_second": 1272.7285205243923,
+          "trace_id": "3ea75e522bd9d265"
+        },
+        "HAMI": {
+          "requests_ok": 1844,
+          "requests_total": 1850,
+          "requests_failed": 6,
+          "tokens_per_second": 1272.2791625033433,
+          "aggregate_tokens_per_second": 1268.4912009643606,
+          "requests_per_second": 6.062461672739969,
+          "latency_mean_s": 2.692865967881359,
+          "latency_p95_s": 7.418850291566917,
+          "latency_p99_s": 9.793804120626298,
+          "ttft_p99_s": 0.1315347041469067,
+          "chunk_gap_p99_s": 0.03306326702237132,
+          "contended_tokens_per_second": 1274.772953355691,
+          "trace_id": "3ea75e522bd9d265"
+        }
+      }
+    },
+    "T7": {
+      "path": "T7-20260905-113832",
+      "roles": [
+        "llm"
+      ],
+      "config": {
+        "duration": 300,
+        "rate": 6.0,
+        "scenario": "llm-only",
+        "source": "sharegpt",
+        "why": "Prefill-heavy, single tenant. Round one's second registered prediction: the sub-linear SM-to-throughput mapping straightens under prefill-dominated load. Also the clean single-tenant control -- the only tier where no co-tenancy exists at all."
+      },
+      "arms": {
+        "اختصاصی:llm": {
+          "requests_ok": 1749,
+          "requests_total": 1749,
+          "requests_failed": 0,
+          "tokens_per_second": 835.3880862092869,
+          "aggregate_tokens_per_second": 834.9194326707019,
+          "requests_per_second": 5.749201120258027,
+          "latency_mean_s": 3.767892075653559,
+          "latency_p95_s": 10.898681567236771,
+          "latency_p99_s": 18.33926194641739,
+          "ttft_p99_s": 2.5684364694729442,
+          "chunk_gap_p99_s": 0.2790548271499571,
+          "contended_tokens_per_second": null,
+          "trace_id": "f9bb269f531e383e"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 1749,
+          "requests_total": 1749,
+          "requests_failed": 0,
+          "tokens_per_second": 833.5937650554712,
+          "aggregate_tokens_per_second": 833.1268519042023,
+          "requests_per_second": 5.735705849628021,
+          "latency_mean_s": 4.217036966134338,
+          "latency_p95_s": 11.723175760544834,
+          "latency_p99_s": 20.230350145921097,
+          "ttft_p99_s": 3.016987014152109,
+          "chunk_gap_p99_s": 0.28914014175534264,
+          "contended_tokens_per_second": null,
+          "trace_id": "f9bb269f531e383e"
+        },
+        "HAMI": {
+          "requests_ok": 1749,
+          "requests_total": 1749,
+          "requests_failed": 0,
+          "tokens_per_second": 835.7150776667319,
+          "aggregate_tokens_per_second": 835.2451979610667,
+          "requests_per_second": 5.744342932774589,
+          "latency_mean_s": 3.906398458445733,
+          "latency_p95_s": 11.228141998872161,
+          "latency_p99_s": 19.153682110868388,
+          "ttft_p99_s": 2.706144472323358,
+          "chunk_gap_p99_s": 0.2807584015559403,
+          "contended_tokens_per_second": null,
+          "trace_id": "f9bb269f531e383e"
+        }
+      }
+    },
+    "T8": {
+      "path": "T8-20260906-111040",
+      "roles": [
+        "llm",
+        "llm2"
+      ],
+      "config": {
+        "duration": 300,
+        "mix": "llm=0.1,llm2=0.9",
+        "mps_percent": "llm=50,llm2=50",
+        "rate": 12.0,
+        "scenario": "llm-llm",
+        "source": "sharegpt",
+        "why": "IS THE MPS CEILING A USABLE QoS KNOB? T8's first draft was a 'matched partition' tier -- gpucores 50 with MPS 50, on T5's balanced load, to make the scheduler's model of the card true. That framing is WRONG and was withdrawn before it ran. Scheduler honesty and oversubscription are the same dial, not two things: honest means reservations, which means the percentages sum to 100, which means no statistical multiplexing and therefore no reason to run MPS at all. There is no configuration that is both matched AND oversubscribed, so 'should the numbers agree' is not a question anyone should be asking. What you can choose is an OVERBOOKING RATIO -- and if HAMi's deviceCoreScaling is set to N, the coherent pairing is MPS at 100 with the scheduler overbooked by the same N, never 1:1. The question that survives is a QoS one: does an MPS ceiling BOUND THE DAMAGE one tenant can do to another? That needs a real aggressor, which T5's balanced load does not have and T11's 90/10 does. So T8 is T11 with both tenants capped at 50%. T11 measured the uncapped case: the aggressor ran 8.47 concurrent against the victim's 1.51 and took the card, and MPS helped the aggressor MORE than the victim (-35.7% against -28.2%). Prediction: the cap binds on the AGGRESSOR, whose demand exceeds 50%, and not on the victim, whose ~25% share is already inside it -- so aggressor throughput falls and victim latency improves beyond T11's. If instead nothing moves, then CUDA_MPS_ACTIVE_THREAD_PERCENTAGE is as inert as nvidia.com/gpucores was, and MPS has NO usable QoS knob at all -- which is the single most consequential negative result still available in this study."
+      },
+      "arms": {
+        "اختصاصی:llm": {
+          "requests_ok": 365,
+          "requests_total": 365,
+          "requests_failed": 0,
+          "tokens_per_second": 181.49909061601025,
+          "aggregate_tokens_per_second": 180.85955220741914,
+          "requests_per_second": 1.2161705334507735,
+          "latency_mean_s": 1.2409332096602206,
+          "latency_p95_s": 3.383155789785088,
+          "latency_p99_s": 4.917517457865182,
+          "ttft_p99_s": 0.36543853811919713,
+          "chunk_gap_p99_s": 0.027595136333256987,
+          "contended_tokens_per_second": null,
+          "trace_id": "534697e075e91765"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 3252,
+          "requests_total": 3259,
+          "requests_failed": 7,
+          "tokens_per_second": 1404.4940141738393,
+          "aggregate_tokens_per_second": 1404.4066109583453,
+          "requests_per_second": 10.81287255956508,
+          "latency_mean_s": 0.7889443275113195,
+          "latency_p95_s": 2.0986523103434584,
+          "latency_p99_s": 3.2597588447108805,
+          "ttft_p99_s": 0.2032367013581094,
+          "chunk_gap_p99_s": 0.038316143173724414,
+          "contended_tokens_per_second": null,
+          "trace_id": "534697e075e91765"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 3617,
+          "requests_total": 3624,
+          "requests_failed": 7,
+          "tokens_per_second": 1581.8084624525313,
+          "aggregate_tokens_per_second": 1580.8438956162706,
+          "requests_per_second": 11.991435933427534,
+          "latency_mean_s": 2.0742852954989064,
+          "latency_p95_s": 6.085881451144811,
+          "latency_p99_s": 9.085738795027142,
+          "ttft_p99_s": 0.5100567480549217,
+          "chunk_gap_p99_s": 0.1156674368865787,
+          "contended_tokens_per_second": 1584.9878481606995,
+          "trace_id": "534697e075e91765"
+        },
+        "HAMI": {
+          "requests_ok": 3617,
+          "requests_total": 3624,
+          "requests_failed": 7,
+          "tokens_per_second": 1572.9155839575267,
+          "aggregate_tokens_per_second": 1572.0528850327682,
+          "requests_per_second": 11.906449129886807,
+          "latency_mean_s": 3.2857807713761855,
+          "latency_p95_s": 9.499625400081268,
+          "latency_p99_s": 15.218012584187095,
+          "ttft_p99_s": 0.8173193753138188,
+          "chunk_gap_p99_s": 0.15089360065758228,
+          "contended_tokens_per_second": 1576.2328754704306,
+          "trace_id": "534697e075e91765"
+        }
+      }
+    },
+    "T9": {
+      "path": "T9-hami-20260910-225617",
+      "roles": [
+        "llm",
+        "embed",
+        "llm2"
+      ],
+      "config": {
+        "admitted_without_eviction": false,
+        "arm": "hami",
+        "arrival": "llm2",
+        "arrival_ready": true,
+        "arrival_reasons": [
+          {
+            "events": [],
+            "phase": null,
+            "waiting": null
+          },
+          {
+            "events": [
+              "Scheduled          Successfully assigned llm-demo/r2-llm2-kserve-7dc6d66899-scs95 to mr-gholami",
+              "FilteringSucceed   find fit node(mr-gholami), 0 nodes not fit, 1 nodes fit(mr-gholami:10.58)",
+              "BindingSucceed     Successfully binding node [mr-gholami] to llm-demo/r2-llm2-kserve-7dc6d66899-scs95",
+              "Pulled             Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine",
+              "Created            Created container: main",
+              "Started            Started container main"
+            ],
+            "phase": "Pending",
+            "waiting": "ContainerCreating: None"
+          },
+          {
+            "events": [
+              "Scheduled          Successfully assigned llm-demo/r2-llm2-kserve-7dc6d66899-scs95 to mr-gholami",
+              "FilteringSucceed   find fit node(mr-gholami), 0 nodes not fit, 1 nodes fit(mr-gholami:10.58)",
+              "BindingSucceed     Successfully binding node [mr-gholami] to llm-demo/r2-llm2-kserve-7dc6d66899-scs95",
+              "Pulled             Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine",
+              "Created            Created container: main",
+              "Started            Started container main"
+            ],
+            "phase": "Running",
+            "waiting": null
+          },
+          {
+            "events": [
+              "FilteringSucceed   find fit node(mr-gholami), 0 nodes not fit, 1 nodes fit(mr-gholami:10.58)",
+              "BindingSucceed     Successfully binding node [mr-gholami] to llm-demo/r2-llm2-kserve-7dc6d66899-scs95",
+              "Pulled             Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine",
+              "Created            Created container: main",
+              "Started            Started container main",
+              "Unhealthy          Startup probe failed: Get \"http://10.42.0.115:8000/health\": dial tcp 10.42.0.115:8000: connect: connection refused"
+            ],
+            "phase": "Running",
+            "waiting": null
+          }
+        ],
+        "evict": "llm",
+        "evict_pods_gone": true,
+        "evict_via": [
+          "llminferenceservice"
+        ],
+        "incumbents": [
+          "llm",
+          "embed"
+        ],
+        "marks": {
+          "t_admitted": 1789081718.9850736,
+          "t_arrive": 1789081525.9444613,
+          "t_blocked": 1789081651.5703473,
+          "t_end": 1789081840.0006356,
+          "t_evict": 1789081651.5740511,
+          "t_freed": 1789081686.5779889,
+          "t_serving": 1789081719.7506013,
+          "t_traffic": 1789081225.6884098
+        },
+        "mps_after_admission": {
+          "arm": "hami",
+          "daemon_running": false,
+          "mps_client_pids": [],
+          "tenants": 2,
+          "want_mps": false
+        },
+        "mps_daemon": "supervisor parked, MPS down after 5s",
+        "mps_incumbent": {
+          "arm": "hami",
+          "daemon_running": false,
+          "mps_client_pids": [],
+          "tenants": 2,
+          "want_mps": false
+        },
+        "placement_incumbent": {
+          "devices_in_use": [
+            1
+          ],
+          "distinct_devices": [
+            "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+          ],
+          "placement": {
+            "embed": [
+              "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+            ],
+            "llm": [
+              "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+            ]
+          }
+        },
+        "rate": 4.0,
+        "roles": [
+          "llm",
+          "embed"
+        ],
+        "run_dir": "/opt/GPU_Share/round2/results/T9-hami-20260910-225617",
+        "scenario": "llm-embed",
+        "seed": 20260826,
+        "smoke_arrival": {
+          "llm2": "ok via /v1/chat/completions"
+        },
+        "smoke_incumbent": {
+          "embed": "ok via /v1/embeddings",
+          "llm": "ok via /v1/chat/completions"
+        },
+        "stamp": "20260910-225617",
+        "status": "ok",
+        "summary": {
+          "aggregate": {
+            "client_delay": {
+              "max": 0.05349453841677132,
+              "mean": 0.0013776677649617738,
+              "min": 0.00017243022084212356,
+              "n": 2928,
+              "p50": 0.0006219779779712553,
+              "p90": 0.0016190282852278418,
+              "p95": 0.004281236766919963,
+              "p99": 0.021892065835679105
+            },
+            "itl": {
+              "max": 0.442873259074986,
+              "mean": 0.00881771875560387,
+              "min": 2.2069551050662994e-05,
+              "n": 124388,
+              "p50": 0.007108729332685471,
+              "p90": 0.011550245806574823,
+              "p95": 0.01708529731258749,
+              "p99": 0.0414733736496419
+            },
+            "latency_e2e": {
+              "max": 7.2640839498490095,
+              "mean": 0.5479137468733188,
+              "min": 0.08583553973585367,
+              "n": 2928,
+              "p50": 0.20664842054247856,
+              "p90": 1.5048677861690534,
+              "p95": 2.2930090178735556,
+              "p99": 3.9460327346529818
+            },
+            "output_tokens": 127241,
+            "prompt_tokens": 1814231,
+            "requests_per_second": 2.957046183062399,
+            "tokens_per_second": 128.50324910486432,
+            "ttft": {
+              "max": 0.793055372312665,
+              "mean": 0.17306671615485153,
+              "min": 0.03106960840523243,
+              "n": 2928,
+              "p50": 0.16606350522488356,
+              "p90": 0.271029718592763,
+              "p95": 0.3171302139759064,
+              "p99": 0.44399786727502943
+            },
+            "ttlt": {
+              "max": 7.2640839498490095,
+              "mean": 0.5479137468733188,
+              "min": 0.08583553973585367,
+              "n": 2928,
+              "p50": 0.20664842054247856,
+              "p90": 1.5048677861690534,
+              "p95": 2.2930090178735556,
+              "p99": 3.9460327346529818
+            }
+          },
+          "arm": "hami",
+          "contended": {
+            "aggregate_tokens_per_second": 278.9381165347405,
+            "end": 456.8161764005199,
+            "per_service_tokens": {
+              "embed": 0.0,
+              "llm": 127241.0
+            },
+            "per_service_tokens_per_second": {
+              "embed": 0.0,
+              "llm": 278.9381165347405
+            },
+            "ratio": null,
+            "seconds": 456.1621107244864,
+            "start": 0.6540656760334969
+          },
+          "endpoints": {
+            "embed": "http://10.42.0.113:8000",
+            "llm": "http://10.42.0.114:8000"
+          },
+          "epoch_end": 1789082217.3398688,
+          "epoch_start": 1789081227.1625688,
+          "model_count": 2,
+          "models": {
+            "embed": "BAAI/bge-m3",
+            "llm": "Qwen/Qwen2.5-7B-Instruct-AWQ"
+          },
+          "note": "T9 incumbent",
+          "only": [
+            "embed",
+            "llm"
+          ],
+          "per_service": {
+            "embed": {
+              "client_delay": {
+                "max": 0.05349453841677132,
+                "mean": 0.0014982399334267805,
+                "min": 0.0002043943221679001,
+                "n": 2045,
+                "p50": 0.00065449832811737,
+                "p90": 0.001641635846499411,
+                "p95": 0.004860031315251943,
+                "p99": 0.02428727916931393
+              },
+              "failed": 0,
+              "itl": null,
+              "kind": "embed",
+              "latency_e2e": {
+                "max": 0.5612075868993998,
+                "mean": 0.19060987343597238,
+                "min": 0.08583553973585367,
+                "n": 2045,
+                "p50": 0.179165318608284,
+                "p90": 0.27434363942593337,
+                "p95": 0.310579296760261,
+                "p99": 0.4052388506755231
+              },
+              "output_tokens": 0,
+              "prompt_tokens": 1491425,
+              "requests": 2045,
+              "requests_per_second": 2.0665657757994214,
+              "tokens_per_chunk": null,
+              "tokens_per_second": 0.0,
+              "tpot": null,
+              "ttft": {
+                "max": 0.5612075868993998,
+                "mean": 0.19060987343597238,
+                "min": 0.08583553973585367,
+                "n": 2045,
+                "p50": 0.179165318608284,
+                "p90": 0.27434363942593337,
+                "p95": 0.310579296760261,
+                "p99": 0.4052388506755231
+              },
+              "ttlt": {
+                "max": 0.5612075868993998,
+                "mean": 0.19060987343597238,
+                "min": 0.08583553973585367,
+                "n": 2045,
+                "p50": 0.179165318608284,
+                "p90": 0.27434363942593337,
+                "p95": 0.310579296760261,
+                "p99": 0.4052388506755231
+              }
+            },
+            "llm": {
+              "client_delay": {
+                "max": 0.029385896253472765,
+                "mean": 0.0010984264461498386,
+                "min": 0.00017243022084212356,
+                "n": 883,
+                "p50": 0.000547569540628956,
+                "p90": 0.0014379682292144462,
+                "p95": 0.002759188779930354,
+                "p99": 0.012326327510256028
+              },
+              "failed": 1059,
+              "itl": {
+                "max": 0.442873259074986,
+                "mean": 0.00881771875560387,
+                "min": 2.2069551050662994e-05,
+                "n": 124388,
+                "p50": 0.007108729332685471,
+                "p90": 0.011550245806574823,
+                "p95": 0.01708529731258749,
+                "p99": 0.0414733736496419
+              },
+              "kind": "chat",
+              "latency_e2e": {
+                "max": 7.2640839498490095,
+                "mean": 1.3754181876200613,
+                "min": 0.088179687038064,
+                "n": 883,
+                "p50": 1.0378539487719536,
+                "p90": 2.726536737196147,
+                "p95": 3.483003012277185,
+                "p99": 5.518978244774037
+              },
+              "output_tokens": 127241,
+              "prompt_tokens": 322806,
+              "requests": 883,
+              "requests_per_second": 1.9357153503994458,
+              "tokens_per_chunk": 0.982748781440799,
+              "tokens_per_second": 278.9381165347405,
+              "tpot": {
+                "max": 0.05082438031540198,
+                "mean": 0.008849966431917128,
+                "min": 0.0030041741473334177,
+                "n": 883,
+                "p50": 0.008165123096356789,
+                "p90": 0.010719661178891357,
+                "p95": 0.012172307618138384,
+                "p99": 0.02108235684868135
+              },
+              "ttft": {
+                "max": 0.793055372312665,
+                "mean": 0.13243732018668378,
+                "min": 0.03106960840523243,
+                "n": 883,
+                "p50": 0.09462325368076563,
+                "p90": 0.26610389985144134,
+                "p95": 0.3375267180614173,
+                "p99": 0.5237245140038426
+              },
+              "ttlt": {
+                "max": 7.2640839498490095,
+                "mean": 1.3754181876200613,
+                "min": 0.088179687038064,
+                "n": 883,
+                "p50": 1.0378539487719536,
+                "p90": 2.726536737196147,
+                "p95": 3.483003012277185,
+                "p99": 5.518978244774037
+              }
+            }
+          },
+          "requests_failed": 1059,
+          "requests_ok": 2928,
+          "requests_total": 3987,
+          "roles": [
+            "embed",
+            "llm"
+          ],
+          "trace_id": "5d3845ea6277d75d",
+          "trace_params": {
+            "duration": 990.0,
+            "embed_batch": 32,
+            "fixed_output": 0,
+            "rate": 4.0,
+            "raw_prompts": false,
+            "rerank_docs": 16,
+            "scenario": "llm-embed",
+            "seed": 20260826,
+            "source": "sharegpt",
+            "warmup": 8
+          },
+          "wall_seconds": 990.1772981332615
+        },
+        "t0": 1789081225.6884098,
+        "t1": 1789081840.0006356,
+        "tag": "hami__scaledown",
+        "test": "T9",
+        "timeline": {
+          "TOTAL dead time (evict -> serving)": "67.4s",
+          "TOTAL from arrival to serving": "193.0s",
+          "VRAM release after replicas=0": "35.0s",
+          "incumbent served for": "300.3s",
+          "newcomer load + graph capture": "32.4s",
+          "newcomer sat Pending for": "125.6s"
+        },
+        "trace_id": "5d3845ea6277d75d",
+        "traffic_finished": true,
+        "traffic_rc": 0,
+        "vram_released_mib": 7185,
+        "wait": 300.0
+      },
+      "arms": {
+        "HAMI": {
+          "requests_ok": 2928,
+          "requests_total": 3987,
+          "requests_failed": 1059,
+          "tokens_per_second": 278.9381165347405,
+          "aggregate_tokens_per_second": 128.50324910486432,
+          "requests_per_second": 2.957046183062399,
+          "latency_mean_s": 0.5479137468733188,
+          "latency_p95_s": 2.2930090178735556,
+          "latency_p99_s": 3.9460327346529818,
+          "ttft_p99_s": 0.44399786727502943,
+          "chunk_gap_p99_s": 0.0414733736496419,
+          "contended_tokens_per_second": 278.9381165347405,
+          "trace_id": "5d3845ea6277d75d"
+        }
+      }
+    },
+    "T11": {
+      "path": "T11-20260906-092256",
+      "roles": [
+        "llm",
+        "llm2"
+      ],
+      "config": {
+        "duration": 300,
+        "mix": "llm=0.1,llm2=0.9",
+        "rate": 12.0,
+        "scenario": "llm-llm",
+        "source": "sharegpt",
+        "why": "NOISY NEIGHBOUR. T2 measured fairness under MATCHED load and found MPS more than doubles the imbalance (1.05 -> 2.19) in favour of the larger tenant. Nothing has tested ADVERSARIAL load. Here llm2 takes 90% of a 12 req/s trace -- about 10.8 req/s against its own knee of roughly 6 -- while llm receives 1.2 req/s, well inside its capacity. Question: can a hammering small tenant damage a well-behaved large one, and does MPS make that better or worse? Given T2, the prediction is that MPS PROTECTS the large tenant, because it reallocates toward size rather than toward demand -- which would make MPS a crude isolation mechanism as well as a density one."
+      },
+      "arms": {
+        "اختصاصی:llm": {
+          "requests_ok": 365,
+          "requests_total": 365,
+          "requests_failed": 0,
+          "tokens_per_second": 181.5429874461646,
+          "aggregate_tokens_per_second": 180.9035137283391,
+          "requests_per_second": 1.2161300766340137,
+          "latency_mean_s": 1.2346137992705997,
+          "latency_p95_s": 3.3857511330395944,
+          "latency_p99_s": 4.892515324093405,
+          "ttft_p99_s": 0.38048476211726695,
+          "chunk_gap_p99_s": 0.026381793431937674,
+          "contended_tokens_per_second": null,
+          "trace_id": "534697e075e91765"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 3252,
+          "requests_total": 3259,
+          "requests_failed": 7,
+          "tokens_per_second": 1406.0888911734896,
+          "aggregate_tokens_per_second": 1405.9988847461984,
+          "requests_per_second": 10.819701255338229,
+          "latency_mean_s": 0.7826265402737922,
+          "latency_p95_s": 2.0671566487289925,
+          "latency_p99_s": 3.206429726183414,
+          "ttft_p99_s": 0.19475900490768244,
+          "chunk_gap_p99_s": 0.03659411799162627,
+          "contended_tokens_per_second": null,
+          "trace_id": "534697e075e91765"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 3617,
+          "requests_total": 3624,
+          "requests_failed": 7,
+          "tokens_per_second": 1580.5126307120422,
+          "aggregate_tokens_per_second": 1579.1786643933099,
+          "requests_per_second": 11.965905785750412,
+          "latency_mean_s": 2.058733737485765,
+          "latency_p95_s": 5.710048200935123,
+          "latency_p99_s": 9.01024669893086,
+          "ttft_p99_s": 0.3904058504104622,
+          "chunk_gap_p99_s": 0.07920979561284176,
+          "contended_tokens_per_second": 1586.025548113071,
+          "trace_id": "534697e075e91765"
+        },
+        "HAMI": {
+          "requests_ok": 3617,
+          "requests_total": 3624,
+          "requests_failed": 7,
+          "tokens_per_second": 1567.0847089136234,
+          "aggregate_tokens_per_second": 1565.9443462411361,
+          "requests_per_second": 11.889686407212272,
+          "latency_mean_s": 3.165097001478084,
+          "latency_p95_s": 8.88858547341078,
+          "latency_p99_s": 14.328363579511654,
+          "ttft_p99_s": 0.6168372856080535,
+          "chunk_gap_p99_s": 0.14559318273328242,
+          "contended_tokens_per_second": 1572.192877522614,
+          "trace_id": "534697e075e91765"
+        }
+      }
+    },
+    "T13": {
+      "path": "T13-20260911-021908",
+      "roles": [
+        "llm2a",
+        "llm2b"
+      ],
+      "config": {
+        "duration": 240,
+        "rate": 10.0,
+        "scenario": "llm2-llm2",
+        "source": "sharegpt",
+        "why": "SYMMETRIC PAIR. Every co-tenancy tier in this study pairs UNLIKE models, so 'does MPS create systematic winners and losers' has only ever been answered by argument. Two identical Qwen2.5-1.5B-AWQ instances remove the confound: same weights, same quota, same kernels, same trace weight. FINDINGS 8 established that MPS reallocates toward IN-FLIGHT DEPTH rather than model size -- T5's 7B ran 11.11 concurrent against the 1.5B's 2.84 and won; T11's hammered 1.5B ran 8.47 against 1.51 and won. Identical tenants under identical load have identical depth, so the prediction is NEAR-SYMMETRIC degradation on both arms and an aggregate MPS gain at or above T5's, two identical decoders being the most composition-similar pair possible. Also yields the Gini coefficient the external review asked for, comparable to the published 0.35-MPS / 0.12-MIG figures."
+      },
+      "arms": {
+        "اختصاصی:llm2a": {
+          "requests_ok": 1230,
+          "requests_total": 1231,
+          "requests_failed": 1,
+          "tokens_per_second": 654.9502469191302,
+          "aggregate_tokens_per_second": 654.7592243926227,
+          "requests_per_second": 5.114819129293615,
+          "latency_mean_s": 0.5593641638589221,
+          "latency_p95_s": 1.4341113222297273,
+          "latency_p99_s": 2.2313087080512197,
+          "ttft_p99_s": 0.15134072707034674,
+          "chunk_gap_p99_s": 0.02600323129445311,
+          "contended_tokens_per_second": null,
+          "trace_id": "b02db393d7ee6153"
+        },
+        "اختصاصی:llm2b": {
+          "requests_ok": 1187,
+          "requests_total": 1188,
+          "requests_failed": 1,
+          "tokens_per_second": 658.8660973611437,
+          "aggregate_tokens_per_second": 658.2942656782635,
+          "requests_per_second": 4.935980274658565,
+          "latency_mean_s": 0.5835749692524443,
+          "latency_p95_s": 1.5231648705899725,
+          "latency_p99_s": 2.3699567989260037,
+          "ttft_p99_s": 0.16215099558234272,
+          "chunk_gap_p99_s": 0.026014018803834856,
+          "contended_tokens_per_second": null,
+          "trace_id": "b02db393d7ee6153"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 2417,
+          "requests_total": 2419,
+          "requests_failed": 2,
+          "tokens_per_second": 1306.9461368696539,
+          "aggregate_tokens_per_second": 1305.7706572255872,
+          "requests_per_second": 10.034585343603826,
+          "latency_mean_s": 0.8846369490010474,
+          "latency_p95_s": 2.3935998803004614,
+          "latency_p99_s": 3.7066879458725497,
+          "ttft_p99_s": 0.16778126444667626,
+          "chunk_gap_p99_s": 0.027527388921007513,
+          "contended_tokens_per_second": 1307.5474524341646,
+          "trace_id": "b02db393d7ee6153"
+        },
+        "HAMI": {
+          "requests_ok": 2417,
+          "requests_total": 2419,
+          "requests_failed": 2,
+          "tokens_per_second": 1307.3829060282255,
+          "aggregate_tokens_per_second": 1306.0842555746278,
+          "requests_per_second": 10.021159839638479,
+          "latency_mean_s": 1.158635337257902,
+          "latency_p95_s": 3.1298930300399634,
+          "latency_p99_s": 4.865674811266372,
+          "ttft_p99_s": 0.2677874319627882,
+          "chunk_gap_p99_s": 0.03630112121812997,
+          "contended_tokens_per_second": 1308.0740117290168,
+          "trace_id": "b02db393d7ee6153"
+        }
+      }
+    },
+    "T14": {
+      "path": "T14-20260911-004001",
+      "roles": [
+        "llm",
+        "llm2"
+      ],
+      "config": {
+        "duration": 240,
+        "rate": 10.0,
+        "raw_prompts": true,
+        "scenario": "llm-llm",
+        "source": "sharegpt",
+        "why": "RAW PROMPTS -- the methodological control for the corpus. make_prompt() pads a chat prompt with a fixed FILLER sentence to hit a synthetic target length, and truncates the ones that overshoot; in T7's trace 1033 of 1749 prompts (59.1%) carry it. That CANNOT bias an arm-versus-arm comparison, because every arm replays the identical trace -- but the prompts are not pure ShareGPT, and a reviewer is entitled to ask whether the effect survives real text. This tier is T5 with --raw-prompts: corpus prompts verbatim, no padding, no truncation, so the prefill length distribution is whatever ShareGPT actually contains. Absolute numbers will differ from T5 and are not meant to match. The claim under test is only that the MPS EFFECT reproduces in sign and rough magnitude. If it does, the filler is retired as an objection; if it does not, every length-sensitive conclusion in the study needs revisiting."
+      },
+      "arms": {
+        "اختصاصی:llm": {
+          "requests_ok": 1230,
+          "requests_total": 1231,
+          "requests_failed": 1,
+          "tokens_per_second": 1051.0991956911982,
+          "aggregate_tokens_per_second": 1050.8007304498035,
+          "requests_per_second": 4.964260358634104,
+          "latency_mean_s": 3.390896474280039,
+          "latency_p95_s": 11.003870154917239,
+          "latency_p99_s": 14.424356763483962,
+          "ttft_p99_s": 0.7193433206528428,
+          "chunk_gap_p99_s": 0.14870763986371457,
+          "contended_tokens_per_second": null,
+          "trace_id": "72f6ae60d67fb6b5"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 1187,
+          "requests_total": 1188,
+          "requests_failed": 1,
+          "tokens_per_second": 860.0022965151744,
+          "aggregate_tokens_per_second": 859.2560023954386,
+          "requests_per_second": 4.941363100477625,
+          "latency_mean_s": 0.7203311231332535,
+          "latency_p95_s": 2.1566175835207106,
+          "latency_p99_s": 3.08202026750893,
+          "ttft_p99_s": 0.15675037309527434,
+          "chunk_gap_p99_s": 0.02344524461776018,
+          "contended_tokens_per_second": null,
+          "trace_id": "72f6ae60d67fb6b5"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 2417,
+          "requests_total": 2419,
+          "requests_failed": 2,
+          "tokens_per_second": 1783.9453320862965,
+          "aggregate_tokens_per_second": 1758.8150680776132,
+          "requests_per_second": 9.097916387469805,
+          "latency_mean_s": 9.166590572607248,
+          "latency_p95_s": 28.73159223329274,
+          "latency_p99_s": 39.57718613028526,
+          "ttft_p99_s": 15.339692998118725,
+          "chunk_gap_p99_s": 0.25082589540630607,
+          "contended_tokens_per_second": 1801.2621019288063,
+          "trace_id": "72f6ae60d67fb6b5"
+        },
+        "HAMI": {
+          "requests_ok": 2417,
+          "requests_total": 2419,
+          "requests_failed": 2,
+          "tokens_per_second": 1658.7402913172864,
+          "aggregate_tokens_per_second": 1460.4941600717466,
+          "requests_per_second": 7.55277158820106,
+          "latency_mean_s": 29.74597670261532,
+          "latency_p95_s": 88.71373217198996,
+          "latency_p99_s": 101.46846126776192,
+          "ttft_p99_s": 80.20620590206235,
+          "chunk_gap_p99_s": 0.3853749228734525,
+          "contended_tokens_per_second": 1708.3055182641622,
+          "trace_id": "72f6ae60d67fb6b5"
+        }
+      }
+    },
+    "T15": {
+      "path": "T15-20260906-182642",
+      "roles": [
+        "llm2a",
+        "llm2b"
+      ],
+      "config": {
+        "duration": 240,
+        "rate": 20.0,
+        "scenario": "llm2-llm2",
+        "source": "sharegpt",
+        "why": "SATURATED SYMMETRIC PAIR. T13 answered fairness and could not answer capacity: its hami arm reached 99.9% of the sum of the two solo throughputs, so the card was never compute-starved and MPS had no deficit to recover (-0.19% throughput, -22.98% pooled). Only T5 in this entire study is genuinely saturated, at 92.3%, which means every capacity claim we make rests on ONE tier. T15 doubles T13's offered rate to force saturation while keeping the tenants identical. Prediction: a throughput gain appears where T13 had none, and the degradation spread STAYS near 1.0 -- because 8.9 says asymmetry comes from unequal in-flight depth, and identical tenants under identical load have identical depth no matter how hard they are driven. If the spread opens up under saturation, the depth law is incomplete."
+      },
+      "arms": {
+        "اختصاصی:llm2a": {
+          "requests_ok": 2372,
+          "requests_total": 2378,
+          "requests_failed": 6,
+          "tokens_per_second": 1275.6016366050271,
+          "aggregate_tokens_per_second": 1274.1853345072095,
+          "requests_per_second": 9.828901695136556,
+          "latency_mean_s": 0.7522481764524603,
+          "latency_p95_s": 2.0248972122091797,
+          "latency_p99_s": 3.0345910966675698,
+          "ttft_p99_s": 0.19261903143487868,
+          "chunk_gap_p99_s": 0.03579898700118058,
+          "contended_tokens_per_second": null,
+          "trace_id": "52d27bf4d184b906"
+        },
+        "اختصاصی:llm2b": {
+          "requests_ok": 2438,
+          "requests_total": 2442,
+          "requests_failed": 4,
+          "tokens_per_second": 1327.6240321271453,
+          "aggregate_tokens_per_second": 1327.5606048769732,
+          "requests_per_second": 10.115743273106492,
+          "latency_mean_s": 0.7769150829074065,
+          "latency_p95_s": 2.0822084486950203,
+          "latency_p99_s": 3.0224961261916916,
+          "ttft_p99_s": 0.2148252632655205,
+          "chunk_gap_p99_s": 0.03808827874250714,
+          "contended_tokens_per_second": null,
+          "trace_id": "52d27bf4d184b906"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 4810,
+          "requests_total": 4820,
+          "requests_failed": 10,
+          "tokens_per_second": 2598.7357343616495,
+          "aggregate_tokens_per_second": 2592.274329484224,
+          "requests_per_second": 19.852627135222374,
+          "latency_mean_s": 1.525368228270101,
+          "latency_p95_s": 4.194001172622666,
+          "latency_p99_s": 6.3036125592328585,
+          "ttft_p99_s": 0.2538766568060963,
+          "chunk_gap_p99_s": 0.05977173126302663,
+          "contended_tokens_per_second": 2603.8261697662724,
+          "trace_id": "52d27bf4d184b906"
+        },
+        "HAMI": {
+          "requests_ok": 4810,
+          "requests_total": 4820,
+          "requests_failed": 10,
+          "tokens_per_second": 2589.236402575334,
+          "aggregate_tokens_per_second": 2583.257277626837,
+          "requests_per_second": 19.7898729122033,
+          "latency_mean_s": 2.6099398143180954,
+          "latency_p95_s": 7.343824050622062,
+          "latency_p99_s": 11.069738128967575,
+          "ttft_p99_s": 0.48296563467942044,
+          "chunk_gap_p99_s": 0.12389438433572696,
+          "contended_tokens_per_second": 2593.9866110047665,
+          "trace_id": "52d27bf4d184b906"
+        }
+      }
+    },
+    "T16": {
+      "path": "T16-20260910-042857",
+      "roles": [
+        "llm",
+        "llm2"
+      ],
+      "config": {
+        "duration": 300,
+        "gpucores": "llm=25,llm2=25",
+        "rate": 6.0,
+        "scenario": "llm-llm",
+        "source": "sharegpt",
+        "why": "THE LAST EMPTY CELL IN THE POLICY TABLE. 5.14b's semantic -- force limits unconditionally, default limits only under contention -- has never been tested where it actually differs. Every co-tenancy tier ran quotas at or ABOVE the natural share (100//N), where default cannot engage; T2-20260906-102419 went below at 25/25 but used FORCE. This is that run with the policy left at default, same trace, so the only variable is the policy. If the 7B's throughput falls toward the 298.37 tok/s that force produced, then DEFAULT ALSO CLAMPS whenever quotas are conservative -- and 'the default is safe' is wrong for most real clusters, which set quotas below natural share precisely to pack more tenants. If it stays near 429, default is confirmed safe and the distinction is real. Read the THROUGHPUT column: the noise floor there is 0.42% against 9.51% for latency (8.10)."
+      },
+      "arms": {
+        "اختصاصی:llm": {
+          "requests_ok": 885,
+          "requests_total": 885,
+          "requests_failed": 0,
+          "tokens_per_second": 429.9817838642557,
+          "aggregate_tokens_per_second": 429.85524752016516,
+          "requests_per_second": 2.931508777493613,
+          "latency_mean_s": 1.4886639260376493,
+          "latency_p95_s": 3.746320753730833,
+          "latency_p99_s": 6.6163185897841945,
+          "ttft_p99_s": 0.5722928620129822,
+          "chunk_gap_p99_s": 0.060212733969092366,
+          "contended_tokens_per_second": null,
+          "trace_id": "1a8278ce7fdd85f2"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 868,
+          "requests_total": 868,
+          "requests_failed": 0,
+          "tokens_per_second": 374.8484306976035,
+          "aggregate_tokens_per_second": 374.41048707842646,
+          "requests_per_second": 2.8925130415564433,
+          "latency_mean_s": 0.546086333508599,
+          "latency_p95_s": 1.362334438227117,
+          "latency_p99_s": 1.93433601211757,
+          "ttft_p99_s": 0.1802029939647766,
+          "chunk_gap_p99_s": 0.01991938849911096,
+          "contended_tokens_per_second": null,
+          "trace_id": "1a8278ce7fdd85f2"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 1753,
+          "requests_total": 1753,
+          "requests_failed": 0,
+          "tokens_per_second": 800.143099188474,
+          "aggregate_tokens_per_second": 799.1645763802518,
+          "requests_per_second": 5.800422743981241,
+          "latency_mean_s": 1.9156320209429518,
+          "latency_p95_s": 4.952135632559658,
+          "latency_p99_s": 8.735890335328877,
+          "ttft_p99_s": 0.5548978793993593,
+          "chunk_gap_p99_s": 0.08345838201232253,
+          "contended_tokens_per_second": 800.8745832692086,
+          "trace_id": "1a8278ce7fdd85f2"
+        },
+        "HAMI": {
+          "requests_ok": 1753,
+          "requests_total": 1753,
+          "requests_failed": 0,
+          "tokens_per_second": 800.3334809058817,
+          "aggregate_tokens_per_second": 798.0331383254256,
+          "requests_per_second": 5.795714137985272,
+          "latency_mean_s": 2.6124202675673276,
+          "latency_p95_s": 7.657286391034725,
+          "latency_p99_s": 14.802267404422171,
+          "ttft_p99_s": 0.961679450646043,
+          "chunk_gap_p99_s": 0.1747951219603419,
+          "contended_tokens_per_second": 801.8475035516329,
+          "trace_id": "1a8278ce7fdd85f2"
+        }
+      }
+    },
+    "T17": {
+      "path": "T17-20260912-123151",
+      "roles": [
+        "llm2a",
+        "llm2b"
+      ],
+      "config": {
+        "duration": 240,
+        "rate": 28.0,
+        "scenario": "llm2-llm2",
+        "source": "sharegpt",
+        "why": "THE SATURATED POINT THAT IS NOT IN OVERLOAD. The study's throughput claim currently rests on three tiers and none of them is quotable for capacity planning: T20 at 99.6% saturation returns +0.06% because there is no queue, T14 at 86.3% returns +8.6%, and T21 at 55.9% returns +20.8% but sits in OVERLOAD -- 30-39 s mean latency, TTFT p99 of 34-45 s, and neither arm finished the trace (66.1% and 76.9% of 9,621 requests). No SLO is meetable there, so no operator would ever run in that regime and the number cannot be sold. 28 req/s is the geometric mean of T15's 20 (99.5%, unsaturated) and T21's 40 (55.9%, overloaded), so it brackets the knee from inside. PREDICTION registered before the run: saturation lands between 70% and 88% and MPS returns between +8% and +16%, with mean latency still in single-digit seconds. If latency is again in the tens of seconds the knee is below 28 and the tier should be re-run at 24. Identical tenants, so per section 0 there is no deep/shallow split to report and the aggregate figure applies to both -- which is exactly what makes it quotable."
+      },
+      "arms": {
+        "اختصاصی:llm2a": {
+          "requests_ok": 3334,
+          "requests_total": 3340,
+          "requests_failed": 6,
+          "tokens_per_second": 1833.4014684614237,
+          "aggregate_tokens_per_second": 1831.7108187274234,
+          "requests_per_second": 13.82254293062665,
+          "latency_mean_s": 0.7914738812378815,
+          "latency_p95_s": 2.1291381596121934,
+          "latency_p99_s": 3.165242218654603,
+          "ttft_p99_s": 0.21599860372953122,
+          "chunk_gap_p99_s": 0.03536896454170346,
+          "contended_tokens_per_second": null,
+          "trace_id": "0da47fccdd497633"
+        },
+        "اختصاصی:llm2b": {
+          "requests_ok": 3380,
+          "requests_total": 3386,
+          "requests_failed": 6,
+          "tokens_per_second": 1816.4542942203805,
+          "aggregate_tokens_per_second": 1816.425185784507,
+          "requests_per_second": 14.01194790055672,
+          "latency_mean_s": 0.7849746767224843,
+          "latency_p95_s": 2.1120227326639,
+          "latency_p99_s": 3.1572076713480066,
+          "ttft_p99_s": 0.21518205638043583,
+          "chunk_gap_p99_s": 0.03671181015670301,
+          "contended_tokens_per_second": null,
+          "trace_id": "0da47fccdd497633"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 6714,
+          "requests_total": 6726,
+          "requests_failed": 12,
+          "tokens_per_second": 3511.5223693400685,
+          "aggregate_tokens_per_second": 3509.502758223932,
+          "requests_per_second": 26.70005837814785,
+          "latency_mean_s": 8.231805782946171,
+          "latency_p95_s": 17.421872516395524,
+          "latency_p99_s": 24.187370010502637,
+          "ttft_p99_s": 10.410911634201184,
+          "chunk_gap_p99_s": 0.12780701652169227,
+          "contended_tokens_per_second": 3513.1754986016495,
+          "trace_id": "0da47fccdd497633"
+        },
+        "HAMI": {
+          "requests_ok": 6376,
+          "requests_total": 6726,
+          "requests_failed": 350,
+          "tokens_per_second": 2952.031476116857,
+          "aggregate_tokens_per_second": 2947.961137448365,
+          "requests_per_second": 22.42996701933875,
+          "latency_mean_s": 29.38564149295304,
+          "latency_p95_s": 49.978833416476846,
+          "latency_p99_s": 58.1701305184979,
+          "ttft_p99_s": 43.19087438844144,
+          "chunk_gap_p99_s": 0.19538931570015855,
+          "contended_tokens_per_second": 2955.7343426768066,
+          "trace_id": "0da47fccdd497633"
+        }
+      }
+    },
+    "T18": {
+      "path": "T18-20260912-070817",
+      "roles": [
+        "llm2",
+        "embed-small",
+        "embed"
+      ],
+      "config": {
+        "duration": 300,
+        "rate": 9.0,
+        "scenario": "dense3",
+        "source": "sharegpt",
+        "why": "THREE TENANTS. Every co-tenancy result in this study is a PAIR -- the depth law, the fairness reversal and the overbook curve are all two-body results, and nothing says they extend to three. This is the largest structural gap in the matrix. WARNING: it may not run on this node. Three tenants need roughly 8.3 GiB of host RAM against ~8.2 available, and T4 was already refused at four. If the host guard refuses this too, THAT IS THE RESULT and it should be reported as the density ceiling rather than worked around -- host memory, not VRAM, is what caps tenants per box. Prediction if it does run: the deepest tenant takes the largest share of the MPS gain and the shallowest is made worst-off, exactly as in the two-body tiers. A three-body run is the first chance for that to fail."
+      },
+      "arms": {
+        "اختصاصی:embed": {
+          "requests_ok": 812,
+          "requests_total": 812,
+          "requests_failed": 0,
+          "tokens_per_second": 0.0,
+          "aggregate_tokens_per_second": 0.0,
+          "requests_per_second": 2.7056346129320885,
+          "latency_mean_s": 0.21699701335964716,
+          "latency_p95_s": 0.35097079430706807,
+          "latency_p99_s": 0.4203081642929463,
+          "ttft_p99_s": 0.4203081642929463,
+          "chunk_gap_p99_s": null,
+          "contended_tokens_per_second": null,
+          "trace_id": "0a83d269b197133e"
+        },
+        "اختصاصی:embed-small": {
+          "requests_ok": 855,
+          "requests_total": 855,
+          "requests_failed": 0,
+          "tokens_per_second": 0.0,
+          "aggregate_tokens_per_second": 0.0,
+          "requests_per_second": 2.8607357303001626,
+          "latency_mean_s": 0.21736727178597834,
+          "latency_p95_s": 0.3599531246349216,
+          "latency_p99_s": 0.42622410817071804,
+          "ttft_p99_s": 0.42622410817071804,
+          "chunk_gap_p99_s": null,
+          "contended_tokens_per_second": null,
+          "trace_id": "0a83d269b197133e"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 1041,
+          "requests_total": 1042,
+          "requests_failed": 1,
+          "tokens_per_second": 459.57904323772226,
+          "aggregate_tokens_per_second": 459.0718690888289,
+          "requests_per_second": 3.467571839102809,
+          "latency_mean_s": 0.5764524785275719,
+          "latency_p95_s": 1.5451651075854897,
+          "latency_p99_s": 2.2747213369235304,
+          "ttft_p99_s": 0.15251315925270295,
+          "chunk_gap_p99_s": 0.02455442924052444,
+          "contended_tokens_per_second": null,
+          "trace_id": "0a83d269b197133e"
+        }
+      }
+    },
+    "T20": {
+      "path": "T20-20260912-073411",
+      "roles": [
+        "llm",
+        "llm2"
+      ],
+      "config": {
+        "duration": 300,
+        "rate": 6.0,
+        "replay_arrivals": true,
+        "scenario": "llm-llm",
+        "source": "azure",
+        "why": "THE ARRIVAL PROCESS, FOR ONCE. Every other tier in this study -- T6 included -- regenerates arrivals as Poisson at a requested rate, so offered load stays a controlled variable. That is defensible and it is what the Splitwise authors did for cluster sizing, but it means NO tier anywhere replays a production arrival process, and the findings report has to say so. T20 replays the real inter-arrival gaps from a contiguous window of AzureLLMInferenceTrace_conv.csv. WHAT TO EXPECT, registered before the run: not much, and that is the point. The conversation trace measures at an inter-arrival CV of 1.057-1.094, which is close to Poisson, and no gap in it exceeds ~4 s. So if the T6 result holds here, the Poisson substitution used everywhere else is VINDICATED for this corpus, and that is a stronger statement than any single tier's effect size. If it does NOT hold, every tier in the study inherits a caveat. Either way the answer is worth one run. NOTE the rate argument no longer controls offered load: real gaps set it, and the achieved rate was 7.41/s against 6.00 requested when the trace was generated."
+      },
+      "arms": {
+        "اختصاصی:llm": {
+          "requests_ok": 1122,
+          "requests_total": 1123,
+          "requests_failed": 1,
+          "tokens_per_second": 526.2285111038357,
+          "aggregate_tokens_per_second": 525.5649377245257,
+          "requests_per_second": 3.7385650169715205,
+          "latency_mean_s": 1.1233436590286368,
+          "latency_p95_s": 3.376265832222999,
+          "latency_p99_s": 4.53029634149745,
+          "ttft_p99_s": 0.09672200962901108,
+          "chunk_gap_p99_s": 0.01720284393988549,
+          "contended_tokens_per_second": null,
+          "trace_id": "2df87cb8433ecc02"
+        },
+        "اختصاصی:llm2": {
+          "requests_ok": 1099,
+          "requests_total": 1101,
+          "requests_failed": 2,
+          "tokens_per_second": 511.6496291568003,
+          "aggregate_tokens_per_second": 511.4709703585627,
+          "requests_per_second": 3.650161345654472,
+          "latency_mean_s": 0.5403467902118803,
+          "latency_p95_s": 1.5438803544268012,
+          "latency_p99_s": 1.800048630274832,
+          "ttft_p99_s": 0.09273618917912244,
+          "chunk_gap_p99_s": 0.011688611470162865,
+          "contended_tokens_per_second": null,
+          "trace_id": "2df87cb8433ecc02"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 2221,
+          "requests_total": 2224,
+          "requests_failed": 3,
+          "tokens_per_second": 1034.47913293402,
+          "aggregate_tokens_per_second": 1031.6691077952185,
+          "requests_per_second": 7.36643537044787,
+          "latency_mean_s": 1.4393108508460315,
+          "latency_p95_s": 4.3542161816731095,
+          "latency_p99_s": 5.687997253425425,
+          "ttft_p99_s": 0.09683243576437241,
+          "chunk_gap_p99_s": 0.02114800311625004,
+          "contended_tokens_per_second": 1034.5253917800899,
+          "trace_id": "2df87cb8433ecc02"
+        },
+        "HAMI": {
+          "requests_ok": 2221,
+          "requests_total": 2224,
+          "requests_failed": 3,
+          "tokens_per_second": 1033.8540275687506,
+          "aggregate_tokens_per_second": 1031.516240002375,
+          "requests_per_second": 7.363047710559846,
+          "latency_mean_s": 1.772014766253484,
+          "latency_p95_s": 6.216174232773483,
+          "latency_p99_s": 8.41700978223235,
+          "ttft_p99_s": 0.1320242011919618,
+          "chunk_gap_p99_s": 0.03166200326755643,
+          "contended_tokens_per_second": 1034.405434515104,
+          "trace_id": "2df87cb8433ecc02"
+        }
+      }
+    },
+    "T21": {
+      "path": "T21-20260912-081009",
+      "roles": [
+        "llm2a",
+        "llm2b"
+      ],
+      "config": {
+        "duration": 240,
+        "rate": 40.0,
+        "scenario": "llm2-llm2",
+        "source": "sharegpt",
+        "why": "A SYMMETRIC PAIR THAT ACTUALLY SATURATES. T13 at 10 req/s and T15 at 20 req/s both answered the FAIRNESS question -- degradation spread 1.006 to 1.031, so MPS creates no winner when in-flight depth is equal -- and neither answered the CAPACITY question, because both stayed above 99.5% of their solo-sum throughput. T15 was commissioned to saturate and failed: doubling the rate roughly doubled delivered throughput (1,307 -> 2,589 tok/s), which is what not-yet-saturated looks like. So double it again. Two Qwen2.5-1.5B-AWQ instances have delivered 1,327 tok/s each; 40 req/s demands far more than the card can serve, which is the only way to learn whether the MPS throughput gain measured on UNLIKE pairs (T5 +6.4%, T14 +7.6%) also appears when the tenants are identical. Registered prediction: it does, and at a similar magnitude, because the gain comes from removing context-switch cost rather than from any asymmetry between the tenants. If it does NOT appear, then every throughput number in this study depends on the pair being unlike, which would be a significant and previously unsuspected caveat. Watch the host-RAM guard: two 1.5B tenants fit, but this tier is the most in-flight requests the node has held."
+      },
+      "arms": {
+        "اختصاصی:llm2a": {
+          "requests_ok": 4825,
+          "requests_total": 4835,
+          "requests_failed": 10,
+          "tokens_per_second": 2582.2489715052893,
+          "aggregate_tokens_per_second": 2582.080129014815,
+          "requests_per_second": 19.972677218207863,
+          "latency_mean_s": 1.234065461001827,
+          "latency_p95_s": 3.4104291655123236,
+          "latency_p99_s": 5.407889464981857,
+          "ttft_p99_s": 0.28437219440937056,
+          "chunk_gap_p99_s": 0.06449536638334384,
+          "contended_tokens_per_second": null,
+          "trace_id": "e30855c9755c50ef"
+        },
+        "اختصاصی:llm2b": {
+          "requests_ok": 4779,
+          "requests_total": 4786,
+          "requests_failed": 7,
+          "tokens_per_second": 2649.073594985061,
+          "aggregate_tokens_per_second": 2647.903612687126,
+          "requests_per_second": 19.715187907947996,
+          "latency_mean_s": 1.3116944258094074,
+          "latency_p95_s": 3.61927278963849,
+          "latency_p99_s": 5.619246644265959,
+          "ttft_p99_s": 0.31348221866413967,
+          "chunk_gap_p99_s": 0.06466858511790627,
+          "contended_tokens_per_second": null,
+          "trace_id": "e30855c9755c50ef"
+        },
+        "HAMI+MPS": {
+          "requests_ok": 7395,
+          "requests_total": 9621,
+          "requests_failed": 2226,
+          "tokens_per_second": 3532.4303801838687,
+          "aggregate_tokens_per_second": 3514.9934264745975,
+          "requests_per_second": 26.57236157514038,
+          "latency_mean_s": 31.099504367107723,
+          "latency_p95_s": 45.32221295312048,
+          "latency_p99_s": 52.020519185308395,
+          "ttft_p99_s": 37.65116598214954,
+          "chunk_gap_p99_s": 0.13684230949729684,
+          "contended_tokens_per_second": 3549.250941788165,
+          "trace_id": "e30855c9755c50ef"
+        },
+        "HAMI": {
+          "requests_ok": 6355,
+          "requests_total": 9621,
+          "requests_failed": 3266,
+          "tokens_per_second": 2924.3786465449793,
+          "aggregate_tokens_per_second": 2909.010740978469,
+          "requests_per_second": 22.238618316471815,
+          "latency_mean_s": 38.149950077955225,
+          "latency_p95_s": 54.11152409147471,
+          "latency_p99_s": 62.189849165566265,
+          "ttft_p99_s": 44.43401482630521,
+          "chunk_gap_p99_s": 0.20280260499566793,
+          "contended_tokens_per_second": 2938.9742875110237,
+          "trace_id": "e30855c9755c50ef"
+        }
+      }
+    },
+    "T22": {
+      "path": "T22-20260912-085910",
+      "roles": [
+        "llm2a",
+        "llm2b",
+        "embed-small"
+      ],
+      "config": {
+        "duration": 240,
+        "rate": 14.0,
+        "scenario": "dense3b",
+        "source": "sharegpt",
+        "why": "THREE BODIES, AND THE FIRST ONE THAT CAN FALSIFY THE DEPTH LAW. Every co-tenancy result in this study is two-body. T18 was meant to close that and cannot run on this node -- and even if it did, dense3 is one decoder beside two pooling models, so 'the deepest tenant wins' is true by construction there. dense3b is T13's symmetric pair with a third body: two IDENTICAL Qwen2.5-1.5B instances plus one embedder. The two decoders start at equal in-flight depth, so the law makes a real prediction -- they should stay equal to each other while the shallow embedder is made worst-off. If instead MPS splits the two identical tenants apart, the two-body fairness result does not extend to three and every fairness claim in this study needs a tenant-count caveat. VRAM is comfortable: 3840 + 3840 + 2304 = 9984 of 12288, 81.2%. HOST RAM is the whole difficulty at 8600 MiB raw, which is why this tier ships with 35-swapfile.sh. Swap is an OOM BACKSTOP, not a resource: if the run touches it the latency numbers are void, so 36-three-body.sh records swap used before and after and says so."
+      },
+      "arms": {
+        "اختصاصی:embed-small": {
+          "requests_ok": 672,
+          "requests_total": 673,
+          "requests_failed": 1,
+          "tokens_per_second": 0.0,
+          "aggregate_tokens_per_second": 0.0,
+          "requests_per_second": 2.7986566543425417,
+          "latency_mean_s": 0.21390511739688614,
+          "latency_p95_s": 0.3491305835545063,
+          "latency_p99_s": 0.4295958494022488,
+          "ttft_p99_s": 0.4295958494022488,
+          "chunk_gap_p99_s": null,
+          "contended_tokens_per_second": null,
+          "trace_id": "dda6f9a0a74df63c"
+        },
+        "اختصاصی:llm2a": {
+          "requests_ok": 1315,
+          "requests_total": 1318,
+          "requests_failed": 3,
+          "tokens_per_second": 720.3065855362112,
+          "aggregate_tokens_per_second": 720.2466700289875,
+          "requests_per_second": 5.46696511349891,
+          "latency_mean_s": 0.5778467362229588,
+          "latency_p95_s": 1.575221002474427,
+          "latency_p99_s": 2.4621093262359492,
+          "ttft_p99_s": 0.164441050328314,
+          "chunk_gap_p99_s": 0.02591206432320178,
+          "contended_tokens_per_second": null,
+          "trace_id": "dda6f9a0a74df63c"
+        },
+        "اختصاصی:llm2b": {
+          "requests_ok": 1358,
+          "requests_total": 1360,
+          "requests_failed": 2,
+          "tokens_per_second": 734.4404120670204,
+          "aggregate_tokens_per_second": 734.3475186802884,
+          "requests_per_second": 5.6596950662472505,
+          "latency_mean_s": 0.591531588430537,
+          "latency_p95_s": 1.4813702609855688,
+          "latency_p99_s": 2.3417035965714605,
+          "ttft_p99_s": 0.200448018219322,
+          "chunk_gap_p99_s": 0.026686694473028183,
+          "contended_tokens_per_second": null,
+          "trace_id": "dda6f9a0a74df63c"
+        }
+      }
+    }
+  },
+  "figures": {
+    "T1": [
+      "t1_arrivals.png",
+      "t1_outcomes.png",
+      "t1_telemetry.png"
+    ],
+    "T2": [
+      "t2_arrivals.png",
+      "t2_outcomes.png",
+      "t2_telemetry.png"
+    ],
+    "T3": [
+      "t3_arrivals.png",
+      "t3_outcomes.png",
+      "t3_telemetry.png"
+    ],
+    "T4": [
+      "t4_arrivals.png",
+      "t4_outcomes.png"
+    ],
+    "T5": [
+      "t5_arrivals.png",
+      "t5_outcomes.png",
+      "t5_telemetry.png"
+    ],
+    "T6": [
+      "t6_arrivals.png",
+      "t6_outcomes.png",
+      "t6_telemetry.png"
+    ],
+    "T7": [
+      "t7_arrivals.png",
+      "t7_outcomes.png",
+      "t7_telemetry.png"
+    ],
+    "T8": [
+      "t8_arrivals.png",
+      "t8_outcomes.png",
+      "t8_telemetry.png"
+    ],
+    "T9": [
+      "t9_arrivals.png",
+      "t9_outcomes.png",
+      "t9_telemetry.png"
+    ],
+    "T11": [
+      "t11_arrivals.png",
+      "t11_outcomes.png",
+      "t11_telemetry.png"
+    ],
+    "T13": [
+      "t13_arrivals.png",
+      "t13_outcomes.png",
+      "t13_telemetry.png"
+    ],
+    "T14": [
+      "t14_arrivals.png",
+      "t14_outcomes.png",
+      "t14_telemetry.png"
+    ],
+    "T15": [
+      "t15_arrivals.png",
+      "t15_outcomes.png",
+      "t15_telemetry.png"
+    ],
+    "T16": [
+      "t16_arrivals.png",
+      "t16_outcomes.png",
+      "t16_telemetry.png"
+    ],
+    "T17": [
+      "t17_arrivals.png",
+      "t17_outcomes.png",
+      "t17_telemetry.png"
+    ],
+    "T18": [
+      "t18_arrivals.png",
+      "t18_outcomes.png"
+    ],
+    "T20": [
+      "t20_arrivals.png",
+      "t20_outcomes.png",
+      "t20_telemetry.png"
+    ],
+    "T21": [
+      "t21_arrivals.png",
+      "t21_outcomes.png",
+      "t21_telemetry.png"
+    ],
+    "T22": [
+      "t22_arrivals.png",
+      "t22_outcomes.png"
+    ],
+    "سراسری": [
+      "phase2_high_level_architecture_source.png",
+      "measurement_pipeline.png",
+      "poisson_and_real_arrivals.png",
+      "host_rss_by_role.png",
+      "saturation_vs_mps_throughput.png",
+      "t7_policy_effect.png",
+      "t10_fault_outcomes.png",
+      "admission_constraints.png",
+      "t12_soak_telemetry.png",
+      "split_baseline_status.png",
+      "split_request_counts.png",
+      "t5_depth_latency_throughput.png"
+    ]
+  }
+}

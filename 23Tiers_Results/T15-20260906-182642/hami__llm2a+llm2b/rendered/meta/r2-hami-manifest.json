@@ -1,0 +1,26 @@
+{
+  "scenario": "llm2-llm2",
+  "arm": "hami",
+  "roles": [
+    "llm2a",
+    "llm2b"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 11264,
+  "card_mib": 12288,
+  "fill_percent": 91.7,
+  "mps_percent": {
+    "llm2a": 100,
+    "llm2b": 100
+  },
+  "files": [
+    "r2-hami-llm2a.yaml",
+    "r2-hami-llm2b.yaml"
+  ],
+  "models": {
+    "llm2a": "Qwen/Qwen2.5-1.5B-Instruct-AWQ",
+    "llm2b": "Qwen/Qwen2.5-1.5B-Instruct-AWQ"
+  }
+}

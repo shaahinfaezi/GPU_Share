@@ -1,0 +1,14 @@
+{
+  "arm": "dedicated",
+  "want_mps": false,
+  "daemon_running": false,
+  "mps_client_pids": [],
+  "tenants": 1,
+  "workers_by_role": {
+    "tp": [
+      2868209,
+      2868211
+    ]
+  },
+  "ok": true
+}

@@ -1,0 +1,14 @@
+{"t": 1788520755.1006835, "iso": "2026-09-04T11:19:15+0000", "phase": "teardown_begin"}
+{"t": 1788520756.4641917, "iso": "2026-09-04T11:19:16+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 1, \"1\": 1}"}
+{"t": 1788520756.6381533, "iso": "2026-09-04T11:19:16+0000", "phase": "mps_daemon", "want": false, "after_s": 0.0, "nudged": false}
+{"t": 1788520759.690791, "iso": "2026-09-04T11:19:19+0000", "phase": "host_memory", "ok": true, "roles": ["llm"], "need_mib": 3424, "available_mib": 7308, "total_mib": 15988, "swap_total_mib": 0, "measured": []}
+{"t": 1788520759.6917412, "iso": "2026-09-04T11:19:19+0000", "phase": "apply"}
+{"t": 1788520760.1634212, "iso": "2026-09-04T11:19:20+0000", "phase": "wait_ready", "roles": "llm"}
+{"t": 1788520926.5836687, "iso": "2026-09-04T11:22:06+0000", "phase": "ready", "role": "llm", "after_s": 166.4}
+{"t": 1788520926.8012652, "iso": "2026-09-04T11:22:06+0000", "phase": "mps_state", "ok": true, "arm": "hami", "want_mps": false, "daemon_running": false, "mps_client_pids": [], "tenants": 1}
+{"t": 1788520927.1765478, "iso": "2026-09-04T11:22:07+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.53:8000"}
+{"t": 1788520927.922835, "iso": "2026-09-04T11:22:07+0000", "phase": "smoke", "role": "llm", "ok": true}
+{"t": 1788520927.9235413, "iso": "2026-09-04T11:22:07+0000", "phase": "replay_begin"}
+{"t": 1788521234.213445, "iso": "2026-09-04T11:27:14+0000", "phase": "replay_end", "rc": 0}
+{"t": 1788521234.7347, "iso": "2026-09-04T11:27:14+0000", "phase": "prom_collected", "series": 38, "errors": 0, "skipped": 1, "path": "prom.json"}
+{"t": 1788521269.745238, "iso": "2026-09-04T11:27:49+0000", "phase": "teardown_end", "waited_s": 33.8, "left": 0}

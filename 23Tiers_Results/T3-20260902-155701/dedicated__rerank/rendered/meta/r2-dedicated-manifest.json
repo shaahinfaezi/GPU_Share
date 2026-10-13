@@ -1,0 +1,22 @@
+{
+  "scenario": "vl-rerank",
+  "arm": "dedicated",
+  "roles": [
+    "rerank"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 2816,
+  "card_mib": 12288,
+  "fill_percent": 22.9,
+  "mps_percent": {
+    "rerank": 100
+  },
+  "files": [
+    "r2-dedicated-rerank.yaml"
+  ],
+  "models": {
+    "rerank": "BAAI/bge-reranker-v2-m3"
+  }
+}

@@ -1,0 +1,35 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: r2-vram-hog
+  namespace: llm-demo
+  labels: {r2-role: vram-hog}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: hog
+      image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+      command: ["python3", "-c"]
+      args:
+        - |
+          import torch, time, sys
+          held = []
+          # Claim in 512 MiB steps until the allocator refuses, then hold.
+          while True:
+              try:
+                  held.append(torch.empty(512 * 1024 * 1024 // 2,
+                                          dtype=torch.float16, device="cuda"))
+                  print("held %d MiB" % (len(held) * 512), flush=True)
+              except Exception as exc:
+                  print("stopped at %d MiB: %s" % (len(held) * 512, exc),
+                        flush=True)
+                  break
+          time.sleep(300)
+      env:
+        - name: NVIDIA_VISIBLE_DEVICES
+          value: "all"
+        - name: NVIDIA_DRIVER_CAPABILITIES
+          value: compute,utility
+      resources:
+        limits: {cpu: "2", memory: 8Gi}

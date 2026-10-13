@@ -1,0 +1,23 @@
+{
+  "rate_per_tenant": 0.5,
+  "seconds": 300,
+  "output_tokens": 64,
+  "hold_seconds": 0,
+  "without_prometheus": true,
+  "host_budget_mib": 9400,
+  "seed": 20260924,
+  "render_only": null,
+  "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+  "revision": "existing-local-checkpoint-see-model-provenance",
+  "node": "mr-gholami",
+  "reserve_mib": 1024,
+  "capacity_calibration": false,
+  "files_sha256": {
+    "split/58-tiny-series.py": "55b5d05f7058c80de35d81c4dc3da38f2c487fbe6608aa57c7c98db2224b6857",
+    "split/57-tiny-tp-probe.py": "78c0eed0be6c17bbb3dbc177f95b7e0a798bff72812b3e123169493d8ee86fc4",
+    "split/56-serving-probe.py": "9ea6daabcc06867f206f3f39923873aab8012629ee3e20039529e8269ebbcc2a",
+    "split/50-render-split.py": "602ee996d1682ef4ff3be5550a297f4fbd353bda0f9bcbdf18d8ef4e417f522e",
+    "workload/replay.py": "7360a4f143074ef3fe933e8e82b4ebd468fa9e0c0c3babbe5be96d8e5c5bf1f8",
+    "split/59-qwen7b-attempt.py": "e2561b2a54ccb0db2dc71651cb51d39a1fb02577dfef1bdd250b575062a12019"
+  }
+}

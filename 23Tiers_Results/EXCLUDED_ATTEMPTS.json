@@ -1,0 +1,22 @@
+[
+  {
+    "source": "T10-vram-escape-hami-20260906-052828",
+    "reason": "No completed replay summary; no measured inference replay to review."
+  },
+  {
+    "source": "T10-vram-escape-hami-mps-20260906-052830",
+    "reason": "No completed replay summary; no measured inference replay to review."
+  },
+  {
+    "source": "T10-vram-hog-hami-20260909-154056",
+    "reason": "No completed replay summary; no measured inference replay to review."
+  },
+  {
+    "source": "T7-20260909-154059",
+    "reason": "No completed replay summary; no measured inference replay to review."
+  },
+  {
+    "source": "GPU_Share/round2/results/T7-20260905-054221",
+    "reason": "Local dry-run only; duplicate also exists under round2_codes_scripts_probes/results."
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "replay_start_epoch": 1790346022.1566415,
+  "replay_end_epoch": 1790346326.462503,
+  "url": null,
+  "note": "Prometheus explicitly disabled; no server metrics or fresh dashboard data.",
+  "available": false
+}

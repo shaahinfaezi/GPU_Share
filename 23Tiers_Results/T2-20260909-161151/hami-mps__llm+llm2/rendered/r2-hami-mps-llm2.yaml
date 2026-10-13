@@ -1,0 +1,53 @@
+---
+apiVersion: serving.kserve.io/v1alpha1
+kind: LLMInferenceService
+metadata:
+  name: r2-llm2
+  namespace: llm-demo
+  labels:
+    r2-arm: hami-mps
+    r2-role: llm2
+  annotations: {}
+spec:
+  model:
+    name: Qwen/Qwen2.5-1.5B-Instruct-AWQ
+    uri: pvc://r2-models-pvc/models/llm2
+  replicas: 1
+  template:
+    containers:
+      - name: main
+        image: 127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu
+        args:
+          - --gpu-memory-utilization=0.79
+          - --max-model-len=4096
+          - --max-num-seqs=64
+          - --quantization=awq_marlin
+        resources:
+          limits:
+            cpu: "4"
+            memory: 12Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "3840"
+            nvidia.com/gpucores: "25"
+          requests:
+            cpu: "200m"
+            memory: 2Gi
+            nvidia.com/gpu: "1"
+            nvidia.com/gpumem: "3840"
+            nvidia.com/gpucores: "25"
+        env:
+          - name: HF_HOME
+            value: /mnt/models
+          - name: GPU_CORE_UTILIZATION_POLICY
+            value: "force"
+          - name: CUDA_MPS_PIPE_DIRECTORY
+            value: /tmp/nvidia-mps
+          - name: CUDA_MPS_LOG_DIRECTORY
+            value: /tmp/nvidia-mps
+          - name: CUDA_MPS_ACTIVE_THREAD_PERCENTAGE
+            value: "100"
+        volumeMounts:
+          - {name: mps-pipe, mountPath: /tmp/nvidia-mps}
+    volumes:
+      - name: mps-pipe
+        hostPath: {path: /tmp/nvidia-mps, type: Directory}

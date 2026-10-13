@@ -1,0 +1,16 @@
+{"t": 1788643859.3173401, "iso": "2026-09-05T21:30:59+0000", "phase": "preconditions", "ok": false, "problems": 2}
+{"t": 1788643859.3175628, "iso": "2026-09-05T21:30:59+0000", "phase": "teardown_begin"}
+{"t": 1788643894.299205, "iso": "2026-09-05T21:31:34+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 39, \"1\": 39}"}
+{"t": 1788643894.464239, "iso": "2026-09-05T21:31:34+0000", "phase": "mps_daemon", "want": true, "after_s": 0.0, "nudged": false}
+{"t": 1788643897.527567, "iso": "2026-09-05T21:31:37+0000", "phase": "apply"}
+{"t": 1788644050.8673677, "iso": "2026-09-05T21:34:10+0000", "phase": "ready", "role": "llm2", "after_s": 152.5}
+{"t": 1788644056.2388628, "iso": "2026-09-05T21:34:16+0000", "phase": "ready", "role": "llm", "after_s": 157.9}
+{"t": 1788644056.8415833, "iso": "2026-09-05T21:34:16+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"llm2\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1788644056.9415298, "iso": "2026-09-05T21:34:16+0000", "phase": "mps_state", "ok": true, "arm": "hami-mps", "want_mps": true, "daemon_running": true, "mps_client_pids": [2775734, 2775819], "tenants": 2}
+{"t": 1788644057.1864018, "iso": "2026-09-05T21:34:17+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.74:8000"}
+{"t": 1788644057.4325871, "iso": "2026-09-05T21:34:17+0000", "phase": "endpoint", "role": "llm2", "url": "http://10.42.0.75:8000"}
+{"t": 1788644065.1269562, "iso": "2026-09-05T21:34:25+0000", "phase": "replay_begin"}
+{"t": 1788644163.8415136, "iso": "2026-09-05T21:36:03+0000", "phase": "mps_daemon", "want": false, "after_s": 8.1, "nudged": false}
+{"t": 1788644166.9486005, "iso": "2026-09-05T21:36:06+0000", "phase": "fault_injected", "fault": "mps-kill", "at": 1788644155.2200396, "ok": true, "how": "supervisor parked, MPS down after 11s", "daemon_after": false}
+{"t": 1788644369.9430404, "iso": "2026-09-05T21:39:29+0000", "phase": "replay_end", "rc": 0}
+{"t": 1788644376.413475, "iso": "2026-09-05T21:39:36+0000", "phase": "mps_daemon", "want": true, "after_s": 6.1, "nudged": false}

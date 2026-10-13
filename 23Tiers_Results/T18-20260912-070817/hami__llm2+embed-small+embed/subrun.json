@@ -1,0 +1,38 @@
+{
+  "arm": "hami",
+  "error": "RuntimeError: host RAM: 3 tenants need about 9524 MiB but only 7600 MiB is available (total 15988 MiB, swap 0 MiB). This is what killed T4 -- the OOM killer took two vLLM engines and Prometheus. Use fewer tenants, or measure real per-role RSS into HOST_RSS_MIB.",
+  "host_memory": {
+    "available_mib": 7600,
+    "measured": [
+      "embed",
+      "embed-small",
+      "llm2"
+    ],
+    "need_mib": 9524,
+    "roles": [
+      "llm2",
+      "embed-small",
+      "embed"
+    ],
+    "swap_total_mib": 0,
+    "total_mib": 15988
+  },
+  "render": [
+    "",
+    "arm hami  scenario dense3",
+    "gpumem requested 8960 of 12288 MiB = 72.9% of the card",
+    "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T18-20260912-070817/hami__llm2+embed-small+embed/rendered"
+  ],
+  "roles": [
+    "llm2",
+    "embed-small",
+    "embed"
+  ],
+  "scenario": "dense3",
+  "status": "error",
+  "tag": "hami__llm2+embed-small+embed",
+  "teardown_left": [],
+  "teardown_s": 0.2,
+  "test": "T18",
+  "trace_id": "0a83d269b197133e"
+}

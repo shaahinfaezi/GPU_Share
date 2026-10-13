@@ -1,0 +1,23 @@
+{
+  "arm": "hami-mps",
+  "want_mps": true,
+  "daemon_running": true,
+  "mps_client_pids": [
+    2880025,
+    2880027,
+    2882809,
+    2882812
+  ],
+  "tenants": 2,
+  "workers_by_role": {
+    "tp": [
+      2880025,
+      2880027
+    ],
+    "pp": [
+      2882809,
+      2882812
+    ]
+  },
+  "ok": true
+}

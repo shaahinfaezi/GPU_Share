@@ -1,0 +1,67 @@
+{
+  "arm": "hami",
+  "duration": 300,
+  "fault": "vram-hog",
+  "fault_detail": {
+    "hog_container_state": "{\"running\":{\"startedAt\":\"2026-09-12T12:18:03Z\"}}",
+    "hog_events": "Scheduled   Successfully assigned llm-demo/r2-vram-hog to mr-gholami\nPulled      Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine\nCreated     Created container: hog\nStarted     Started container hog\n",
+    "hog_gpu_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c",
+    "hog_held_mib": 512,
+    "hog_log_tail": "a total capacity of 11.63 GiB of which 117.38 MiB is free. Process 3680326 has 7.76 GiB memory in use. Process 3682570 has 3.74 GiB memory in use. Of the allocated memory 3.50 GiB is allocated by PyTorch, and 0 bytes is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)\n",
+    "hog_phase": "Running",
+    "manifest": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260912-121324/r2-vram-hog.yaml",
+    "out": "pod/r2-vram-hog created\n",
+    "rc": 0
+  },
+  "fault_time": 1789215479.7924554,
+  "host_min_available_mib": 4584,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 1,
+    "want_mps": false
+  },
+  "mps_recovery": null,
+  "out": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-20260912-121324",
+  "placement": {
+    "devices_in_use": [
+      1
+    ]
+  },
+  "rate": 6.0,
+  "recovered": null,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1789215389.7003582,
+  "t1": 1789215693.410473,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": 1.4464608696547308,
+      "n": 343,
+      "p50": 1.1639244789257646,
+      "p95": 3.455669540911913,
+      "p99": 5.174641033634543
+    },
+    "before": {
+      "failed": 0,
+      "mean": 1.722822242065287,
+      "n": 183,
+      "p50": 1.294276863336563,
+      "p95": 5.100638753734529,
+      "p99": 8.496954227797687
+    },
+    "during": {
+      "failed": 0,
+      "mean": 1.4037489716754143,
+      "n": 172,
+      "p50": 1.0278939688578248,
+      "p95": 3.7337493365630507,
+      "p99": 6.527286202646792
+    }
+  }
+}

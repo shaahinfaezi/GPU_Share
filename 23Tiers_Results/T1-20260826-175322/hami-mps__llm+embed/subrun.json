@@ -1,0 +1,43 @@
+{
+  "arm": "hami-mps",
+  "endpoints": {
+    "embed": "http://10.42.0.144:8000",
+    "llm": "http://10.42.0.145:8000"
+  },
+  "error": "TypeError: 'Event' object is not callable",
+  "models": {
+    "embed": "BAAI/bge-m3",
+    "llm": "Qwen/Qwen2.5-7B-Instruct-AWQ"
+  },
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "embed": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "render": [
+    "",
+    "arm hami-mps  scenario llm-embed",
+    "gpumem requested 11264 of 12288 MiB = 91.7% of the card",
+    "apply with: kubectl apply -f /opt/GPU_Share/round2/results/T1-20260826-175322/hami-mps__llm+embed/rendered"
+  ],
+  "roles": [
+    "llm",
+    "embed"
+  ],
+  "scenario": "llm-embed",
+  "status": "error",
+  "tag": "hami-mps__llm+embed",
+  "test": "T1",
+  "trace_id": "1192f91a36ff2224"
+}

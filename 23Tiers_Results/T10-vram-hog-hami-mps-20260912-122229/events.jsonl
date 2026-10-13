@@ -1,0 +1,18 @@
+{"t": 1789215750.0036602, "iso": "2026-09-12T12:22:30+0000", "phase": "preconditions", "ok": true, "problems": 0}
+{"t": 1789215750.003854, "iso": "2026-09-12T12:22:30+0000", "phase": "teardown_begin"}
+{"t": 1789215751.6530273, "iso": "2026-09-12T12:22:31+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 2, \"1\": 2}"}
+{"t": 1789215751.7950008, "iso": "2026-09-12T12:22:31+0000", "phase": "mps_daemon", "want": true, "after_s": 0.0, "nudged": false}
+{"t": 1789215754.894839, "iso": "2026-09-12T12:22:34+0000", "phase": "apply"}
+{"t": 1789215949.1232464, "iso": "2026-09-12T12:25:49+0000", "phase": "ready", "role": "llm", "after_s": 193.7}
+{"t": 1789215949.3119206, "iso": "2026-09-12T12:25:49+0000", "phase": "mps_state", "ok": true, "arm": "hami-mps", "want_mps": true, "daemon_running": true, "mps_client_pids": [3688950], "tenants": 1}
+{"t": 1789215949.647875, "iso": "2026-09-12T12:25:49+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.9:8000"}
+{"t": 1789215957.9688787, "iso": "2026-09-12T12:25:57+0000", "phase": "replay_begin"}
+{"t": 1789216058.7077007, "iso": "2026-09-12T12:27:38+0000", "phase": "fault_injected", "fault": "vram-hog", "at": 1789216048.0678234, "rc": 0, "out": "pod/r2-vram-hog created\n", "manifest": "/opt/GPU_Share/round2/results/T10-vram-hog-hami-mps-20260912-122229/r2-vram-hog.yaml", "hog_gpu_uuid": "GPU-fa422f59-3462-6e01-aece-96aeafeab30c", "hog_held_mib": 512, "hog_phase": "Running", "hog_container_state": "{\"running\":{\"startedAt\":\"2026-09-12T12:27:30Z\"}}", "hog_events": "Scheduled   Successfully assigned llm-demo/r2-vram-hog to mr-gholami\nPulled      Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine\nCreated     Created container: hog\nStarted     Started container hog\nKilling     Stopping container hog\nScheduled   Successfully assigned llm-demo/r2-vram-hog to mr-gholami\nPulled      Container image \"127.0.0.1:5000/kserve/huggingfaceserver:v0.17.0-gpu\" already present on machine\nCreated     Created container: hog\nStarted     Started container hog\n", "hog_log_tail": " MiB is free. Process 3689246 has 30.00 MiB memory in use. Process 3688950 has 7.76 GiB memory in use. Process 3692434 has 3.74 GiB memory in use. Of the allocated memory 3.50 GiB is allocated by PyTorch, and 0 bytes is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)\n"}
+{"t": 1789216261.732928, "iso": "2026-09-12T12:31:01+0000", "phase": "replay_end", "rc": 0}
+{"t": 1789216261.7351499, "iso": "2026-09-12T12:31:01+0000", "phase": "host_min_available", "mib": 4540}
+{"t": 1789216261.735389, "iso": "2026-09-12T12:31:01+0000", "phase": "mps_recovery_probe_start"}
+{"t": 1789216261.8656962, "iso": "2026-09-12T12:31:01+0000", "phase": "mps_recovery_probe", "reachable_immediately": true, "state": "healthy", "seconds_to_reachable": 0.0, "clients_after": [3688950, 3692434]}
+{"t": 1789216262.015211, "iso": "2026-09-12T12:31:02+0000", "phase": "teardown_begin"}
+{"t": 1789216296.6601841, "iso": "2026-09-12T12:31:36+0000", "phase": "teardown_end", "waited_s": 33.7, "left": 0}
+{"t": 1789216296.713919, "iso": "2026-09-12T12:31:36+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 39, \"1\": 39}"}
+{"t": 1789216296.920862, "iso": "2026-09-12T12:31:36+0000", "phase": "mps_daemon", "want": true, "after_s": 0.0, "nudged": false}

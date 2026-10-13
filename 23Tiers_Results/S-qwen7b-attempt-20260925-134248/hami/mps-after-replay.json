@@ -1,0 +1,18 @@
+{
+  "arm": "hami",
+  "want_mps": false,
+  "daemon_running": false,
+  "mps_client_pids": [],
+  "tenants": 2,
+  "workers_by_role": {
+    "tp": [
+      2874444,
+      2874446
+    ],
+    "pp": [
+      2875896,
+      2875898
+    ]
+  },
+  "ok": true
+}

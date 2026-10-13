@@ -1,0 +1,20 @@
+{"t": 1788979113.8396084, "iso": "2026-09-09T18:38:33+0000", "phase": "preconditions", "ok": true, "problems": 0}
+{"t": 1788979113.8397543, "iso": "2026-09-09T18:38:33+0000", "phase": "teardown_begin"}
+{"t": 1788979115.4309518, "iso": "2026-09-09T18:38:35+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 39, \"1\": 39}"}
+{"t": 1788979117.7459466, "iso": "2026-09-09T18:38:37+0000", "phase": "mps_daemon", "want": false, "after_s": 2.1, "nudged": false}
+{"t": 1788979120.845007, "iso": "2026-09-09T18:38:40+0000", "phase": "apply"}
+{"t": 1788979309.638424, "iso": "2026-09-09T18:41:49+0000", "phase": "ready", "role": "llm", "after_s": 187.8}
+{"t": 1788979331.3646255, "iso": "2026-09-09T18:42:11+0000", "phase": "ready", "role": "llm2", "after_s": 209.5}
+{"t": 1788979332.1203322, "iso": "2026-09-09T18:42:12+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"llm2\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1788979332.2876697, "iso": "2026-09-09T18:42:12+0000", "phase": "mps_state", "ok": true, "arm": "hami", "want_mps": false, "daemon_running": false, "mps_client_pids": [], "tenants": 2}
+{"t": 1788979332.6542976, "iso": "2026-09-09T18:42:12+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.20:8000"}
+{"t": 1788979333.0247025, "iso": "2026-09-09T18:42:13+0000", "phase": "endpoint", "role": "llm2", "url": "http://10.42.0.21:8000"}
+{"t": 1788979342.4656286, "iso": "2026-09-09T18:42:22+0000", "phase": "replay_begin"}
+{"t": 1788979443.6824126, "iso": "2026-09-09T18:44:03+0000", "phase": "fault_injected", "fault": "tenant-fault", "at": 1788979432.559964, "faulter_role": "llm2", "faulter_pod": "r2-llm2-kserve-7dc6d66899-82lxt", "rc": 0, "mps_daemon_after": false, "out_tail": "xt_alive_after\": false, \"sticky\": \"AcceleratorError: CUDA error: device-side assert triggered\\nSearch for `cudaErrorAssert' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more inform\"}\n/pytorch/aten/src/ATen/native/cuda/IndexKernel.cu:111: operator(): block: [0,0,0], thread: [0,0,0] Assertion `-sizes[i] <= index && index < sizes[i] && \"index out of bounds\"` failed.\n"}
+{"t": 1788979648.2154963, "iso": "2026-09-09T18:47:28+0000", "phase": "replay_end", "rc": 0}
+{"t": 1788979648.2164767, "iso": "2026-09-09T18:47:28+0000", "phase": "host_min_available", "mib": 1915}
+{"t": 1788979648.496168, "iso": "2026-09-09T18:47:28+0000", "phase": "ready", "role": "llm2", "after_s": 0.3}
+{"t": 1788979648.5172443, "iso": "2026-09-09T18:47:28+0000", "phase": "teardown_begin"}
+{"t": 1788979683.3710256, "iso": "2026-09-09T18:48:03+0000", "phase": "teardown_end", "waited_s": 33.7, "left": 0}
+{"t": 1788979683.4348152, "iso": "2026-09-09T18:48:03+0000", "phase": "gpu_idle", "waited_s": 0.1, "used": "{\"0\": 1, \"1\": 1}"}
+{"t": 1788979687.729883, "iso": "2026-09-09T18:48:07+0000", "phase": "mps_daemon", "want": true, "after_s": 4.1, "nudged": false}

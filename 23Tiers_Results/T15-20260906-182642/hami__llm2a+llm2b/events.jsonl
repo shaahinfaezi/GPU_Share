@@ -1,0 +1,18 @@
+{"t": 1788720072.3670974, "iso": "2026-09-06T18:41:12+0000", "phase": "teardown_begin"}
+{"t": 1788720073.9588735, "iso": "2026-09-06T18:41:13+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 1, \"1\": 1}"}
+{"t": 1788720074.1644964, "iso": "2026-09-06T18:41:14+0000", "phase": "mps_daemon", "want": false, "after_s": 0.0, "nudged": false}
+{"t": 1788720077.2668378, "iso": "2026-09-06T18:41:17+0000", "phase": "host_memory", "ok": true, "roles": ["llm2a", "llm2b"], "need_mib": 6624, "available_mib": 8167, "total_mib": 15988, "swap_total_mib": 0, "measured": []}
+{"t": 1788720077.2676203, "iso": "2026-09-06T18:41:17+0000", "phase": "apply"}
+{"t": 1788720078.0571513, "iso": "2026-09-06T18:41:18+0000", "phase": "wait_ready", "roles": "llm2a,llm2b"}
+{"t": 1788720224.5337844, "iso": "2026-09-06T18:43:44+0000", "phase": "ready", "role": "llm2a", "after_s": 146.5}
+{"t": 1788720230.143762, "iso": "2026-09-06T18:43:50+0000", "phase": "ready", "role": "llm2b", "after_s": 152.1}
+{"t": 1788720230.762855, "iso": "2026-09-06T18:43:50+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm2a\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"llm2b\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1788720230.8904994, "iso": "2026-09-06T18:43:50+0000", "phase": "mps_state", "ok": true, "arm": "hami", "want_mps": false, "daemon_running": false, "mps_client_pids": [], "tenants": 2}
+{"t": 1788720231.1668782, "iso": "2026-09-06T18:43:51+0000", "phase": "endpoint", "role": "llm2a", "url": "http://10.42.0.152:8000"}
+{"t": 1788720231.4237115, "iso": "2026-09-06T18:43:51+0000", "phase": "endpoint", "role": "llm2b", "url": "http://10.42.0.153:8000"}
+{"t": 1788720232.0863, "iso": "2026-09-06T18:43:52+0000", "phase": "smoke", "role": "llm2a", "ok": true}
+{"t": 1788720232.2592847, "iso": "2026-09-06T18:43:52+0000", "phase": "smoke", "role": "llm2b", "ok": true}
+{"t": 1788720232.2599735, "iso": "2026-09-06T18:43:52+0000", "phase": "replay_begin"}
+{"t": 1788720479.5866206, "iso": "2026-09-06T18:47:59+0000", "phase": "replay_end", "rc": 0}
+{"t": 1788720480.0688825, "iso": "2026-09-06T18:48:00+0000", "phase": "prom_collected", "series": 56, "errors": 0, "skipped": 1, "path": "prom.json"}
+{"t": 1788720514.746875, "iso": "2026-09-06T18:48:34+0000", "phase": "teardown_end", "waited_s": 33.4, "left": 0}

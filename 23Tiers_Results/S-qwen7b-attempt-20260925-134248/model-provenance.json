@@ -1,0 +1,21 @@
+{
+  "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+  "path": "/data2/hf-cache/models/llm",
+  "revision": "existing-local-checkpoint-see-model-provenance",
+  "config_sha256": "ec0c1f5f875ad8bc1f78c5140c22dbdde1b55478442ad358e7a4d9ecf947a327",
+  "index_sha256": "559b6859f37625080bf49eea80806ecc2f859a13b316b7fae2ff4432b6308e36",
+  "weights": [
+    {
+      "file": "model-00001-of-00002.safetensors",
+      "bytes": 3996422976,
+      "mtime_ns": 1787655307305003260
+    },
+    {
+      "file": "model-00002-of-00002.safetensors",
+      "bytes": 1574406784,
+      "mtime_ns": 1787655133322478534
+    }
+  ],
+  "profile": "qwen7b-bounded-fork",
+  "note": "Checkpoint files reused in place; shard sizes/timestamps are provenance, not content hashes. KV bytes limit GPU cache, not total host RAM. Host saving remains unmeasured."
+}

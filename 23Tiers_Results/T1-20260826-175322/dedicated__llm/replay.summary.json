@@ -1,0 +1,50 @@
+{
+  "arm": "dedicated",
+  "note": "T1 dedicated__llm",
+  "trace_id": "1192f91a36ff2224",
+  "trace_params": {
+    "scenario": "llm-embed",
+    "rate": 6.0,
+    "duration": 300.0,
+    "source": "sharegpt",
+    "seed": 20260826,
+    "fixed_output": 0,
+    "embed_batch": 32,
+    "rerank_docs": 16,
+    "warmup": 8
+  },
+  "roles": [
+    "llm"
+  ],
+  "endpoints": {
+    "llm": "http://10.42.0.140:8000"
+  },
+  "models": {
+    "llm": "Qwen/Qwen2.5-7B-Instruct-AWQ"
+  },
+  "only": [
+    "llm"
+  ],
+  "wall_seconds": 299.8853009250015,
+  "requests_total": 885,
+  "requests_ok": 0,
+  "requests_failed": 885,
+  "model_count": 1,
+  "per_service": {
+    "llm": {
+      "requests": 0
+    }
+  },
+  "aggregate": {
+    "output_tokens": 0,
+    "prompt_tokens": 0,
+    "tokens_per_second": 0.0,
+    "requests_per_second": 0.0,
+    "latency_e2e": null,
+    "ttft": null,
+    "ttlt": null,
+    "itl": null,
+    "client_delay": null
+  },
+  "contended": null
+}

@@ -1,0 +1,31 @@
+{
+  "duration_s": 14400,
+  "bin_s": 60,
+  "definition": "All live requests; warm-up excluded. Planned trace and actual t_sent counted independently. No smoothing or synthetic samples.",
+  "sources": [
+    {
+      "arm": "HAMi",
+      "trace": "T12-20260911-065446\\trace.json",
+      "requests": "T12-20260911-065446\\hami__llm+llm2\\replay.requests.csv",
+      "trace_sha256": "6720f36ef01898d4a097616af1415d38d23dd914378a753f3ee11806a1140c49",
+      "requests_sha256": "92c671693ccd5a18cb965e86c7a89e1991ae357e9784d11473bc90458eb10761",
+      "live_requests": 86670,
+      "actual_dispatch_count": 86670,
+      "trace_id": "f07c2c6c94dd1a99"
+    },
+    {
+      "arm": "HAMi + MPS",
+      "trace": "T12-20260911-024916\\trace.json",
+      "requests": "T12-20260911-024916\\hami-mps__llm+llm2\\replay.requests.csv",
+      "trace_sha256": "6720f36ef01898d4a097616af1415d38d23dd914378a753f3ee11806a1140c49",
+      "requests_sha256": "ef7a269b075af0bea457778a3cc33a3232ff48bebf8486317fd0065491c188de",
+      "live_requests": 86670,
+      "actual_dispatch_count": 86670,
+      "trace_id": "f07c2c6c94dd1a99"
+    }
+  ],
+  "identical_scheduled_trace": true,
+  "scheduled_count": 86670,
+  "bins": 240,
+  "actual_bin_differences": 2
+}

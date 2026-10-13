@@ -1,0 +1,33 @@
+{
+  "model": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+  "controlled_load": true,
+  "measured_capacity": false,
+  "per_tenant": {
+    "hami": {
+      "tp": {
+        "tokens_per_second_ratio_to_own_solo": 1.2190487761840412,
+        "latency_p95_ratio_to_own_solo": 0.2010729175539373,
+        "latency_p99_ratio_to_own_solo": 0.2097615294456632
+      },
+      "pp": {
+        "tokens_per_second_ratio_to_own_solo": 1.070117072368529,
+        "latency_p95_ratio_to_own_solo": 0.3004106624301287,
+        "latency_p99_ratio_to_own_solo": 0.31992290590822603
+      }
+    },
+    "hami-mps": {
+      "tp": {
+        "tokens_per_second_ratio_to_own_solo": 1.2198530933283867,
+        "latency_p95_ratio_to_own_solo": 0.17580747492746668,
+        "latency_p99_ratio_to_own_solo": 0.19110636265816222
+      },
+      "pp": {
+        "tokens_per_second_ratio_to_own_solo": 1.0711267296675662,
+        "latency_p95_ratio_to_own_solo": 0.2884985870190598,
+        "latency_p99_ratio_to_own_solo": 0.28983816788188144
+      }
+    }
+  },
+  "mps_to_hami_tokens_per_second_ratio": 1.0006597519097893,
+  "note": "Within-model, same-profile ratios at the same offered load. Not ratios to other models/profiles or proof of a saturation threshold."
+}

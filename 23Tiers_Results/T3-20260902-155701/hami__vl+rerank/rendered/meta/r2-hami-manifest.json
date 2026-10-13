@@ -1,0 +1,26 @@
+{
+  "scenario": "vl-rerank",
+  "arm": "hami",
+  "roles": [
+    "vl",
+    "rerank"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 12032,
+  "card_mib": 12288,
+  "fill_percent": 97.9,
+  "mps_percent": {
+    "vl": 100,
+    "rerank": 100
+  },
+  "files": [
+    "r2-hami-vl.yaml",
+    "r2-hami-rerank.yaml"
+  ],
+  "models": {
+    "vl": "Qwen/Qwen2-VL-2B-Instruct",
+    "rerank": "BAAI/bge-reranker-v2-m3"
+  }
+}

@@ -1,0 +1,227 @@
+[
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/6000/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/7936/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/13295/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/17817/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/19158/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/20048/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/32501/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/33527/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/48480/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/65053/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/69775/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/70447/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/78667/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-024916/trace.json",
+    "json_path": "/requests/80299/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/6000/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/7936/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/13295/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/17817/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/19158/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/20048/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/32501/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/33527/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/48480/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/65053/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/69775/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/70447/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/78667/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T12-20260911-065446/trace.json",
+    "json_path": "/requests/80299/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T13-20260906-114453/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T13-20260911-021908/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T14-20260906-193411/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T14-20260906-233012/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T14-20260908-115149/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T14-20260908-122621/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T14-20260910-050241/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T14-20260910-053547/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T14-20260911-004001/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T15-20260906-182642/trace.json",
+    "json_path": "/requests/597/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T15-20260906-182642/trace.json",
+    "json_path": "/requests/966/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T17-20260912-123151/trace.json",
+    "json_path": "/requests/2184/prompt",
+    "replacements": 2
+  },
+  {
+    "file": "T17-20260912-123151/trace.json",
+    "json_path": "/requests/6203/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T21-20260912-081009/trace.json",
+    "json_path": "/requests/3531/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T5-20260904-103901/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T5-20260906-075026/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  },
+  {
+    "file": "T5-20260911-011315/trace.json",
+    "json_path": "/requests/884/prompt",
+    "replacements": 1
+  }
+]

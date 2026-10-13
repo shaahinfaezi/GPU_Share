@@ -1,0 +1,12 @@
+{"t": 1787768412.7777853, "iso": "2026-08-26T18:20:12+0000", "phase": "teardown_begin"}
+{"t": 1787768414.2043302, "iso": "2026-08-26T18:20:14+0000", "phase": "gpu_idle", "waited_s": 0.0, "used": "{\"0\": 39, \"1\": 39}"}
+{"t": 1787768414.3267865, "iso": "2026-08-26T18:20:14+0000", "phase": "apply"}
+{"t": 1787768415.2639658, "iso": "2026-08-26T18:20:15+0000", "phase": "wait_ready", "roles": "llm,embed"}
+{"t": 1787768591.4351842, "iso": "2026-08-26T18:23:11+0000", "phase": "ready", "role": "embed", "after_s": 176.2}
+{"t": 1787768613.0749202, "iso": "2026-08-26T18:23:33+0000", "phase": "ready", "role": "llm", "after_s": 197.8}
+{"t": 1787768613.836704, "iso": "2026-08-26T18:23:33+0000", "phase": "placement", "colocated": true, "ann_devices": 1, "phys_devices": 1, "detail": "{\"placement\": {\"llm\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"embed\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"]}, \"distinct_devices\": [\"GPU-fa422f59-3462-6e01-aece-96aeafeab30c\"], \"devices_in_use\": [1]}"}
+{"t": 1787768614.1405396, "iso": "2026-08-26T18:23:34+0000", "phase": "endpoint", "role": "llm", "url": "http://10.42.0.145:8000"}
+{"t": 1787768614.43155, "iso": "2026-08-26T18:23:34+0000", "phase": "endpoint", "role": "embed", "url": "http://10.42.0.144:8000"}
+{"t": 1787768614.9681876, "iso": "2026-08-26T18:23:34+0000", "phase": "replay_begin"}
+{"t": 1787768916.061534, "iso": "2026-08-26T18:28:36+0000", "phase": "replay_end", "rc": 0}
+{"t": 1787768916.0639393, "iso": "2026-08-26T18:28:36+0000", "phase": "teardown_end"}

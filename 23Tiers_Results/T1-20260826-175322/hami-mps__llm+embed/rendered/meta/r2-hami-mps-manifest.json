@@ -1,0 +1,26 @@
+{
+  "scenario": "llm-embed",
+  "arm": "hami-mps",
+  "roles": [
+    "llm",
+    "embed"
+  ],
+  "pooling_via": "kserve",
+  "pin_gpu": "",
+  "router": false,
+  "gpumem_total_mib": 11264,
+  "card_mib": 12288,
+  "fill_percent": 91.7,
+  "mps_percent": {
+    "llm": 100,
+    "embed": 100
+  },
+  "files": [
+    "r2-hami-mps-llm.yaml",
+    "r2-hami-mps-embed.yaml"
+  ],
+  "models": {
+    "llm": "Qwen/Qwen2.5-7B-Instruct-AWQ",
+    "embed": "BAAI/bge-m3"
+  }
+}

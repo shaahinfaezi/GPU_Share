@@ -1,0 +1,75 @@
+{
+  "pp": {
+    "processes": [
+      {
+        "pid": 2871180,
+        "name": "pause",
+        "Rss_mib": 0.04,
+        "Pss_mib": 0.04,
+        "Shared_Clean_mib": 0.0,
+        "Shared_Dirty_mib": 0.0,
+        "Private_Clean_mib": 0.0,
+        "Private_Dirty_mib": 0.04,
+        "Anonymous_mib": 0.04
+      },
+      {
+        "pid": 2871236,
+        "name": "python",
+        "Rss_mib": 1040.32,
+        "Pss_mib": 679.82,
+        "Shared_Clean_mib": 80.49,
+        "Shared_Dirty_mib": 418.3,
+        "Private_Clean_mib": 253.16,
+        "Private_Dirty_mib": 288.38,
+        "Anonymous_mib": 706.66
+      },
+      {
+        "pid": 2871677,
+        "name": "VLLM::EngineCor",
+        "Rss_mib": 763.1,
+        "Pss_mib": 419.44,
+        "Shared_Clean_mib": 49.46,
+        "Shared_Dirty_mib": 422.66,
+        "Private_Clean_mib": 0.02,
+        "Private_Dirty_mib": 290.96,
+        "Anonymous_mib": 713.5
+      },
+      {
+        "pid": 2871680,
+        "name": "python",
+        "Rss_mib": 14.25,
+        "Pss_mib": 9.03,
+        "Shared_Clean_mib": 7.13,
+        "Shared_Dirty_mib": 0.0,
+        "Private_Clean_mib": 0.15,
+        "Private_Dirty_mib": 6.98,
+        "Anonymous_mib": 6.98
+      },
+      {
+        "pid": 2871683,
+        "name": "VLLM::Worker_PP",
+        "Rss_mib": 1630.91,
+        "Pss_mib": 1172.61,
+        "Shared_Clean_mib": 298.5,
+        "Shared_Dirty_mib": 394.71,
+        "Private_Clean_mib": 53.58,
+        "Private_Dirty_mib": 884.12,
+        "Anonymous_mib": 1247.68
+      },
+      {
+        "pid": 2871685,
+        "name": "VLLM::Worker_PP",
+        "Rss_mib": 2016.09,
+        "Pss_mib": 1559.19,
+        "Shared_Clean_mib": 298.09,
+        "Shared_Dirty_mib": 392.95,
+        "Private_Clean_mib": 84.34,
+        "Private_Dirty_mib": 1240.72,
+        "Anonymous_mib": 1602.44
+      }
+    ],
+    "pss_mib": 3840.1299999999997,
+    "unreadable_or_exited_processes": 0,
+    "complete": true
+  }
+}

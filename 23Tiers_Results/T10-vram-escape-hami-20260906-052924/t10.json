@@ -1,0 +1,106 @@
+{
+  "arm": "hami",
+  "duration": 300,
+  "fault": "vram-escape",
+  "fault_detail": {
+    "card_after_mib": {
+      "0": 1,
+      "1": 11549
+    },
+    "card_before_mib": {
+      "0": 1,
+      "1": 11549
+    },
+    "card_rise_mib": 0,
+    "chain": {
+      "CUDA_DEVICE_MEMORY_LIMIT": "<unset>",
+      "CUDA_DEVICE_SM_LIMIT": "50",
+      "GPU_CORE_UTILIZATION_POLICY": "<unset>",
+      "ld.so.preload": "/usr/local/vgpu/libvgpu.so",
+      "libvgpu.so": "present 684264 bytes",
+      "nvidia-smi-total": "3840 MiB",
+      "raw": "CUDA_DEVICE_MEMORY_LIMIT=<unset>\nCUDA_DEVICE_SM_LIMIT=50\nGPU_CORE_UTILIZATION_POLICY=<unset>\nlibvgpu.so=present 684264 bytes\nld.so.preload=/usr/local/vgpu/libvgpu.so\nnvidia-smi-total=3840 MiB\n",
+      "rc": 0
+    },
+    "escaper_pod": "r2-llm2-kserve-7dc6d66899-jgs96",
+    "escaper_role": "llm2",
+    "granted_gpumem_mib": 3840,
+    "out_tail": "of memory. Tried to allocate 256.00 MiB. GPU 0 has a total capacity of 3.75 GiB of which 201.87 MiB is free. Process 2970599 has 7.76 GiB memory in use. Process 2970775 ha\", \"grabbed_mib\": 0}\n[HAMI-core ERROR (pid:341 thread=139687148860480 allocator.c:52)]: Device 0 OOM 4083287040 / 4026531840\n[HAMI-core ERROR (pid:341 thread=139687148860480 allocator.c:52)]: Device 0 OOM 4083287040 / 4026531840\n",
+    "probe": {
+      "grabbed_mib": 0,
+      "sees_free_mib": 201,
+      "sees_total_mib": 3840,
+      "stopped": "OutOfMemoryError: CUDA out of memory. Tried to allocate 256.00 MiB. GPU 0 has a total capacity of 3.75 GiB of which 201.87 MiB is free. Process 2970599 has 7.76 GiB memory in use. Process 2970775 ha"
+    },
+    "rc": 0,
+    "verdict": {
+      "ESCAPED": false,
+      "card_rise_mib": 0,
+      "headroom_in_grant_mib": 201,
+      "physical_card_mib": 12288,
+      "sees_total_mib": 3840,
+      "stopped_near_advertised_free": true,
+      "view_virtualised": true
+    }
+  },
+  "fault_time": 1788672842.8744063,
+  "inject_at_s": 90.0,
+  "mps": {
+    "arm": "hami",
+    "daemon_running": false,
+    "mps_client_pids": [],
+    "tenants": 2,
+    "want_mps": false
+  },
+  "out": "/opt/GPU_Share/round2/results/T10-vram-escape-hami-20260906-052924",
+  "placement": {
+    "devices_in_use": [
+      1
+    ],
+    "distinct_devices": [
+      "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+    ],
+    "placement": {
+      "llm": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ],
+      "llm2": [
+        "GPU-fa422f59-3462-6e01-aece-96aeafeab30c"
+      ]
+    }
+  },
+  "rate": 6.0,
+  "recovered": null,
+  "replay_rc": 0,
+  "seed": 20260826,
+  "t0": 1788672752.7840967,
+  "t1": 1788673058.405371,
+  "test": "T10",
+  "victim": "llm",
+  "windows": {
+    "after": {
+      "failed": 0,
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    },
+    "before": {
+      "failed": 0,
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    },
+    "during": {
+      "failed": 0,
+      "mean": null,
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    }
+  }
+}
